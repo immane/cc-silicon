@@ -121,6 +121,15 @@ Chips are zero-field unit structs. They never call each other; data flows only
 through the bus. `tick` returns `()` — errors are modelled as "blown fuse"
 signals on the bus, never as panics.
 
+For applications that want stronger enforcement, prefer `RestrictedChip` with
+`silicon_chip!` and `Motherboard::install_projected`. Its computation receives
+only a read-only input projection and returns a typed proposal; a separate
+`ChipAdapter` projects bus fields and commits the proposal. The macro only
+declares unit structs and compile-fail doctests verify that fields, bus access,
+and input mutation are rejected. Adapters remain trusted application code, and
+Rust cannot prove absence of global I/O or nondeterminism; enforce those with
+crate boundaries, static linting, and deterministic replay tests.
+
 ### `Motherboard` — the clock driver
 
 ```rust
@@ -159,6 +168,31 @@ surprises such as a suspended process.
 ### `Testbench` / `simulate` — headless verification
 
 Run deterministic pin sequences and assert properties of the resulting bus.
+
+### Restricted chips and static checks
+
+For stronger separation between computation and bus mutation, implement
+`RestrictedChip` and install it with `Motherboard::install_projected`. The chip
+receives only an immutable input projection and returns a typed proposal; a
+separate `ChipAdapter` builds that projection and commits the proposal. The
+`silicon_chip!` macro declares a unit-struct chip, and compile-fail doctests
+cover stateful declarations, direct bus access, and input mutation.
+
+The optional AST-based chip linter in `tools/chip-lint` checks a source
+directory for common violations, including legacy `LogicChip` implementations,
+stateful chip structs, opaque macros, unsafe blocks, and common host or
+nondeterministic APIs. Run it with:
+
+```bash
+cargo test --manifest-path tools/chip-lint/Cargo.toml
+cargo run --manifest-path tools/chip-lint/Cargo.toml -- <chip-source-directory>
+```
+
+The linter is a conservative aid, not a proof of purity: Rust aliases, method
+dispatch, and effects hidden in called helpers or dependencies may require
+review. Keep adapters and helper functions auditable, isolate host I/O, and use
+deterministic replay tests. The legacy `LogicChip` API remains available for
+compatibility; use `RestrictedChip` for the stricter path.
 
 ---
 
@@ -246,6 +280,8 @@ tests/
 docs/
   architecture/     paradigm spec + SFL contract/schema
   design/           blueprint + getting-started guide
+tools/
+  chip-lint/        AST-based checks for chip source
 ```
 
 ---
@@ -276,6 +312,7 @@ cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo run --example counter
+cargo test --manifest-path tools/chip-lint/Cargo.toml
 ```
 
 The paradigm maps cleanly onto a Mealy/Moore machine:
@@ -319,7 +356,6 @@ silent semantic drift is forbidden.
 | [docs/architecture/SFL_SCHEMA_DRAFT.md](docs/architecture/SFL_SCHEMA_DRAFT.md) | Structured document shape for tooling |
 | [docs/design/ARCHITECTURAL_BLUEPRINT.md](docs/design/ARCHITECTURAL_BLUEPRINT.md) | How to build a system on cc-silicon |
 | [docs/design/GETTING_STARTED.md](docs/design/GETTING_STARTED.md) | Step-by-step walkthrough |
-| [README.zh-cn.md](README.zh-cn.md) | 中文说明 |
 
 ---
 

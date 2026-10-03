@@ -10,6 +10,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use cc_silicon::prelude::*;
+use cc_silicon::silicon_chip;
 use proptest::prelude::*;
 
 // ─── Test domain ────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ struct TestWires {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TestBus {
     value: u32,
+    unrelated_register: u32,
     wires: TestWires,
     prev_pulse: bool,
     tick_count: u64,
@@ -38,6 +40,7 @@ impl TestBus {
     fn new() -> Self {
         Self {
             value: 0,
+            unrelated_register: 0,
             wires: TestWires::default(),
             prev_pulse: false,
             tick_count: 0,
@@ -121,6 +124,46 @@ fn run_sequence(sequence: &[TestPins]) -> TestBus {
 
 fn pins(pulse: bool, reset: bool) -> TestPins {
     TestPins { pulse, reset }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RestrictedInput {
+    increment: bool,
+    current_value: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ValueProposal(u32);
+
+silicon_chip! {
+    struct RestrictedIncrementChip;
+    impl RestrictedChip for RestrictedIncrementChip {
+        type Input = RestrictedInput;
+        type Output = ValueProposal;
+
+        fn compute(&self, input: &Self::Input) -> Self::Output {
+            ValueProposal(if input.increment {
+                input.current_value.wrapping_add(1)
+            } else {
+                input.current_value
+            })
+        }
+    }
+}
+
+struct RestrictedIncrementAdapter;
+
+impl ChipAdapter<TestBus, RestrictedIncrementChip> for RestrictedIncrementAdapter {
+    fn read(&self, pins: &TestPins, bus: &TestBus) -> RestrictedInput {
+        RestrictedInput {
+            increment: pins.pulse,
+            current_value: bus.value,
+        }
+    }
+
+    fn commit(&self, proposal: ValueProposal, bus: &mut TestBus) {
+        bus.value = proposal.0;
+    }
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -231,6 +274,53 @@ fn host_can_install_a_custom_backend() {
 }
 
 #[test]
+fn restricted_chip_only_computes_from_its_projection() {
+    assert_eq!(std::mem::size_of::<RestrictedIncrementChip>(), 0);
+    let input = RestrictedInput {
+        increment: true,
+        current_value: 41,
+    };
+    let first = RestrictedIncrementChip.compute(&input);
+    let replay = RestrictedIncrementChip.compute(&input);
+    assert_eq!(first, ValueProposal(42));
+    assert_eq!(first, replay);
+}
+
+#[test]
+fn projected_chip_adapter_commits_only_its_declared_output() {
+    let mut mb = Motherboard::<TestBus>::new(1);
+    mb.install_projected(0, RestrictedIncrementChip, RestrictedIncrementAdapter);
+    let mut bus = TestBus::new();
+    bus.value = 9;
+    bus.prev_pulse = true;
+    bus.wires.reset_applied = true;
+
+    mb.clock_tick(&pins(true, false), &mut bus);
+
+    assert_eq!(bus.value, 10);
+    assert!(
+        !bus.wires.reset_applied,
+        "wire reset remains motherboard-owned"
+    );
+    assert_eq!(
+        bus.unrelated_register, 0,
+        "unrelated register stays unchanged"
+    );
+    assert!(bus.prev_pulse, "motherboard latches the sampled input");
+}
+
+#[test]
+fn projected_chip_has_no_bus_access_during_compute() {
+    let chip = RestrictedIncrementChip;
+    let input = RestrictedInput {
+        increment: false,
+        current_value: 17,
+    };
+    let proposal = chip.compute(&input);
+    assert_eq!(proposal, ValueProposal(17));
+}
+
+#[test]
 fn testbench_runs_headless() {
     let mut tb = Testbench::new(TestBus::new(), 2);
     tb.motherboard.install(0, RelayChip);
@@ -267,5 +357,20 @@ proptest! {
         mb.clock_tick(&pins(false, false), &mut bus);
         prop_assert!(!bus.wires.pulse_seen);
         prop_assert!(!bus.wires.reset_applied);
+    }
+
+    #[test]
+    fn prop_restricted_chip_is_repeatable_for_every_projection(
+        increment in any::<bool>(),
+        current_value in any::<u32>(),
+    ) {
+        let input = RestrictedInput { increment, current_value };
+        let first = RestrictedIncrementChip.compute(&input);
+        let replay = RestrictedIncrementChip.compute(&input);
+        prop_assert_eq!(first, replay);
+        prop_assert_eq!(
+            first.0,
+            if increment { current_value.wrapping_add(1) } else { current_value }
+        );
     }
 }

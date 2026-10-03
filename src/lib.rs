@@ -27,7 +27,7 @@ pub mod sim;
 
 pub use backend::{Backend, CpuBackend};
 pub use bus::Bus;
-pub use chip::LogicChip;
+pub use chip::{ChipAdapter, LogicChip, ProjectedChip, RestrictedChip};
 pub use clock::Clock;
 pub use motherboard::Motherboard;
 pub use sim::{simulate, Testbench};

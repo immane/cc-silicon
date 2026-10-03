@@ -8,7 +8,7 @@
 
 use crate::backend::{Backend, CpuBackend};
 use crate::bus::Bus;
-use crate::chip::LogicChip;
+use crate::chip::{ChipAdapter, LogicChip, ProjectedChip, RestrictedChip};
 
 /// A deterministic layered pipeline of logic chips.
 ///
@@ -69,6 +69,22 @@ impl<B: Bus> Motherboard<B> {
         C: LogicChip<B> + 'static,
     {
         self.install_chip(layer, Box::new(chip));
+    }
+
+    /// Install a restricted computation with an application-owned projection
+    /// and proposal adapter.
+    ///
+    /// The chip itself receives no bus reference. `adapter.read` defines its
+    /// read projection and `adapter.commit` applies its typed proposal. The
+    /// adapter is a trusted boundary and must be independently tested.
+    pub fn install_projected<C, A>(&mut self, layer: usize, chip: C, adapter: A)
+    where
+        C: RestrictedChip,
+        C::Input: 'static,
+        C::Output: 'static,
+        A: ChipAdapter<B, C> + 'static,
+    {
+        self.install(layer, ProjectedChip::new(chip, adapter));
     }
 
     /// Total number of chips across all layers.
