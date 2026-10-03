@@ -22,7 +22,7 @@ Required reading:
 - [Design blueprint](../design/ARCHITECTURAL_BLUEPRINT.md): design the bus, single responsibility, topology, and test bench first.
 - [Getting started](../design/GETTING_STARTED.md): the current framework API; do not assume that the new interfaces in the tasks already exist.
 
-**Priority**: approved semantic contract > frozen task interface > single-chip implementation. The CPU dynamic arena in this document is a **pending-approval extension** to "fixed arrays / no heap"; see T01 for details. Implementation that depends on this extension must not begin before approval. The original design's descriptions that the compiler can guarantee no hidden state, automatic correctness, and automatic parallelism cannot be used as proof: the current trait does not enforce ZST, read/write permissions, or determinism.
+**Priority**: approved semantic contract > frozen task interface > single-chip implementation. The CPU dynamic arena is an **approved application-scoped extension** to "fixed arrays / no heap" (see [ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) and T01); the framework itself remains fixed-array/heap-free. The extension is frozen in `compiler/` (C01–C06); it does not authorize C language chips or prove any compiler capability. The original design's descriptions that the compiler can guarantee no hidden state, automatic correctness, and automatic parallelism cannot be used as proof: the current trait does not enforce ZST, read/write permissions, or determinism.
 
 Distinguish two kinds of backend: `cc-silicon::Backend` is the compute backend that executes chips (CPU in the first version); the compiler target/codegen backend is the **target of the generated program** (AArch64 in the first version). The two must not be conflated.
 
@@ -46,6 +46,8 @@ Distinguish two kinds of backend: `cc-silicon::Backend` is the compute backend t
 | [T13](T13_VERIFICATION_CHIPS.md) | Contract/IR/ABI verification, differential and replay chips | T01; interface depends on each phase |
 | [Parallel notes](PARALLEL_EXECUTION.md) | Dependency waves, file ownership, handoff template, integration discipline | Required reading for all implementers |
 | [Per-chip template](TASK_TEMPLATE.md) | Executable task header, exact field binding, three concrete examples of type promotion/declarator/variadic | T01 interface frozen |
+| [M1 frontend acceptance](M1_VERTICAL_SLICE_ACCEPTANCE.md) | Planned M1 frontend fixtures for `int main(void){return 2+3;}` (design only; no implementation, no execution, no pass rate) | T01 interface binding; target probe for target-dependent fixtures |
+| [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) | Planned M1 vertical closed-loop end-to-end acceptance, including the Linux-probe-gated target half (design only; all checks NOT RUN) | T01, T09, T11; planned (not provisioned) Linux probe substrate for Part B |
 
 The tables for T02–T13 are work lists with one row per chip: each row's protocol inputs, outputs, functionality, and tests are that chip's concrete objectives; together with the unified contract in T01 they form the complete task. Cross-phase dependencies are **data/task-protocol dependencies**, not permission to call other chips directly. The tables are an initial decomposition and may be further divided when there is evidence; there is no requirement to duplicate identical chips just to pad the count.
 
@@ -77,6 +79,8 @@ The current list contains **331 unique chip tasks** in total, plus 11 Host tasks
 | M4 GNU/torture closure | T12 gaps, target features, optimization options and instruction semantics | compile/execute/ieee at 90%→95%→98% respectively; every failure has an owner |
 | M5 Final gate | Full matrix, per-file, supplementary standard tests, regression and performance budget | All items defined by T00 >99%; no unattributed results; stable repeated execution |
 
+The M1 milestone is elaborated in two planned acceptance documents: the target-independent frontend fixtures in [M1_VERTICAL_SLICE_ACCEPTANCE.md](M1_VERTICAL_SLICE_ACCEPTANCE.md) and the end-to-end closed-loop plan, including the Linux-probe-gated target half, in [M1_TARGET_ACCEPTANCE.md](M1_TARGET_ACCEPTANCE.md). Both are draft/planned design artifacts: they report no implemented chip, no executed test, no probe, and no pass rate.
+
 Do not treat the M1/M2 small-subset pass rate as the final GCC pass rate. All catalog chips must enter the coverage ledger, and unimplemented items must be recorded; optional optimizations have lower priority than code-generation correctness. Whether complex ISA/language extensions become final mandatory items is decided by the frozen corpus; do not work backward and cut tests according to implementation capability.
 
 ## 5. Unified Definition of Done for Each Chip
@@ -90,9 +94,9 @@ Do not treat the M1/M2 small-subset pass rate as the final GCC pass rate. All ca
 7. Compute width/alignment/floating point according to the frozen target model; do not use Rust host types or host `sizeof` to impersonate C target semantics.
 8. Submit tests, contracts, and known limitations; `fmt/clippy/test` pass. Implemented state does not mean the chip has coverage in torture.
 
-## 6. Code Locations (to be implemented, not existing directories)
+## 6. Code Locations (original layout sketch; current state in the T01 status below)
 
-It is recommended to keep the current framework independent and create an application crate under `compiler/` that depends on the root crate:
+The original plan kept the current framework independent and created an application crate under `compiler/` that depends on the root crate; the proposed layout was:
 
 ```text
 compiler/src/bus/            # owned by the integrator
@@ -105,4 +109,12 @@ compiler/contracts/         # frozen protocols and per-chip manifests
 tools/torture/              # peripheral test infrastructure, not the semantic core
 ```
 
-Whether to establish a Cargo workspace is decided by the T01 integrator; implementers must not each modify the root `Cargo.toml`. This change only adds task documents and does not create these code directories.
+Whether to establish a Cargo workspace is decided by the T01 integrator; implementers must not each modify the root `Cargo.toml`. When this document was first added it only added task documents and created none of these directories; the T01 integrator has since created `compiler/` with the flat layout recorded in the T01 status below, while the group chip directories (`compiler/src/chips/<group>/`) and host code remain future work and do not exist yet.
+
+T01 status (2026-10-04): the T01 integrator created `compiler/` as a nested
+standalone package (path dependency on the root crate, its own lock file) and
+implemented the C01–C06 foundation with a flat module layout
+(`compiler/src/{arena,ids,task,bus,commit,...}.rs`) rather than the subdirectory
+sketch above. The root framework remains domain-free; the root package defaults
+are unchanged. Group chip files (`compiler/src/chips/<group>/`) and host code
+remain future work and do not exist yet.
