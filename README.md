@@ -282,6 +282,7 @@ docs/
   design/           blueprint + getting-started guide
 tools/
   chip-lint/        AST-based checks for chip source
+  torture/          offline corpus-lock integrity and provenance verifier
 ```
 
 ---
