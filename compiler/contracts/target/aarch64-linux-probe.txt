@@ -1,0 +1,51 @@
+# T01 target probe fixture: aarch64-unknown-linux-gnu
+#
+# STATUS: UNVERIFIED PROPOSAL.
+# These are the expected AAPCS64/LP64 values the Linux probe must confirm.
+# They must not drive code generation until an actual probe runs on the
+# planned Linux CI/VM substrate and this file gains verified=true with a
+# report hash. No Darwin/macOS value may ever appear here.
+#
+# The reference-only DejaGnu baseline is not candidate evidence.
+
+triple = aarch64-unknown-linux-gnu
+object_format = elf
+endianness = little
+data_model = lp64
+verified = false
+
+sizeof.char = 1
+alignof.char = 1
+char.signed = false
+sizeof.short = 2
+alignof.short = 2
+sizeof.int = 4
+alignof.int = 4
+sizeof.long = 8
+alignof.long = 8
+sizeof.longlong = 8
+alignof.longlong = 8
+sizeof.__int128 = 16
+alignof.__int128 = 16
+sizeof.float = 4
+alignof.float = 4
+sizeof.double = 8
+alignof.double = 8
+sizeof.longdouble = 16
+alignof.longdouble = 16
+longdouble.format = ieee-binary128
+sizeof.pointer = 8
+alignof.pointer = 8
+sizeof.size_t = 8
+alignof.size_t = 8
+sizeof.ptrdiff_t = 8
+alignof.ptrdiff_t = 8
+sizeof.wchar_t = 4
+alignof.wchar_t = 4
+wchar_t.signed = true
+wchar_t.encoding = utf32
+
+abi.gp_arg_regs = 8
+abi.fp_arg_regs = 8
+abi.stack_align = 16
+abi.variadic_register_save_area = true

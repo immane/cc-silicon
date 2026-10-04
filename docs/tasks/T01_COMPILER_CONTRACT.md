@@ -2,7 +2,15 @@
 
 Owner: contract integrator. The artifacts must first be compilable and have a schema/fixture; other LLMs must not each invent their own CompilerBus or duplicate a type system.
 
-## 1. CPU Storage Extension Decision (Pending Approval)
+## 1. CPU Storage Extension Decision (Approved)
+
+Status: **approved** on 2026-10-04; see
+[ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md). The extension is
+application-scoped: the root framework specification is unchanged and remains
+fixed-array/heap-free. The compiled foundation (C01–C06) lives in `compiler/`;
+its frozen artifact version/hash is in `compiler/contracts/CONTRACT_VERSION`
+and `compiler/src/contract.rs`. Language chips and a working compiler are still
+not implemented and are not claimed.
 
 The original paradigm specification/blueprint requires the bus to use only fixed arrays and be heapless. A general-purpose compiler needs non-fixed-length input; the following explicit extension is proposed:
 
@@ -109,6 +117,15 @@ All workers: `phase=propagation`, `deterministic=true`. Language-independent/fro
 - Literal candidate type list, enum underlying selection, wide character encoding, and execution character set.
 - Provide a reproducible target probe fixture, but compile chips do not dynamically read the host ABI.
 
+Frozen identity (2026-10-04): `aarch64-unknown-linux-gnu`, ELF, LP64,
+little-endian, AAPCS64. Only the identity is frozen; every concrete scalar,
+`long double`, and ABI value remains **UNVERIFIED** until an actual probe runs
+on the planned (not yet provisioned) Linux CI/VM substrate. The corpus is
+fetched on demand with a hash lock. A reference-only DejaGnu baseline is
+authorized as an oracle but is not available and is never candidate compiler
+evidence. The probe fixture and its unverified status are recorded in
+`compiler/contracts/target/aarch64-linux-probe.txt`.
+
 ## 7. Work Items and Acceptance
 
 | ID | Delivery | Acceptance |
@@ -121,3 +138,22 @@ All workers: `phase=propagation`, `deterministic=true`. Language-independent/fro
 | C06 | minimal routing integration shell/registration generation | no-op tasks terminate normally and not-implemented tasks fail explicitly; carries no language logic |
 
 Frozen artifacts carry a version/hash; protocol changes are published in one place through the integrator, and all dependent tasks are retested accordingly.
+
+### 7.1 C01–C06 implementation status (2026-10-04)
+
+Frozen artifact: version `t01-c01-c06/5`, hash
+`61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5`
+(`compiler/contracts/CONTRACT_VERSION`), verified by `compiler/tests/freeze.rs`.
+The hash fingerprints normative shapes and rule identifiers, not source code
+and not semantic equivalence.
+
+| ID | Implemented | Explicitly blocked / limited |
+|---|---|---|
+| C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation; `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched |
+| C02 | Frozen target identity; dialect/options/limits config (structurally immutable after init); unverified AArch64/Linux proposal; machine-readable probe fixture; private verified-state representation; attestation validates required fields (including `wchar_t.encoding`), identity, and report hash; macOS values rejected by test | The actual Linux probe has not run (no CI/VM substrate); all concrete values remain UNVERIFIED; `ensure_codegen_ready` fails closed. `attest` validates caller-supplied report data, not authenticity or physical provenance (TOCTOU). H01's probe harness (not owned here) must emit `wchar_t.encoding` |
+| C03 | Task/TaskState/Result/Proposal/StorePatch envelope; next-tick enqueue; deterministic commit order; inner task IDs bound to the enclosing task; exactly one `Complete`/`Fail`/`AwaitHost` transition per task per batch; Enqueue parents resolved against existing or earlier predicted siblings; Enqueue destinations must be registered and accept the kind (bootstrap is integration-only); exactly-once completion and result consumption with an accurate `ResultAlreadyConsumed` error; lossless `usize` proposal-budget comparison; structured error protocol; unique kind registry with reserved local-code ranges | Per-group concrete task/result payload variants are not frozen (group owners add them; the envelope carries typed `RecordRef` payloads); patch `RecordRef`s are not existence-checked by the mechanical commit |
+| C04 | Manifest schema extension, foundation store schema, validator, fixture tests, validated registry (schema + kind checks on registration); commit-time per-chip field-scoped write manifests, owner/task-kind attribution, read-only `config` rejected both at registration and commit | The extension is a lint, not a parser; group store fields must be declared as each group freezes them |
+| C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot) |
+| C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; pre-populated malformed wires on the propagation entry path fail explicitly without stranding a task; cancel clears stale selection; defined cancel/budget pin behavior | No worker handlers installed; T02 installs them. No language logic, no C chips, no compiler |
+
+Full test commands and results are in `compiler/README.md`.

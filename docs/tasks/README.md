@@ -4,7 +4,7 @@ Status: task design; the compiler is not yet implemented and the GCC pass rate h
 
 ## 1. Goals and Boundaries
 
-Using `cc-silicon` as the framework, the compiler is implemented in Rust and compiles C; all language rules and transformations are placed in zero-field `LogicChip<CompilerBus>`. Hundreds or thousands of chips are permitted, but the chip count is not a success metric.
+Using `cc-silicon` as the framework, the planned compiler application is written in Rust. Language rules and transformations belong in zero-field `RestrictedChip`s that compute from narrow immutable projections and return typed proposals; application adapters project and commit against the explicit `CompilerBus`. Hundreds or thousands of chips are permitted, but the chip count is not a success metric.
 
 Final acceptance: after freezing the revision, target platform, test inventory, and option matrix, the compile, execute, and execute/ieee rates of the GCC C torture suite must **each exceed 99%**, and a per-file full-matrix rate above 99% must also be reached. Gaming the score by skipping unimplemented features, modifying source code, hiding timeouts, or delegating to another C compiler is prohibited. See [T00](T00_GCC_TORTURE_GATE.md) for the exact definition.
 
@@ -85,7 +85,7 @@ Do not treat the M1/M2 small-subset pass rate as the final GCC pass rate. All ca
 
 ## 5. Unified Definition of Done for Each Chip
 
-1. Zero-field struct; `tick(&self, &CompilerPins, &mut CompilerBus)`; no cross-chip `.tick()`, no I/O/environment/clock/hidden cache.
+1. Zero-field `RestrictedChip`; `compute(&Input) -> Output` has no bus access. A small `ChipAdapter` owns the manifest-scoped projection and proposal commit, and the application installs the projected chip through the motherboard. No cross-chip calls, I/O/environment/clock access, or hidden cache.
 2. Has a manifest: unique ID, task kind, exact reads/writes, phase, category, backend class, target/mode conditions, dependencies, test paths. Do not merely write "reads/writes the whole bus".
 3. On receiving a task not belonging to this chip: do not modify semantic state; for the same snapshot and input: the result is the same. After accepting a task, advance, wait for an explicit child task/Host request, or produce a structured error; it must not spin idly.
 4. Downstream requests/output proposals are written to wires in the current tick; cross-tick continuations, queues, diagnostics, results, and cursors must be in registers. A response is consumed once, and each task completes once.

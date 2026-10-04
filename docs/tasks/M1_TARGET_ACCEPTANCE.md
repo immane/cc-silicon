@@ -65,7 +65,7 @@ never be reported as a torture pass rate or as evidence toward the >99% gate.
 | Fact | Current evidence |
 |---|---|
 | Arena extension approved | [ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) (Status: Accepted); [T01](T01_COMPILER_CONTRACT.md) §1 |
-| C01–C06 envelope records a frozen artifact version/hash, backed by a freeze test | `version=t01-c01-c06/2`, hash `c50009bc…827af96` in [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION) and [T01](T01_COMPILER_CONTRACT.md) §7.1; freeze test at [compiler/tests/freeze.rs](../../compiler/tests/freeze.rs). Integrator reran the compiler package checks, freeze-hash example, and root checks on 2026-10-04; the independent audit is pending. |
+| C01–C06 envelope records a frozen artifact version/hash, backed by a freeze test | `version=t01-c01-c06/5`, hash `61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5` in [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION) and [T01](T01_COMPILER_CONTRACT.md) §7.1; freeze test at [compiler/tests/freeze.rs](../../compiler/tests/freeze.rs). Integrator reran the compiler package checks, freeze-hash example, and root checks on 2026-10-04; the independent audit is pending. |
 | Language-store record schemas are placeholders, not frozen | [T01](T01_COMPILER_CONTRACT.md) §7.1 (C01–C03 rows); [compiler/README.md](../../compiler/README.md) |
 | Target identity frozen; concrete values unverified; codegen refuses until probed | [T01](T01_COMPILER_CONTRACT.md) §6; [aarch64-linux-probe.txt](../../compiler/contracts/target/aarch64-linux-probe.txt); [compiler/README.md](../../compiler/README.md) |
 | No worker handlers or language chips exist | [T01](T01_COMPILER_CONTRACT.md) §7.1 (C06 row); `compiler/src/chips/` does not exist |
@@ -316,7 +316,7 @@ Gate values describe the current state, not a promise.
 | ID | Owner | Deliverable needed for M1 | Current state | Gate |
 |---|---|---|---|---|
 | P0 | Integrator | Durable arena/target decision | [ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) present (Accepted) | Recorded |
-| P1 | Integrator | C01–C06 envelope compiles with a recorded version/hash and freeze test | Recorded `t01-c01-c06/2`; compiler tests and hash recomputation rerun on 2026-10-04 | Recorded |
+| P1 | Integrator | C01–C06 envelope compiles with a recorded version/hash and freeze test | Recorded `t01-c01-c06/5`; compiler tests and hash recomputation rerun on 2026-10-04 | Recorded |
 | P2 | Integrator + group owners | Freeze language-record schemas and per-group task/result variants | Placeholders only | **Blocking** for chip work |
 | P3 | Integrator | Registration and motherboard wiring | Routing shell only; no handlers | **Blocking** |
 | P4 | H01 | Linux CI/VM substrate, assembler, linker, sysroot, runner | Unresolved; not provisioned | **Blocking Part B** |

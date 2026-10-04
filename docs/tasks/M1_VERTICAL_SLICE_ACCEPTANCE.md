@@ -16,7 +16,7 @@ The following are explicitly true of this document:
   application is planned work under `docs/tasks/`; this document does not create
   code, interfaces, or directories.
 - **Language schemas and record IDs remain provisional.** The C01–C06
-  foundation envelope is recorded as `t01-c01-c06/2`, but it does not freeze
+  foundation envelope is recorded as `t01-c01-c06/5`, but it does not freeze
   language-store record bodies or per-group task/result payloads. IDs such as
   `TokenId`, `TypeId`, `NodeId`, `ConstId`, and `DiagnosticId`, and catalog
   labels such as `PP04`, `LX08`, `PA22`, do not become binding for language

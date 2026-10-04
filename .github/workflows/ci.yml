@@ -26,14 +26,23 @@ jobs:
       - name: Check chip-lint formatting
         run: cargo fmt --manifest-path tools/chip-lint/Cargo.toml -- --check
 
+      - name: Check compiler formatting
+        run: cargo fmt --manifest-path compiler/Cargo.toml -- --check
+
       - name: Lint framework
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Lint chip-lint tool
         run: cargo clippy --locked --manifest-path tools/chip-lint/Cargo.toml --all-targets -- -D warnings
 
+      - name: Lint compiler
+        run: cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings
+
       - name: Test framework
         run: cargo test
 
       - name: Test chip-lint tool
         run: cargo test --locked --manifest-path tools/chip-lint/Cargo.toml
+
+      - name: Test compiler
+        run: cargo test --locked --manifest-path compiler/Cargo.toml

@@ -1,0 +1,211 @@
+use cc_silicon_compiler::ids::ChipId;
+use cc_silicon_compiler::manifest::{
+    validate_manifest, BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, ManifestError,
+    ManifestRegistry, StoreSchema,
+};
+use cc_silicon_compiler::task::{KindStatus, StoreId, TaskGroup, TaskKind, TaskKindRegistry};
+
+fn base_manifest() -> ChipManifest {
+    ChipManifest {
+        id: ChipId(1),
+        chip_name: "NoopChip",
+        group: TaskGroup::CONTROL,
+        task_kinds: vec![TaskKind::CONTROL_NOOP],
+        reads: vec![FieldPath::new(StoreId::Tasks, "active.id")],
+        writes: vec![FieldPath::new(StoreId::Wires, "proposals.self")],
+        capability: Capability::Emulable,
+        backend_class: BackendClass::CpuReference,
+        phase: ChipPhase::Propagation,
+        deterministic: true,
+        tests: vec!["tests/chips/control/noop.rs"],
+        dependencies: vec![],
+    }
+}
+
+fn errors(manifest: &ChipManifest) -> Vec<ManifestError> {
+    validate_manifest(
+        manifest,
+        &StoreSchema::foundation(),
+        &TaskKindRegistry::foundation(),
+    )
+    .unwrap_err()
+}
+
+#[test]
+fn valid_manifest_passes() {
+    let manifest = base_manifest();
+    assert!(validate_manifest(
+        &manifest,
+        &StoreSchema::foundation(),
+        &TaskKindRegistry::foundation()
+    )
+    .is_ok());
+}
+
+#[test]
+fn undeclared_field_is_rejected() {
+    let mut manifest = base_manifest();
+    manifest
+        .reads
+        .push(FieldPath::new(StoreId::Parse, "not_declared"));
+    assert!(errors(&manifest)
+        .iter()
+        .any(|error| matches!(error, ManifestError::UnknownReadField { .. })));
+
+    let mut manifest = base_manifest();
+    manifest
+        .writes
+        .push(FieldPath::new(StoreId::Parse, "not_declared"));
+    assert!(errors(&manifest)
+        .iter()
+        .any(|error| matches!(error, ManifestError::UnknownWriteField { .. })));
+}
+
+#[test]
+fn wrong_phase_is_rejected() {
+    let mut manifest = base_manifest();
+    manifest.phase = ChipPhase::Latch;
+    assert!(errors(&manifest)
+        .iter()
+        .any(|error| matches!(error, ManifestError::WrongPhase { .. })));
+}
+
+#[test]
+fn missing_tests_and_nondeterminism_are_rejected() {
+    let mut manifest = base_manifest();
+    manifest.tests.clear();
+    manifest.deterministic = false;
+    let found = errors(&manifest);
+    assert!(found
+        .iter()
+        .any(|error| matches!(error, ManifestError::MissingTests { .. })));
+    assert!(found
+        .iter()
+        .any(|error| matches!(error, ManifestError::NonDeterministic { .. })));
+}
+
+#[test]
+fn unregistered_kind_is_rejected() {
+    let mut manifest = base_manifest();
+    manifest.task_kinds = vec![TaskKind::new(TaskGroup::CONTROL, 200).unwrap()];
+    assert!(errors(&manifest)
+        .iter()
+        .any(|error| matches!(error, ManifestError::UnregisteredKind { .. })));
+}
+
+#[test]
+fn kind_group_mismatch_is_rejected() {
+    let mut manifest = base_manifest();
+    manifest.group = TaskGroup::LEX;
+    assert!(errors(&manifest)
+        .iter()
+        .any(|error| matches!(error, ManifestError::KindGroupMismatch { .. })));
+}
+
+#[test]
+fn backend_class_rule_is_enforced() {
+    let mut kinds = TaskKindRegistry::foundation();
+    let cg = TaskKind::new(TaskGroup::TARGET_CODE, 16).unwrap();
+    kinds
+        .register(
+            cg,
+            "cg.emit",
+            TaskGroup::TARGET_CODE,
+            KindStatus::GroupOwned,
+        )
+        .unwrap();
+    let manifest = ChipManifest {
+        id: ChipId(2),
+        chip_name: "EmitChip",
+        group: TaskGroup::TARGET_CODE,
+        task_kinds: vec![cg],
+        reads: vec![],
+        writes: vec![],
+        capability: Capability::Emulable,
+        backend_class: BackendClass::CpuReference,
+        phase: ChipPhase::Propagation,
+        deterministic: true,
+        tests: vec!["tests/chips/target/emit.rs"],
+        dependencies: vec![],
+    };
+    let found = validate_manifest(&manifest, &StoreSchema::foundation(), &kinds).unwrap_err();
+    assert!(found
+        .iter()
+        .any(|error| matches!(error, ManifestError::BackendClassMismatch { .. })));
+
+    let mut correct = manifest;
+    correct.capability = Capability::DeviceSpecific;
+    correct.backend_class = BackendClass::Aarch64Linux;
+    assert!(validate_manifest(&correct, &StoreSchema::foundation(), &kinds).is_ok());
+}
+
+#[test]
+fn registry_rejects_duplicate_id_name_and_kind_claim() {
+    use cc_silicon_compiler::manifest::ManifestRegistryError;
+    let schema = StoreSchema::foundation();
+    let kinds = TaskKindRegistry::foundation();
+    let mut registry = ManifestRegistry::new();
+    registry.register(base_manifest(), &schema, &kinds).unwrap();
+
+    let mut duplicate_id = base_manifest();
+    duplicate_id.chip_name = "OtherChip";
+    assert!(matches!(
+        registry.register(duplicate_id, &schema, &kinds),
+        Err(ManifestRegistryError::Registry(
+            ManifestError::DuplicateId { .. }
+        ))
+    ));
+
+    let mut duplicate_name = base_manifest();
+    duplicate_name.id = ChipId(9);
+    assert!(matches!(
+        registry.register(duplicate_name, &schema, &kinds),
+        Err(ManifestRegistryError::Registry(
+            ManifestError::DuplicateName { .. }
+        ))
+    ));
+
+    let mut duplicate_kind = base_manifest();
+    duplicate_kind.id = ChipId(10);
+    duplicate_kind.chip_name = "AnotherChip";
+    assert!(matches!(
+        registry.register(duplicate_kind, &schema, &kinds),
+        Err(ManifestRegistryError::Registry(
+            ManifestError::DuplicateKindClaim { .. }
+        ))
+    ));
+}
+
+#[test]
+fn registry_rejects_invalid_manifest_before_recording_it() {
+    use cc_silicon_compiler::manifest::ManifestRegistryError;
+    let schema = StoreSchema::foundation();
+    let kinds = TaskKindRegistry::foundation();
+    let mut registry = ManifestRegistry::new();
+    let mut invalid = base_manifest();
+    invalid.phase = ChipPhase::Latch;
+    let error = registry.register(invalid, &schema, &kinds).unwrap_err();
+    assert!(matches!(error, ManifestRegistryError::Validation { .. }));
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn config_store_write_is_rejected_by_the_validator() {
+    let mut manifest = base_manifest();
+    manifest
+        .writes
+        .push(FieldPath::new(StoreId::Config, "target"));
+    let found = errors(&manifest);
+    assert!(found
+        .iter()
+        .any(|error| matches!(error, ManifestError::ConfigStoreWrite { .. })));
+}
+
+#[test]
+fn group_owners_can_declare_new_store_fields() {
+    let mut schema = StoreSchema::foundation();
+    assert!(!schema.has_field(&FieldPath::new(StoreId::Parse, "frame.cursor")));
+    schema.declare(StoreId::Parse, "frame.cursor").unwrap();
+    assert!(schema.has_field(&FieldPath::new(StoreId::Parse, "frame.cursor")));
+    assert!(schema.declare(StoreId::Parse, "frame.cursor").is_err());
+}
