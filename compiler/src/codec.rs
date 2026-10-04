@@ -104,7 +104,17 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     }
     message.extend_from_slice(&bit_len.to_be_bytes());
 
-    for chunk in message.chunks_exact(64) {
+    // SHA-256 requires the padded message length to be a multiple of 64: the
+    // `0x80` terminator, zero fill, and 8-byte length below guarantee it.
+    // `as_chunks` therefore yields no remainder and keeps the block layout
+    // identical to the previous `chunks_exact(64)` loop.
+    let (blocks, remainder) = message.as_chunks::<64>();
+    debug_assert!(
+        remainder.is_empty(),
+        "SHA-256 input must be block-aligned after padding"
+    );
+
+    for chunk in blocks {
         let mut w = [0u32; 64];
         for (index, word) in w.iter_mut().take(16).enumerate() {
             let start = index * 4;

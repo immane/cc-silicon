@@ -2,6 +2,8 @@
 name = "cc-silicon-compiler"
 version = "0.1.0"
 edition = "2021"
+# `slice::as_chunks` (used by the in-tree SHA-256) is stable since 1.88.
+rust-version = "1.88"
 description = "T01 compiler application contract foundation on top of the cc-silicon framework."
 license = "MIT"
 publish = false

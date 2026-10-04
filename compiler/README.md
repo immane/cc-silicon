@@ -121,7 +121,7 @@ cargo test   --locked --manifest-path compiler/Cargo.toml            # all green
 ```
 
 Test breakdown: `c01_arena` 6, `c02_target` 7, `c03_task` 22, `c04_manifest` 11,
-`c05_codec` 13, `c06_routing` 10, `c07_limits` 11, `freeze` 5, plus 2 compile-fail
+`c05_codec` 14, `c06_routing` 10, `c07_limits` 11, `freeze` 5, plus 2 compile-fail
 doctests for non-forgeable verification.
 
 ## Guarantees
@@ -227,4 +227,5 @@ owner change. Root CI covers the compiler today.
 
 `cc-silicon = { path = ".." }`. No third-party crates; the serializer and
 SHA-256 are implemented in-tree so the contract stays dependency-free and
-reproducible.
+reproducible. The package declares `rust-version = "1.88"` because the in-tree
+SHA-256 uses `slice::as_chunks`, which stabilised in Rust 1.88.

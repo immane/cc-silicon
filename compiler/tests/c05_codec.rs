@@ -58,6 +58,17 @@ fn sha256_matches_known_vectors() {
 }
 
 #[test]
+fn sha256_processes_multiple_blocks() {
+    // FIPS test vector: one million 'a' bytes (block-aligned input plus a
+    // padding block), exercising the multi-block chunking path.
+    let data = vec![b'a'; 1_000_000];
+    assert_eq!(
+        hex32(&sha256(&data)),
+        "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+    );
+}
+
+#[test]
 fn writer_is_deterministic() {
     let mut a = Writer::new();
     let mut b = Writer::new();
