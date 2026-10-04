@@ -127,7 +127,7 @@ jobs:
           set -eu
           mkdir -p probe-report
           # `PROBE_RUNNER_LABEL` comes from static job env, never from dispatch
-          # input. No `${{ }}` expression is interpolated into this shell.
+          # input, so no Actions expression expansion is used in this shell.
           {
             printf 'toolchain.digest.metadata = %s\n' "$TOOLCHAIN_DIGEST"
             printf 'toolchain.digest.enforced = false\n'
