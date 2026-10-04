@@ -1,0 +1,145 @@
+name: T00 target probes (H01)
+
+# H01 reference-toolchain target-probe harness.
+#
+# Two intentionally separate jobs:
+#   * `static`  - normalizer and fail-closed guard self-tests. No compiler, no
+#                 target host. Runs on probe/workflow changes.
+#   * `target-probe` - manual-only. Requires an already-provisioned reference
+#                 GCC on a native aarch64 Linux runner. It installs nothing,
+#                 fetches no GCC/corpus/Docker image, and fails closed when any
+#                 declared pin is empty.
+#
+# Trust boundary:
+#   * The runner label is hard-coded to the GitHub-hosted arm64 image and is
+#     deliberately NOT a workflow input. A dispatch can therefore never select
+#     an arbitrary (possibly attacker-controlled) self-hosted runner label.
+#   * `toolchain_digest` is recorded metadata, not a verified or enforced pin:
+#     the workflow cannot verify a runner image digest and never invents one.
+#     Treat it as a human-declared identifier, not a proof of provenance.
+#   * `actions/*@v4` are mutable major-version tags, not immutable commit pins.
+#     Pinning them to a verified full SHA is an unresolved hardening item; no
+#     SHA has been independently verified here, so none is fabricated.
+#
+# The real probe never runs automatically, so no floating package state can ever
+# be mistaken for a frozen toolchain.
+
+on:
+  workflow_dispatch:
+    inputs:
+      toolchain_digest:
+        description: "Runner image/toolchain digest metadata: recorded only, NOT verified or enforced (no value is invented)"
+        required: true
+        default: ""
+      ref_gcc:
+        description: "Absolute path to the pinned reference GCC on the runner"
+        required: true
+        default: ""
+      ref_gcc_version:
+        description: "Exact reference GCC version, gcc -dumpfullversion (e.g. 14.2.0)"
+        required: true
+        default: ""
+      ref_gcc_sha256:
+        description: "SHA-256 of the pinned reference GCC binary (64 lowercase hex)"
+        required: true
+        default: ""
+  pull_request:
+    paths:
+      - "tools/torture/probe/**"
+      - ".github/workflows/t00-target-probes.yml"
+  push:
+    paths:
+      - "tools/torture/probe/**"
+      - ".github/workflows/t00-target-probes.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Probe self-tests (no compiler)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run normalizer and guard tests
+        run: bash tools/torture/probe/tests/run-tests.sh
+
+  target-probe:
+    name: Reference GCC target probe (manual, pinned)
+    if: github.event_name == 'workflow_dispatch'
+    # Hard-coded GitHub-hosted arm64 label. Not an input: a dispatch must not be
+    # able to route this job to an arbitrary self-hosted runner.
+    runs-on: ubuntu-24.04-arm
+    env:
+      PROBE_RUNNER_LABEL: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Require declared toolchain inputs (fail closed)
+        env:
+          TOOLCHAIN_DIGEST: ${{ github.event.inputs.toolchain_digest }}
+          REF_GCC: ${{ github.event.inputs.ref_gcc }}
+          REF_GCC_VERSION: ${{ github.event.inputs.ref_gcc_version }}
+          REF_GCC_SHA256: ${{ github.event.inputs.ref_gcc_sha256 }}
+        run: |
+          set -eu
+
+          # Every declared input is mandatory. An empty digest/version means the
+          # freeze is unresolved; the job must not run and must not invent one.
+          # The digest is recorded metadata, not a verified pin.
+          missing=0
+          for pair in \
+            "toolchain_digest=$TOOLCHAIN_DIGEST" \
+            "ref_gcc=$REF_GCC" \
+            "ref_gcc_version=$REF_GCC_VERSION" \
+            "ref_gcc_sha256=$REF_GCC_SHA256"; do
+            name=${pair%%=*}
+            value=${pair#*=}
+            if [ -z "$value" ]; then
+              printf '::error::%s is required; refusing to run an undeclared probe\n' "$name"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+
+          printf 'Inputs present. The harness still fails closed unless the host is Linux/aarch64 and the GCC version and binary digest match.\n'
+
+      - name: Run H01 reference target probe
+        env:
+          T00_REF_GCC: ${{ github.event.inputs.ref_gcc }}
+          T00_REF_GCC_VERSION: ${{ github.event.inputs.ref_gcc_version }}
+          T00_REF_GCC_SHA256: ${{ github.event.inputs.ref_gcc_sha256 }}
+          T00_TARGET_TRIPLE: aarch64-unknown-linux-gnu
+          T00_PROBE_OUTDIR: ${{ github.workspace }}/probe-report/run
+        run: |
+          # The script rejects any non-frozen T00_TARGET_TRIPLE, then verifies
+          # uname/Linux/aarch64, the exact GCC version, the GCC binary digest,
+          # and that -dumpmachine matches the frozen target before compiling.
+          bash tools/torture/probe/run-probe.sh
+
+      - name: Record toolchain metadata (recorded, not an enforced pin)
+        env:
+          TOOLCHAIN_DIGEST: ${{ github.event.inputs.toolchain_digest }}
+        run: |
+          set -eu
+          mkdir -p probe-report
+          # `PROBE_RUNNER_LABEL` comes from static job env, never from dispatch
+          # input. No `${{ }}` expression is interpolated into this shell.
+          {
+            printf 'toolchain.digest.metadata = %s\n' "$TOOLCHAIN_DIGEST"
+            printf 'toolchain.digest.enforced = false\n'
+            printf 'toolchain.digest.note = human-declared input; not verified or enforced by this workflow\n'
+            printf 'workflow.runner = %s\n' "$PROBE_RUNNER_LABEL"
+          } > probe-report/toolchain-metadata.txt
+
+      # `actions/upload-artifact@v4` is a mutable major-version tag, not an
+      # immutable commit pin; see the workflow header trust-boundary note.
+      - name: Upload probe report
+        uses: actions/upload-artifact@v4
+        with:
+          name: t00-target-probe-report
+          if-no-files-found: error
+          path: probe-report/

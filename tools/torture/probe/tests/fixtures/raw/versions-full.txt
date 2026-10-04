@@ -1,0 +1,19 @@
+# Synthetic full version evidence (NOT target evidence).
+uname_s: Linux
+uname_m: aarch64
+uname_r: 6.8.0-45-generic
+getconf_LONG_BIT: 64
+getconf_GNU_LIBC_VERSION: glibc 2.39
+gcc_path: /home/runner/work/cc-silicon/cc-silicon/toolchain/bin/aarch64-linux-gnu-gcc-14
+gcc_banner: aarch64-linux-gnu-gcc-14 (Ubuntu 14.2.0-4ubuntu2~24.04) 14.2.0
+gcc_dumpfullversion: 14.2.0
+gcc_dumpversion: 14
+gcc_dumpmachine: aarch64-linux-gnu
+gcc_print_sysroot: /usr/aarch64-linux-gnu
+gcc_print_libgcc_file_name: /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a
+gcc_print_file_name_include: /usr/lib/gcc/aarch64-linux-gnu/14/include
+assembler_path: /usr/bin/aarch64-linux-gnu-as
+assembler_banner: GNU assembler (GNU Binutils for Ubuntu) 2.42
+linker_path: /usr/bin/aarch64-linux-gnu-ld
+linker_banner: GNU ld (GNU Binutils for Ubuntu) 2.42
+gcc_sha256: 1111111111111111111111111111111111111111111111111111111111111111

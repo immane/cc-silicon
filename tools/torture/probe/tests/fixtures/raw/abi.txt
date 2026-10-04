@@ -1,0 +1,18 @@
+# Synthetic ABI probe output (NOT target evidence).
+abi.sizeof.hfa_4f=16
+abi.alignof.hfa_4f=4
+abi.sizeof.hfa_4d=32
+abi.alignof.hfa_4d=8
+abi.sizeof.split_gp_fp=16
+abi.alignof.split_gp_fp=8
+abi.sizeof.big_32=32
+abi.sizeof.va_list=32
+abi.alignof.va_list=8
+abi.gp_ten.ok=1
+abi.fp_ten.ok=1
+abi.mixed_many.ok=1
+abi.variadic.ok=1
+abi.ret_hfa_4f.ok=1
+abi.ret_hfa_4d.ok=1
+abi.ret_split.ok=1
+abi.ret_big.ok=1

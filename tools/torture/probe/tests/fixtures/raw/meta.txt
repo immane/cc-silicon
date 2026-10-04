@@ -1,0 +1,32 @@
+# Synthetic normalizer fixture (NOT target evidence).
+# These values only exercise normalize.py's parsing, derivation, and
+# path/timestamp stripping. They are hand-written test input and are never
+# recorded as an H01 probe result.
+probe.schema=cc-silicon.torture/target-probe/v1
+probe.mode=reference-gcc-target-probe
+probe.status=observed
+probe.claim=no-c02-verification
+probe.candidate_free=true
+fixture.synthetic=true
+target.triple=aarch64-unknown-linux-gnu
+substrate.uname_s=Linux
+substrate.uname_m=aarch64
+substrate.uname_r=6.8.0-45-generic
+substrate.long_bit=64
+substrate.libc=glibc
+substrate.libc_version=2.39
+toolchain.gcc.path=/home/runner/work/cc-silicon/cc-silicon/toolchain/bin/aarch64-linux-gnu-gcc-14
+toolchain.gcc.banner=aarch64-linux-gnu-gcc-14 (Ubuntu 14.2.0-4ubuntu2~24.04) 14.2.0
+toolchain.gcc.version=14.2.0
+toolchain.gcc.dumpversion=14
+toolchain.gcc.dumpmachine=aarch64-linux-gnu
+toolchain.gcc.sysroot=/usr/aarch64-linux-gnu
+toolchain.gcc.libgcc=/usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a
+toolchain.gcc.include=/usr/lib/gcc/aarch64-linux-gnu/14/include
+toolchain.gcc.sha256=1111111111111111111111111111111111111111111111111111111111111111
+toolchain.assembler.path=/usr/bin/aarch64-linux-gnu-as
+toolchain.assembler.banner=GNU assembler (GNU Binutils for Ubuntu) 2.42
+toolchain.linker.path=/usr/bin/aarch64-linux-gnu-ld
+toolchain.linker.banner=GNU ld (GNU Binutils for Ubuntu) 2.42
+toolchain.binutils.version=2.42
+object.magic=7f454c46

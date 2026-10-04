@@ -1,0 +1,18 @@
+# Synthetic predefined-macro dump (NOT target evidence).
+#define __STDC__ 1
+#define __STDC_HOSTED__ 1
+#define __aarch64__ 1
+#define __ARM_ARCH 8
+#define __ARM_64BIT_STATE 1
+#define __ARM_FP 0xe
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#define __ORDER_LITTLE_ENDIAN__ 1234
+#define __ORDER_BIG_ENDIAN__ 4321
+#define __SIZEOF_LONG__ 8
+#define __SIZEOF_POINTER__ 8
+#define __SIZEOF_INT__ 4
+#define __CHAR_BIT__ 8
+#define __LONG_MAX__ 9223372036854775807L
+#define __VERSION__ "14.2.0"
+#define __REGISTER_PREFIX__
+#define __USER_LABEL_PREFIX__
