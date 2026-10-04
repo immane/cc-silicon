@@ -169,8 +169,10 @@ semantics and a range covering U+1F600, so a toolchain that cannot represent it
 never sees the literal and cannot fail to compile; when the evidence is missing
 or inconsistent the field stays `unresolved`. No AArch64 value is assumed.
 
-Every T01 `REQUIRED_PROBE_FIELDS` entry (**38** as of T01/3) appears in the
-report. Fields that C cannot measure without inspecting emitted code are
+Every required probe field appears in the report: **38 fields in the current
+target contract**. Keep the mirrored `REQUIRED_FIELDS` list in
+`normalize/normalize.py` synchronized with the contract list (same fields, same
+order). Fields that C cannot measure without inspecting emitted code are
 explicitly `unresolved`:
 
 - `abi.gp_arg_regs`
