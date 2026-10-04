@@ -106,7 +106,6 @@ Clearly distinguish implemented behavior, accepted decisions, proposed compiler 
 ## 8. Git Workflow
 
 - Preserve unrelated user changes and keep edits focused on the requested work.
-- Use the `codex/` branch prefix unless the user requests a different convention.
 - When a commit is requested, use English Conventional Commit messages: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`, or `chore:`.
 - Do not create commits unless explicitly requested.
 - Do not push unless explicitly authorized.
