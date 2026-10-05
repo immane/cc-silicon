@@ -1,30 +1,131 @@
 # cc-silicon
 
-**A C compiler project built around the Silicon-Based Software Architecture.**
+**A domain-free Rust execution framework for Silicon-Based Software Architecture,
+with a chip-oriented C compiler application under development.**
 
-The intended product is a deterministic, chip-oriented C compiler. The
-compiler's language pipeline is **not implemented yet**: this repository
-currently contains the generic execution framework and a frozen compiler
-contract foundation, but no C language chips or end-to-end compiler. The task
-catalog and acceptance plans describe proposed work, not existing capability.
+Silicon models software as explicit state transformed by small, stateless chips
+under declared access rules and a deterministic execution order. It is a general
+software architecture, not a C-specific compilation technique. The root
+`cc-silicon` crate supplies its execution primitives; `compiler/` is the complex
+application being built on top of them.
+
+Today the repository contains the generic framework, the frozen compiler
+contract foundation (`t01-c01-c06/7`), and an initial, limited constant-fold
+worker. **There is no source-to-executable C compiler yet.** The task catalog and
+acceptance plans describe work to be built, not completed language support.
 See [Project status](#project-status).
+
+**New to this repository?** For a plain-language introduction, start
+with [docs/guide/](docs/guide/README.md) (what it is, how it works,
+what works today, what comes next). To contribute or assign work to an
+AI agent, start with [docs/tasks/](docs/tasks/README.md). The
+[docs map](docs/README.md) lists both entrances.
 
 The architecture models computation as synchronous stages over explicit state:
 host input is frozen into pins, stateless chips perform isolated work, and
-committed state advances on ticks. The generic framework is an implementation
-component of this compiler project, not the project's end goal.
+committed state advances on ticks. The framework remains reusable and contains
+no C syntax, type rules, or ABI logic; the compiler application supplies those
+domain semantics.
+
+### Reading this README
+
+- [Mental model](#silicon-in-one-mental-model): what Silicon means beyond the hardware analogy.
+- [Architecture](#project-architecture) and [framework APIs](#execution-framework-component): how execution works.
+- [Current status and trust boundaries](#project-status): what exists and what remains unproven.
+- [Quick start](#quick-start): run a complete, domain-neutral circuit.
+- [Development and verification](#contracts-independent-development-and-verification): how isolated chips become a tested system.
+- [Checks](#testing-and-verification) and [documentation](#documentation): where to validate or read further.
+
+## Silicon in one mental model
+
+The architecture can be read through four semantic concepts. These are a way to
+understand the system, **not four additional Rust APIs**:
+
+| Concept | Question | Current mapping |
+|---|---|---|
+| **State** | What does the system know now? | Application bus registers, per-tick wires, frozen pins, and configuration |
+| **Transition** | How may that state change? | Ordered chip computations, adapter commits, and reset/latch hooks |
+| **Capability** | Who may observe or change which data? | Restricted input/output types; application manifests and checked write paths |
+| **Invariant** | What must remain true? | Application rules exercised by compile-fail, negative, replay, and property tests |
+
+```text
+explicit state S + frozen input I
+              |
+      ordered transitions
+      within declared access rules
+              |
+        explicit state S'
+```
+
+Here, access permissions are distinct from SFL's backend capability categories
+(`portable`, `emulable`, and so on). Declaring either is not proof that a chip
+obeys it; the enforcement boundaries are described below.
+
+### Dataflow instead of hidden call chains
+
+In ordinary modular code, `A` calls `B`, which calls `C`. Silicon chips instead
+produce and consume named data: `A` writes a signal or proposes a record, `B`
+reads it in the documented order, and the motherboard owns invocation. A
+cross-tick request becomes explicit task state rather than a suspended hidden
+call stack.
+
+The hardware analogy is about **interfaces, state, and topology**, not a claim
+that every Rust program can be synthesized into hardware:
+
+| Software concept | Hardware-inspired reading |
+|---|---|
+| Chip | A module with one responsibility |
+| Input projection / typed output | Declared ports |
+| Bus registers / wires | Persistent storage / temporary signals |
+| Manifest | Interface and access declaration |
+| Motherboard layers | Ordered wiring topology |
+| Backend | A realization of that topology |
+
+**Logical chip boundaries need not equal physical execution passes.** SFL allows
+a future backend to fuse or batch computations if it preserves observable
+semantics. The current CPU backend simply runs the installed chips sequentially;
+there is no automatic synthesis, fusion, or parallel grouping.
+
+### Observable purity, not a ban on local mutation
+
+A chip may use local variables, loops, and temporary mutable scratch values to
+compute its declared output. What it must not do is hide semantic state between
+invocations, call another chip, or read the filesystem, environment, wall clock,
+or randomness behind the caller's back. Persistent cursors, queues,
+continuations, and semantic caches belong in the bus.
+
+Storage remains profile-specific: the generic bus specification is fixed-layout
+and heapless; the accepted compiler CPU arena extension permits dynamic bus
+storage. Local allocation is not a universal portability guarantee, and
+hash-map iteration must never decide semantic ordering. See
+[ADR-0001](docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md).
+
+### External effects become explicit input
+
+Host code samples external inputs before a tick and persists outputs afterward.
+An application can represent external work as:
+
+```text
+chip proposal → Host request → Host I/O → frozen response → later computation
+```
+
+The root framework supplies pins and the tick boundary, **not** a file/network
+service. The compiler foundation defines Host request/response shapes; its
+source-import and toolchain integration are not a working compiler driver yet.
+Replay requires the same configuration, initial semantic state, and recorded
+external inputs—not a fresh read of the outside world.
 
 ---
 
 ## Project architecture
 
-The repository has three layers. The compiler application contract and storage
-foundation live in the nested `compiler/` package; the C language pipeline is a
-planned application layer; the root crate supplies its generic tick/chip
-execution mechanism. The planned language stages below are **not implemented**;
-the staged-scheduler mechanisms (quota-bound dispatcher, bounded recovery,
-canonical report) are frozen in the `/6` contract on a quota-1 baseline —
-quota>1 stays measured post-freeze work.
+The repository separates the generic runtime, the compiler application contract,
+and the language pipeline. The nested `compiler/` package contains the C01–C06
+foundation, the `/7` Gate 1 literal/constant schemas, and an initial fold worker.
+The complete language stages below are **not implemented**. The routing shell
+has quota-bound dispatch and bounded recovery/reporting, but no integrated
+language pipeline; quota 1 remains the comparison baseline, and quota>1
+acceptance is still pending.
 
 ```mermaid
 flowchart TB
@@ -38,7 +139,7 @@ flowchart TB
         IR -. "target-dependent; probe-gated" .-> TARGET["AArch64 target emission"]
     end
 
-    FOUNDATION["compiler/ package<br/>T01 C01–C06 contract foundation<br/>implemented · frozen /6"]
+    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas · frozen /7<br/>initial FoldChip on seeded records"]
     PIPE -. "would use the compiler bus, IDs, tasks,<br/>commit protocol and snapshots" .-> FOUNDATION
 
     subgraph RUNTIME["Root cc-silicon framework — implemented mechanism"]
@@ -49,7 +150,7 @@ flowchart TB
         BUS --> CHIPS
         CHIPS --> BUS
     end
-    FOUNDATION -. "uses framework execution primitives" .-> RUNTIME
+    FOUNDATION -. "uses framework traits;<br/>current worker driver is application-owned" .-> RUNTIME
 
     classDef planned fill:#fff4db,stroke:#b7791f,stroke-dasharray:5 5,color:#332;
     class PP,LEX,PARSE,SEM,CONST,IR,VERIFY,TARGET,HOST planned;
@@ -104,8 +205,16 @@ sequenceDiagram
 ```
 
 Clock lifecycle per tick: host sampling is outside the core; the motherboard
-resets wires, delegates ordered propagation to its backend, then latches state
-and advances the tick. The [`Bus`](src/bus.rs) exposes hooks for these phases.
+resets wires, delegates ordered propagation to its backend, then calls the
+latch and tick-advance hooks. The [`Bus`](src/bus.rs) exposes these hooks; an
+application that tracks ticks must implement the counter hooks (their defaults
+are no-ops).
+
+Propagation uses the **current mutable bus**, not a double-buffered old-state
+snapshot: writes by an earlier chip are visible to later chips in the same tick,
+including register writes. `latch` is an explicit end-of-tick hook, not an
+automatic transaction over all bus mutations. Insertion order within a layer
+matters just as layer order does; sharing a layer does not imply parallel safety.
 
 ---
 
@@ -165,8 +274,9 @@ mb.install(1, MutateChip);
 mb.clock_tick(&pins, &mut bus);
 ```
 
-`clock_tick` runs the three phases in order and is the only entity allowed to
-invoke a chip or to reset/latch the bus.
+`clock_tick` runs the three phases in order. By architectural contract, the
+motherboard/backend owns chip invocation and reset/latch ordering; public Rust
+methods do not prevent a caller from bypassing that discipline.
 
 ### `Backend` — the realization layer
 
@@ -197,13 +307,6 @@ Run deterministic pin sequences and assert properties of the resulting bus.
 
 ### Restricted chips and static checks
 
-For stronger separation between computation and bus mutation, implement
-`RestrictedChip` and install it with `Motherboard::install_projected`. The chip
-receives only an immutable input projection and returns a typed proposal; a
-separate `ChipAdapter` builds that projection and commits the proposal. The
-`silicon_chip!` macro declares a unit-struct chip, and compile-fail doctests
-cover stateful declarations, direct bus access, and input mutation.
-
 The optional AST-based chip linter in `tools/chip-lint` checks a source
 directory for common violations, including legacy `LogicChip` implementations,
 stateful chip structs, opaque macros, unsafe blocks, and common host or
@@ -224,21 +327,87 @@ compatibility; use `RestrictedChip` for the stricter path.
 
 ## Project status
 
-Each area below is either covered by tests in this repository or explicitly
-marked as unimplemented. Documents under `docs/tasks/` are design and contract
-proposals, not code.
+This table follows the current source tree and frozen artifact. Test paths are
+evidence locations, not a claim that all checks were rerun for this README edit.
+Task documents include plans and decision records; neither substitutes for an
+implemented, tested pipeline.
 
 | Area | State |
 |---|---|
-| Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. 15 integration tests + 6 compile-fail doctests; worked circuit in `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/6`: storage profile, stable IDs, task/result/proposal protocol (five-outcome set), target model, SFL manifest extension with owner-allowlist skeleton, canonical snapshot/trace with `encode_*` round-trip, quota-bound dispatcher with bounded recovery, `m1-append/1` seed. 140 integration tests + 2 doctests; identity in [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION) |
-| C language chips (T02–T13) | **Not implemented.** Task packages, acceptance plans, and contract proposals only — see [`docs/tasks/README.md`](docs/tasks/README.md) |
+| Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. Evidence: [`tests/paradigm.rs`](tests/paradigm.rs), doctests in [`src/chip.rs`](src/chip.rs), [`examples/counter.rs`](examples/counter.rs) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/7`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
+| Initial constant-fold worker | **Implemented subset**: [`FoldChip`](compiler/src/chips/fold.rs) reads seeded committed literals and emits a constant append + completion; the fixture folds `2 + 3` to `5` through `drive_task` and commit. Evidence: [`compiler/tests/c08_gate1.rs`](compiler/tests/c08_gate1.rs). No parsing of source text, target-width semantics, IR, or executable generation |
+| Complete C language pipeline (T02–T13) | **Not implemented.** Apart from the initial fold subset, language work remains planned; a frozen task kind is not an installed handler — see [`docs/tasks/README.md`](docs/tasks/README.md) |
 | AArch64 target values | **UNVERIFIED.** The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); codegen readiness fails closed until a probe attests concrete values |
 | ABI probe harness (`tools/torture/probe/`) | Harness and normalizer self-tests pass, but the probe has **never run**: no report, no attestation, no verified ABI facts |
 | GCC torture corpus lock (`tools/torture/`) | **Scaffold**: lock schema and verifier implemented and tested; no corpus fetched, no frozen lock, no pass rate |
 
-Compiler capability, target verification results, and GCC pass rates are not
-claimed anywhere in this repository.
+No end-to-end compiler capability, verified target ABI, or GCC pass rate is
+established by this state. The more-than-99% torture goal is a future acceptance
+criterion, not a measured result.
+
+### Compiler protocol: what the extra machinery buys
+
+The root crate deliberately does not prescribe tasks, arenas, manifests, or
+transactions. Those mechanisms currently live in the **compiler application**:
+
+```text
+typed IDs → committed records → task payload
+                                  |
+                     read-only worker computation
+                                  |
+                       tagged output proposals
+                                  |
+                       checked, ordered commit
+                                  |
+                       records + task/result state
+                                  |
+                       canonical snapshot / replay
+```
+
+- **Store / record / ID:** append-only arenas hold records; typed IDs identify
+  them without pointer-address identity or ID reuse.
+- **Task / result:** a request makes work and dependencies explicit. Completion,
+  failure, waiting for Host/children, and bounded progress are represented in
+  the protocol rather than chip-to-chip calls.
+- **Proposal / commit:** validation and capacity preflight precede applying a
+  batch. A rejected batch applies none of its proposed changes; dispatcher
+  changes and subsequent failure recovery are separate transitions, so a failed
+  tick need not leave the entire bus byte-identical.
+- **Snapshot / replay:** canonical encoding makes supported observable state
+  comparable. A contract hash fingerprints normative shapes and rule IDs; it
+  does **not** hash chip logic or prove semantic equivalence.
+
+Gate 1 materializes `Literal` and `Const` bodies only. Other append families are
+explicitly rejected; store patches can record intent rather than materialize
+language records. There is no universal dangling-reference validator or general
+transaction/rollback service in the root framework.
+
+### Guarantees and trust boundaries
+
+| Boundary | What exists now | What is not guaranteed |
+|---|---|---|
+| Root tick driver | Reset → ordered CPU propagation → latch/advance hooks | Purity, termination, or panic-freedom of user hooks/chips/backends |
+| Restricted chip path | Zero-size check on installation; immutable typed input; no bus parameter during computation | Correct projections, absence of interior mutability/effects in supplied types, or correct adapter writes |
+| Compiler manifests / commit | Declared-path and identity checks; field-scoped `StorePatch` checks; Gate 1 stage/allowlist checks | Automatic verification of actual reads or uniform manifest enforcement for every proposal kind |
+| Compiler storage / limits | Checked access and preflight on checked entry points | Global budgets or ownership for direct mutation of public stores |
+| Tests / lint / snapshots | Concrete negative, replay, encoding, and consistency evidence | A proof of all language semantics or all possible executions |
+
+**Current implementation gap:** `FoldChip` uses the application-specific
+[`Worker`](compiler/src/chips/mod.rs) interface, which receives the full
+read-only `CompilerBus`, not a narrow `RestrictedChip::Input`. `drive_task`
+collects proposals, but does not run a complete motherboard tick, dispatch
+lifecycle, or commit. `RoutingShell::clock_tick` does not invoke these workers.
+This path must not be described as generated capability isolation or an
+integrated compiler scheduler; the stronger restricted-chip policy remains the
+design requirement, not an achieved property of this worker API.
+
+Some linked documents still describe `/5` or `/6`, no chips, or pre-Gate-1
+limitations (including `compiler/README.md` and parts of `docs/guide/`). For
+current artifact identity and supported behavior, cross-check
+[`CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION), source, and tests;
+for authorization, follow accepted decisions rather than treating newer code
+or a draft proposal as an automatic contract amendment.
 
 ---
 
@@ -252,7 +421,9 @@ cargo run --example counter
 ```
 
 The essential shape is: define `Pins`, `Wires`, and a `Bus`; implement
-`LogicChip` for each unit struct; assemble layers; tick.
+`LogicChip` for each unit struct; assemble layers; tick. This example uses the
+minimal legacy API; use `RestrictedChip` with an application adapter when narrow
+input/output isolation is required.
 
 ```rust
 use cc_silicon::prelude::*;
@@ -315,7 +486,7 @@ fn main() {
 src/
   lib.rs            crate root and public re-exports
   bus.rs            Bus trait (System Bus: registers + wires)
-  chip.rs           LogicChip trait
+  chip.rs           LogicChip, RestrictedChip, adapters + silicon_chip! macro
   motherboard.rs    Motherboard pipeline + clock_tick driver
   backend.rs        Backend trait + CpuBackend reference
   clock.rs          wall-clock sampling helper (host boundary)
@@ -325,13 +496,16 @@ examples/
   counter.rs        a complete minimal circuit
 tests/
   paradigm.rs       framework-level tests on a neutral domain
-compiler/                nested Cargo package: frozen T01 contract foundation
+compiler/                nested Cargo package: T01 foundation + Gate 1 slice
   src/                   arenas, ids, limits, target, task, bus, commit,
                          manifest, codec, snapshot, routing, contract, records
   contracts/             CONTRACT_VERSION (frozen identity) + SFL manifest doc
-  examples/freeze_hash   recompute/publish the frozen contract hash
-  tests/                 c01..c07 + freeze
+  src/chips/             application Worker/driver API + initial FoldChip
+  examples/freeze_hash.rs recompute the frozen contract hash
+  tests/                 c01..c08 + freeze
 docs/
+  README.md         documentation entrances and map
+  guide/            plain-language overview, walkthrough, status, glossary
   architecture/     paradigm spec, SFL contract + schema draft, ADR-0001, ADR-0002
   design/           blueprint + getting-started guide
   tasks/            compiler master plan, task packages T00–T13, acceptance plans
@@ -352,25 +526,113 @@ the framework should obey these design rules:
 
 - **No global mutable state** outside the bus passed during a tick.
 - **No chip-to-chip calls** — communicate only through bus fields.
-- **No implicit control flow** — model errors as blown-fuse wires, not panics.
+- **Explicit failure** — model recoverable errors as bus signals or typed
+  diagnostics/results, not panic-driven business control flow.
 - **No privilege escalation** — a chip touches only fields relevant to its duty.
 - **Wires are per-tick** — never assume a wire survives a tick boundary.
 - **The bus stays fixed-layout** — bus data has no heap; framework topology
   construction (motherboard layers, backends) allocates, while the default tick
-  path does not ([ADR-0001](docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) §2).
+  driver does not. The compiler's dynamic arenas are an accepted
+  application-scoped exception, not a framework-wide relaxation
+  ([ADR-0001](docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) §2).
 - **Prefer testbenches and property tests** over anecdotal unit tests.
 
-Many of these are enforced structurally by Rust: `&mut Bus` gives one exclusive
-writer, `&Pins` is read-only, and zero-field unit structs cannot hide state.
-`rustc` is therefore a *partial design-rule checker* — it cannot verify business
-logic, which still requires tests and, where it matters, formal methods.
+Rust helps enforce parts of the design: the reference driver uses exclusive bus
+borrows, and the restricted path checks chip size and separates computation from
+commit. But an immutable reference does not rule out interior mutability; unit
+structs can still call globals or I/O; legacy traits do not enforce unit structs
+or field permissions. `rustc` is a *partial design-rule checker*, not a proof of
+architectural or domain correctness.
+
+---
+
+## Contracts, independent development, and verification
+
+Silicon aims to make each chip small enough to understand from its contract
+instead of requiring the whole application's implementation. This applies to
+human contributors and AI agents alike.
+
+There are **two different dependency graphs**:
+
+- **Runtime dependencies:** which records, signals, and task results must exist
+  before a computation can run. Today the root topology is manually installed
+  ordered layers; the compiler has explicit kinds, routes, and selected stage
+  assignments—not an automatically elaborated runtime DAG.
+- **Development dependencies:** which schemas and interfaces must be frozen
+  before contributors can implement compatible chips. Frozen interfaces allow
+  independent fixture-based development even when real upstream producers are
+  still being built; integration must later use their real outputs.
+
+Parallel source development does **not** authorize concurrent bus mutation.
+The current reference execution is sequential. Safe runtime parallelism would
+need access-conflict checks, an explicit commit order, and equivalence evidence.
+Even a future remote worker should compute proposals without becoming a second
+authority for semantic state; no distributed worker runtime or consensus system
+is implemented here.
+
+A bounded chip work assignment should contain:
+
+```text
+chip ID + contract version/hash
+input/output types + exact reads/writes + task guard/phase
+dependencies + allowed files + local invariants
+normal/boundary/invalid/unsupported/replay/write-scope tests
+integration gate + known limitations
+```
+
+The integrator owns shared schemas, routing, registrations, and workspace
+configuration; chip authors own their assigned implementations. Missing
+interfaces require a contract-change request, not private competing types. See
+[the handoff protocol](docs/tasks/PARALLEL_EXECUTION.md) and
+[the per-chip template](docs/tasks/TASK_TEMPLATE.md).
+
+Verification is compositional in intent: the runtime/application protocol checks
+ordering, identity, and supported commit rules; each chip must establish its
+local domain postconditions. Machine evidence takes precedence over an author's
+or agent's completion claim. Builds, lint, and isolated fixtures are necessary
+but insufficient: integration, replay, differential tests, and the frozen
+compiler acceptance inventory cover different obligations. This is preparation
+for formal reasoning, **not a completed formal proof**.
+
+### Longer-term tooling direction — not implemented
+
+The intended workflow is hardware-inspired:
+
+```text
+Describe → Elaborate → Static check → Simulate → Verify → Synthesize
+```
+
+Current support covers Rust-defined buses/chips, manual topology, partial static
+checks, simulation, and tested compiler protocol pieces. The directions below
+are not frozen contracts or authorization to extend public APIs:
+
+- **One authoritative specification, multiple views:** derive human docs,
+  machine manifests/adapters/workpacks, and formal transition/invariant models
+  from the same definitions. The SFL schema is still a draft; there is no general
+  specification compiler or adapter generator.
+- **Graph validation:** detect cycles, missing producers/dependencies, illegal
+  stage order, unreachable chips, and read/write conflicts before execution.
+  Current manifest checks do not implement that whole graph validator.
+- **Failure compression:** cluster failures, minimize reproducers, and bundle
+  contract identity, snapshot, expected/actual output, and replay instructions
+  into small failure capsules. No such automated pipeline exists today.
+- **Synthesis and protocol proofs:** add measured fusion/parallel/incremental
+  execution and formal models for access confinement, transition legality,
+  atomicity, result consumption, and replay. No theorem-prover integration or
+  synthesis toolchain is delivered.
+
+These ideas borrow minimal mechanisms from hardware design, dataflow,
+transactions, capability security, build graphs, and formal methods. They are
+not a commitment to build a database, distributed consensus service, or proof
+system inside the framework. Prefer composition of the existing primitives;
+keep domain complexity out of the generic core.
 
 ---
 
 ## Testing and verification
 
 The root package is not a Cargo workspace, so every nested package needs its own
-`--manifest-path`. These are the commands CI runs
+`--manifest-path`. These are the checks configured in CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
 
 ```bash
@@ -378,7 +640,6 @@ The root package is not a Cargo workspace, so every nested package needs its own
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo run --example counter
 
 # chip linter
 cargo fmt    --manifest-path tools/chip-lint/Cargo.toml -- --check
@@ -446,16 +707,19 @@ silent semantic drift is forbidden.
 
 | Document | Purpose |
 |---|---|
+| [docs/README.md](docs/README.md) / [docs/guide/README.md](docs/guide/README.md) | Documentation map and human reading order; verify status-sensitive claims against the current artifact |
 | [docs/architecture/SILICON_PARADIGM_SPEC.md](docs/architecture/SILICON_PARADIGM_SPEC.md) | The paradigm, principles, and primitives |
 | [docs/architecture/SFL_CONTRACT.md](docs/architecture/SFL_CONTRACT.md) | Multi-backend semantic contract |
 | [docs/architecture/SFL_SCHEMA_DRAFT.md](docs/architecture/SFL_SCHEMA_DRAFT.md) | Structured document shape for tooling |
 | [docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md](docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) | **Accepted**: application-scoped CPU dynamic arena; the framework bus stays fixed-layout |
-| [docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md](docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | **Proposed** as an ADR; its staged-scheduler mechanisms are frozen in the `/6` contract (quota-1 baseline) |
+| [docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md](docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | **Proposed** ADR; selected dispatch/recovery mechanisms landed at `/6`, but the full staged pipeline and quota>1 acceptance are not delivered |
 | [docs/design/ARCHITECTURAL_BLUEPRINT.md](docs/design/ARCHITECTURAL_BLUEPRINT.md) | How to build a system on cc-silicon |
 | [docs/design/GETTING_STARTED.md](docs/design/GETTING_STARTED.md) | Step-by-step walkthrough |
-| [compiler/README.md](compiler/README.md) | The frozen C01–C06 foundation: status, guarantees, hash scope, M0 gates |
+| [compiler/contracts/CONTRACT_VERSION](compiler/contracts/CONTRACT_VERSION) | Current frozen compiler artifact identity and hash scope |
+| [compiler/README.md](compiler/README.md) | Foundation rationale and protocol boundaries; some status/limitation text predates Gate 1 |
 | [compiler/contracts/COMPILER_SFL_MANIFEST.md](compiler/contracts/COMPILER_SFL_MANIFEST.md) | Manifest schema, read/write declarations, and commit-enforcement rules |
-| [docs/tasks/README.md](docs/tasks/README.md) | Compiler master plan and task packages T00–T13 (design only) |
+| [docs/tasks/README.md](docs/tasks/README.md) | Compiler master plan and task packages T00–T13; plans are not implementation evidence |
+| [docs/tasks/GATE_1_M1_FIRST_SLICE.md](docs/tasks/GATE_1_M1_FIRST_SLICE.md) | `/7` slice freeze and worker addenda; seeded fixtures are not full M1 acceptance |
 | [docs/reviews/](docs/reviews/) | Dated documentation and source audits (read-only records) |
 
 ---

@@ -62,6 +62,21 @@ pub trait RestrictedChip: Sized + 'static {
     fn compute(&self, input: &Self::Input) -> Self::Output;
 }
 
+/// Compile-time type equality for [`silicon_chip!`].
+///
+/// The macro emits `<Declared as SameAs<ImplTarget>>::CHECK`, which only
+/// resolves when both types are identical. This rejects declarations where
+/// the `impl` targets a different pre-existing type than the declared unit
+/// struct, while keeping the accepted call syntax unchanged.
+pub trait SameAs<T: ?Sized> {
+    /// Witness that `Self` and `T` are the same type.
+    const CHECK: ();
+}
+
+impl<T: ?Sized> SameAs<T> for T {
+    const CHECK: () = ();
+}
+
 /// Trusted boundary between the application's full bus and one restricted
 /// chip. Implementations define the chip read set in [`ChipAdapter::read`] and
 /// its write set in [`ChipAdapter::commit`]. The framework cannot inspect
@@ -110,9 +125,11 @@ where
 
 /// Declare a restricted chip as a zero-field unit struct.
 ///
-/// The macro accepts only a unit-struct declaration and emits a compile-time
-/// zero-size assertion. The chip body receives only its immutable input and
-/// can return only its typed proposal.
+/// The macro accepts only a unit-struct declaration and emits compile-time
+/// checks: the declared struct must be zero-sized, and the `impl` target
+/// must be that same struct (mismatched names fail via [`SameAs`]). The chip
+/// body receives only its immutable input and can return only its typed
+/// proposal.
 ///
 /// ```
 /// use cc_silicon::{silicon_chip, RestrictedChip};
@@ -205,6 +222,7 @@ macro_rules! silicon_chip {
         $(#[$meta])*
         $vis struct $name;
         const _: () = assert!(::core::mem::size_of::<$name>() == 0);
+        const _: () = <$name as $crate::chip::SameAs<$name2>>::CHECK;
         impl $crate::chip::RestrictedChip for $name2 {
             type Input = $input;
             type Output = $output;

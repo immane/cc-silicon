@@ -14,6 +14,7 @@
 // protocol order or hash-relevant wire tags.
 // ============================================================================
 
+use crate::bus::{ConstRecord, LiteralRecord};
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
 
@@ -28,4 +29,31 @@ pub struct RecordDraft {
     pub family: RecordFamily,
     /// Position within the owning task's own batch.
     pub index: DraftRef,
+}
+
+/// Gate 1 (`/7`) closed typed draft bodies: the only families the commit
+/// materialization path accepts.
+///
+/// Each body is the record-to-be: allocation assigns the stable ID, so the
+/// draft body and the committed record share their fields exactly. Bodies
+/// travel 1:1 positional with [`crate::task::AppendBatch::records`]; any
+/// length or family mismatch rejects the whole batch before mutation.
+/// Families outside this enum keep the explicit
+/// `"record draft materialization pending the records track"` rejection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum G1DraftBody {
+    /// A decoded literal to append to the `literals` arena.
+    Literal(LiteralRecord),
+    /// A folded constant to append to the `consts` arena.
+    Const(ConstRecord),
+}
+
+impl G1DraftBody {
+    /// Canonical family of this body (must match the paired handle).
+    pub const fn family(self: &G1DraftBody) -> RecordFamily {
+        match self {
+            Self::Literal(_) => RecordFamily::Literal,
+            Self::Const(_) => RecordFamily::Const,
+        }
+    }
 }

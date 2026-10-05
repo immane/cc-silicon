@@ -17,10 +17,10 @@
 
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{
-    ChipId, ContinuationId, DiagnosticId, HostRequestId, NodeId, RecordRef, ResultId, ScopeId,
-    TaskId, TokenId,
+    ChipId, ContinuationId, DiagnosticId, HostRequestId, LiteralId, NodeId, RecordRef, ResultId,
+    ScopeId, TaskId, TokenId,
 };
-use crate::records::RecordDraft;
+use crate::records::{G1DraftBody, RecordDraft};
 
 /// A compiler pipeline group. Each group owns one stage of the compiler.
 ///
@@ -166,6 +166,22 @@ impl TaskKind {
     /// A foundation control task that imports a source response.
     pub const CONTROL_IMPORT_SOURCE: Self = Self(3);
 
+    /// Gate 1 (`/7`) M1 slice kind: T07 sem-stage const-evaluate request,
+    /// literal form (payload: exactly one `RecordRef::Literal`).
+    pub const SEMANTIC_CONST_EVAL_LITERAL: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Gate 1 (`/7`) M1 slice kind: T07 sem-stage const-evaluate request,
+    /// binary form (payload: `RecordRef::Node` of the committed
+    /// `BinaryExpression`, then two `RecordRef::Literal` operands in source
+    /// order).
+    pub const SEMANTIC_CONST_EVAL_BINARY: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Gate 1 (`/7`) M1 slice kind: T08 const-fold task (decodes the
+    /// request, folds with checked addition, appends exactly one
+    /// `ConstRecord`).
+    pub const CONSTANT_CONST_FOLD: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 16);
+
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -290,6 +306,32 @@ impl TaskKindRegistry {
         registry
     }
 
+    /// The Gate 1 (`/7`) M1 slice registry: foundation plus the three frozen
+    /// slice kinds (all `Frozen`; group owners start new codes at local 18
+    /// for `SEMANTIC` and local 17 for `CONSTANT_LAYOUT_INIT`).
+    pub fn m1_slice() -> Self {
+        let mut registry = Self::foundation();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::SEMANTIC_CONST_EVAL_LITERAL,
+                "semantic.const_eval_literal",
+            ),
+            (
+                TaskKind::SEMANTIC_CONST_EVAL_BINARY,
+                "semantic.const_eval_binary",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_FOLD,
+                "constant_layout_init.const_fold",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
     /// Register a task kind or return a structured error.
     pub fn register(
         &mut self,
@@ -372,6 +414,263 @@ impl Payload {
     /// Build a payload from record references.
     pub fn from_refs(refs: Vec<RecordRef>) -> Self {
         Self { refs }
+    }
+}
+
+/// M1-closed constant-expression operator (Gate 1 `/7`).
+///
+/// Only `Add` is produced in M1 (the `2 + 3` exercised subset). Future
+/// operators append variants without reinterpreting `Add`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConstExprOp {
+    /// Checked integer addition.
+    Add,
+}
+
+impl ConstExprOp {
+    /// Canonical encoding name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Add => "add",
+        }
+    }
+}
+
+/// M1-closed per-use constant-expression requirement (Gate 1 `/7`).
+///
+/// The requirement is implied by the M1 slice kinds (each serves exactly
+/// one purpose) and travels as no wire bytes; future C purposes require
+/// appended variants and new kinds, never a repurposed lexical type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequiredKind {
+    /// An integer constant expression.
+    IntegerConstantExpression,
+}
+
+impl RequiredKind {
+    /// Canonical encoding name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::IntegerConstantExpression => "integer_constant_expression",
+        }
+    }
+}
+
+/// M1-closed evaluation legality outcome (Gate 1 `/7`, result payload
+/// field; no extra committed record family).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConstLegality {
+    /// A legal constant expression with a folded value.
+    Legal,
+    /// Well-formed but not a constant expression.
+    NotConstantExpression,
+    /// A construct the M1 subset does not implement.
+    Unsupported,
+}
+
+impl ConstLegality {
+    /// Canonical encoding name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Legal => "legal",
+            Self::NotConstantExpression => "not_constant_expression",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// Structured constant-request decode failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RequestError {
+    /// The task kind is not a const-evaluate request kind.
+    UnexpectedKind {
+        /// Offending kind.
+        kind: TaskKind,
+    },
+    /// The payload reference count does not match the kind's convention.
+    Arity {
+        /// Request kind.
+        kind: TaskKind,
+        /// References carried.
+        got: usize,
+    },
+    /// The payload reference at a position has the wrong family.
+    Family {
+        /// Request kind.
+        kind: TaskKind,
+        /// Reference position.
+        position: usize,
+    },
+}
+
+impl std::fmt::Display for RequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnexpectedKind { kind } => {
+                write!(
+                    f,
+                    "task kind {} is not a const-evaluate request",
+                    kind.raw()
+                )
+            }
+            Self::Arity { kind, got } => {
+                write!(
+                    f,
+                    "const-evaluate request {} carries {got} references",
+                    kind.raw()
+                )
+            }
+            Self::Family { kind, position } => {
+                write!(
+                    f,
+                    "const-evaluate request {} reference {position} has the wrong family",
+                    kind.raw()
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for RequestError {}
+
+impl RequestError {
+    /// Map to a structured diagnostic (protocol group: the worker or its
+    /// caller broke the frozen request convention).
+    pub fn to_diagnostic(&self) -> DiagnosticDraft {
+        DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Protocol, 1),
+            self.to_string(),
+        )
+    }
+}
+
+/// A decoded sem-stage constant-evaluate request (Gate 1 `/7` OPEN-03
+/// co-freeze shape).
+///
+/// The wire form is `(TaskKind, Payload)` only — [`Payload`] stays
+/// [`RecordRef`]-only by protocol rule, so `required_kind` and `op` travel
+/// as no bytes: the M1 slice kinds each imply
+/// [`RequiredKind::IntegerConstantExpression`], and the binary form
+/// implies [`ConstExprOp::Add`] (the T07-checked operator).
+///
+/// Both the T07 request kinds (`const_eval_literal`, `const_eval_binary`)
+/// and the T08 fold kind (`const_fold`) decode through this convention:
+/// the T07 requester (Wave 2) validates the request and enqueues a
+/// `const_fold` child carrying the identical payload refs, so the fold
+/// worker sees one shape. Single-literal payloads decode to `Literal`,
+/// node-plus-two-literals to `Binary`, regardless of which of the three
+/// kinds carries them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstantRequest {
+    /// Evaluate one committed literal.
+    Literal {
+        /// Committed literal to evaluate.
+        literal: LiteralId,
+        /// Per-use requirement (always `IntegerConstantExpression` in M1).
+        required_kind: RequiredKind,
+    },
+    /// Fold two committed literals with the checked operator.
+    Binary {
+        /// Committed `BinaryExpression` node.
+        node: NodeId,
+        /// Checked operator (always `Add` in M1).
+        op: ConstExprOp,
+        /// Left operand, in source order.
+        lhs: LiteralId,
+        /// Right operand, in source order.
+        rhs: LiteralId,
+        /// Per-use requirement (always `IntegerConstantExpression` in M1).
+        required_kind: RequiredKind,
+    },
+}
+
+impl ConstantRequest {
+    /// Decode a `(kind, payload)` pair per the frozen convention:
+    /// single-`RecordRef::Literal` payloads decode to `Literal`;
+    /// `RecordRef::Node` plus two `RecordRef::Literal` in source order
+    /// decode to `Binary`. Accepted for the two `const_eval_*` request
+    /// kinds and the `const_fold` worker kind alike.
+    pub fn decode(kind: TaskKind, payload: &Payload) -> Result<Self, RequestError> {
+        fn literal_at(
+            kind: TaskKind,
+            payload: &Payload,
+            position: usize,
+        ) -> Result<LiteralId, RequestError> {
+            match payload.refs.get(position) {
+                Some(RecordRef::Literal(id)) => Ok(*id),
+                _ => Err(RequestError::Family { kind, position }),
+            }
+        }
+        if kind != TaskKind::SEMANTIC_CONST_EVAL_LITERAL
+            && kind != TaskKind::SEMANTIC_CONST_EVAL_BINARY
+            && kind != TaskKind::CONSTANT_CONST_FOLD
+        {
+            return Err(RequestError::UnexpectedKind { kind });
+        }
+        if payload.refs.len() == 1 {
+            return Ok(Self::Literal {
+                literal: literal_at(kind, payload, 0)?,
+                required_kind: RequiredKind::IntegerConstantExpression,
+            });
+        }
+        if payload.refs.len() == 3 {
+            let node = match payload.refs[0] {
+                RecordRef::Node(id) => id,
+                _ => return Err(RequestError::Family { kind, position: 0 }),
+            };
+            return Ok(Self::Binary {
+                node,
+                op: ConstExprOp::Add,
+                lhs: literal_at(kind, payload, 1)?,
+                rhs: literal_at(kind, payload, 2)?,
+                required_kind: RequiredKind::IntegerConstantExpression,
+            });
+        }
+        Err(RequestError::Arity {
+            kind,
+            got: payload.refs.len(),
+        })
+    }
+}
+
+/// A constant-evaluation outcome and its frozen proposal routing (Gate 1
+/// `/7`).
+///
+/// There is no new `ResultValue` variant: `Legal` completes with
+/// [`ResultValue::Record`] carrying the committed `ConstRecord`
+/// reference, while non-legal outcomes fail with a structured
+/// diagnostic (`NotConstantExpression` is a task error, `Unsupported`
+/// is an explicit unsupported).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstantResult {
+    /// Committed folded constant (meaningful for `Legal`).
+    pub value: RecordRef,
+    /// Evaluation legality.
+    pub legality: ConstLegality,
+}
+
+impl ConstantResult {
+    /// Route the outcome to exactly one terminal proposal for `task`.
+    pub fn route(self, task: TaskId) -> Proposal {
+        match self.legality {
+            ConstLegality::Legal => Proposal::Complete {
+                task,
+                value: ResultValue::Record(self.value),
+            },
+            ConstLegality::NotConstantExpression => Proposal::Fail {
+                task,
+                diagnostic: DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 3),
+                    "expression is not a constant expression",
+                ),
+            },
+            ConstLegality::Unsupported => Proposal::Fail {
+                task,
+                diagnostic: DiagnosticDraft::unsupported(
+                    "constant-expression construct outside the M1 subset",
+                ),
+            },
+        }
     }
 }
 
@@ -685,14 +984,17 @@ pub enum PatchOp {
 /// (`proposals.len() + total_drafts`; the limit fields live in `limits.rs`,
 /// owned by the limits track).
 ///
-/// Integrator note: the element type is the closed `RecordDraft` enum owned
-/// by the records track (group-owned record bodies; no settled module path
-/// yet). Wire the import to the records track's frozen path when it lands;
-/// until then the name below is intentionally unresolved.
+/// `records` carries the reservation handles in append order; `bodies`
+/// carries the Gate 1 (`/7`) typed bodies 1:1 positional with `records`.
+/// A length or family mismatch rejects the whole batch before any mutation.
+/// Families outside [`G1DraftBody`] keep the explicit pending-records-track
+/// rejection.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AppendBatch {
-    /// Draft record bodies in append order.
+    /// Draft record reservation handles in append order.
     pub records: Vec<RecordDraft>,
+    /// Typed draft bodies, 1:1 positional with `records` (Gate 1 `/7`).
+    pub bodies: Vec<G1DraftBody>,
 }
 
 /// A proposal emitted by a worker during a tick.
