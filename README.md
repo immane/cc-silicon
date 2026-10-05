@@ -9,6 +9,12 @@ contract foundation, but no C language chips or end-to-end compiler. The task
 catalog and acceptance plans describe proposed work, not existing capability.
 See [Project status](#project-status).
 
+**New to this repository?** For a plain-language introduction, start
+with [docs/guide/](docs/guide/README.md) (what it is, how it works,
+what works today, what comes next). To contribute or assign work to an
+AI agent, start with [docs/tasks/](docs/tasks/README.md). The
+[docs map](docs/README.md) lists both entrances.
+
 The architecture models computation as synchronous stages over explicit state:
 host input is frozen into pins, stateless chips perform isolated work, and
 committed state advances on ticks. The generic framework is an implementation
