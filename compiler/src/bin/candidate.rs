@@ -8,8 +8,10 @@
 // shells out to another C compiler, and refuses target emission (`-S`,
 // `-c`) while the target is unverified (fail-closed, Part B). Part B adds
 // host-only `-E` preprocessed emission through the frozen PP28 worker
-// (no contract change, no version bump). Flag spellings are illustrative
-// until the H04 driver contract freezes; `-I`/`-D`/`-U`, and multi-source
+// (no contract change, no version bump), and H04 `-D`/`-U` seeds the frozen
+// macro table in flag order before preprocessing (host-only, no contract
+// change, no version bump). Remaining flag spellings are illustrative
+// until the H04 driver contract freezes; `-I` and multi-source
 // compilations are explicit deferred errors, never silent fallbacks.
 //
 // Exit codes: 0 = evidence produced; 1 = candidate diagnostic (the input
@@ -47,6 +49,12 @@ use cc_silicon_compiler::task::{
 #[path = "candidate/emit_helper.rs"]
 mod emit_helper;
 
+/// H04 `-D`/`-U` flag parsing helper (pure host-side argv parsing plus the
+/// frozen `MacroRecord` shapes; value scanning and record commit stay here
+/// with the integrator so chips own every semantic decision).
+#[path = "candidate/macro_flags.rs"]
+mod macro_flags;
+
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
 
@@ -62,15 +70,19 @@ struct Invocation {
     interpret: bool,
     /// Preprocessed emission (`-E`, Part B).
     emit: bool,
+    /// `-D`/`-U` macro seeds in flag order (last-wins by commit order).
+    macro_flags: Vec<macro_flags::MacroFlagSeed>,
 }
 
 fn usage() -> &'static str {
-    "usage: candidate [-std=c11] [-O0] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
-     usage: candidate -E [-o <path>] file.c\n\
+    "usage: candidate [-std=c11] [-O0] [-D NAME[=value]] [-U NAME] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
+     usage: candidate -E [-D NAME[=value]] [-U NAME] [-o <path>] file.c\n\
      Part A evidence driver (M1): snapshot/trace emission and IR interpretation.\n\
+     -D NAME defines NAME as 1; -D NAME=value defines NAME with that replacement text (empty value defines it as empty).\n\
+     -U NAME undefines NAME; repeated -D/-U for one name resolve last-wins in flag order.\n\
      -E emits the preprocessed source (PP28) to stdout or -o <path> (Part B, host-only).\n\
      -S and -c are refused while the target is unverified (fail-closed, Part B).\n\
-     -I/-D/-U, and multi-source compilations are deferred (explicit error)."
+     -I and multi-source compilations are deferred (explicit error)."
 }
 
 fn parse_args(args: &[String]) -> Result<Invocation, String> {
@@ -81,6 +93,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         trace: false,
         interpret: false,
         emit: false,
+        macro_flags: Vec::new(),
     };
     let mut inputs = Vec::new();
     let mut index = 0;
@@ -124,16 +137,47 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
             if level != "0" {
                 return Err(format!("-O {level} unsupported in Part A (only -O0)"));
             }
-        } else if arg == "-I"
-            || arg.starts_with("-I")
-            || arg == "-D"
-            || arg.starts_with("-D")
-            || arg == "-U"
-            || arg.starts_with("-U")
-        {
+        } else if arg == "-I" || arg.starts_with("-I") {
             return Err(format!(
-                "{arg} deferred: macro/include support is not in Part A"
+                "{arg} deferred: include support is not in Part A"
             ));
+        } else if let Some((kind, body)) = macro_flags::split_flag(arg) {
+            let body: &str = if body.is_empty() {
+                index += 1;
+                match args.get(index) {
+                    Some(next) => next.as_str(),
+                    None => {
+                        return Err(if kind == 'D' {
+                            "-D requires a macro name".to_string()
+                        } else {
+                            "-U requires a macro name".to_string()
+                        });
+                    }
+                }
+            } else {
+                body
+            };
+            if kind == 'D' {
+                let seed = macro_flags::parse_define_body(body)?;
+                // Fail fast on values the frozen scan rejects so a bad `-D`
+                // value stays a driver error (exit 2), not a pipeline
+                // diagnostic. The commit path below re-scans the same bytes.
+                if let Err(draft) = cc_silicon_compiler::chips::scan(seed.value.as_slice()) {
+                    return Err(format!(
+                        "-D {} has an invalid value: {}",
+                        String::from_utf8_lossy(&seed.name),
+                        draft.message
+                    ));
+                }
+                invocation
+                    .macro_flags
+                    .push(macro_flags::MacroFlagSeed::Define(seed));
+            } else {
+                let seed = macro_flags::parse_undef_body(body)?;
+                invocation
+                    .macro_flags
+                    .push(macro_flags::MacroFlagSeed::Undef(seed));
+            }
         } else if arg == "--emit-ir-snapshot" {
             invocation.snapshot = true;
         } else if arg == "--emit-trace" {
@@ -422,14 +466,114 @@ fn build_workers() -> Result<WorkerRegistry, String> {
     Ok(workers)
 }
 
+/// Commit `-D`/`-U` seeds in flag order before the PP pipeline.
+///
+/// Host-side initial input (like source bytes): names are validated by
+/// `macro_flags`, values are tokenized by the frozen `scan` path, and
+/// records use the frozen `define_record`/`undef_record` shapes. Each
+/// non-empty `-D` value gets its own `<command-line>` source so
+/// replacement spans are raw offsets into committed bytes (an empty value
+/// commits no tokens: defined-as-empty, distinct from `-U`). Lookup takes
+/// the greatest `MacroId` with equal spelling, so flag order is last-wins
+/// with no dedup here. Values were trial-scanned in `parse_args`, so a
+/// scan failure here is unreachable in practice and surfaces as a driver
+/// error string.
+fn commit_macro_flags(
+    bus: &mut CompilerBus,
+    seeds: &[macro_flags::MacroFlagSeed],
+) -> Result<(), String> {
+    use cc_silicon_compiler::bus::{PpTokenRecord, SpanRecord};
+    let limits = bus.limits();
+    let command_line = bus
+        .intern_name(b"<command-line>")
+        .map_err(|error| format!("name table exhausted: {error}"))?;
+    for seed in seeds {
+        match seed {
+            macro_flags::MacroFlagSeed::Define(define) => {
+                let scanned = cc_silicon_compiler::chips::scan(define.value.as_slice()).map_err(
+                    |draft| {
+                        format!(
+                            "-D {} has an invalid value: {}",
+                            String::from_utf8_lossy(&define.name),
+                            draft.message
+                        )
+                    },
+                )?;
+                let source = if define.value.is_empty() {
+                    None
+                } else {
+                    Some(
+                        bus.alloc_source(command_line, define.value.clone())
+                            .map_err(|error| format!("command-line source rejected: {error}"))?,
+                    )
+                };
+                let mut replacement = Vec::with_capacity(scanned.len());
+                for token in &scanned {
+                    let owner = source
+                        .ok_or_else(|| "non-empty -D value has no command-line source".to_string())?;
+                    bus.ensure_total_records(1)
+                        .map_err(|error| format!("span commit rejected: {error}"))?;
+                    let span = bus
+                        .arenas
+                        .spans
+                        .alloc(
+                            SpanRecord {
+                                source: owner,
+                                start: token.start as u64,
+                                end: token.end as u64,
+                                expansion: None,
+                            },
+                            &limits,
+                        )
+                        .map_err(|error| format!("span commit rejected: {error}"))?;
+                    bus.ensure_total_records(1)
+                        .map_err(|error| format!("pp-token commit rejected: {error}"))?;
+                    let id = bus
+                        .arenas
+                        .pp_tokens
+                        .alloc(
+                            PpTokenRecord {
+                                kind: token.kind,
+                                span,
+                                spelling: define.value[token.start..token.end].to_vec(),
+                            },
+                            &limits,
+                        )
+                        .map_err(|error| format!("pp-token commit rejected: {error}"))?;
+                    replacement.push(id);
+                }
+                let record = macro_flags::define_record(define.name.clone(), replacement);
+                bus.ensure_total_records(1)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+                bus.arenas
+                    .macros
+                    .alloc(record, &limits)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+            }
+            macro_flags::MacroFlagSeed::Undef(undef) => {
+                let record = macro_flags::undef_record(undef.name.clone());
+                bus.ensure_total_records(1)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+                bus.arenas
+                    .macros
+                    .alloc(record, &limits)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Shared preprocessing prefix: source bytes through PP01→PP04, PP19
 /// conditional, PP09 expansion, and the PP05 directive gate. Returns the
 /// final pp-token stream (`expanded_tokens`, post-conditional,
 /// post-expansion, post-directive) that both the evidence pipeline and the
 /// `-E` emit step thread onward. Host owns the file read; chips own every
-/// semantic decision.
+/// semantic decision. `-D`/`-U` seeds commit in flag order before the
+/// first PP step so conditionals and expansion observe them.
 fn pp_prefix(
     input: &str,
+    seeds: &[macro_flags::MacroFlagSeed],
 ) -> Result<(CompilerBus, WorkerRegistry, Trace, Vec<RecordRef>), String> {
     let bytes = std::fs::read(input).map_err(|error| format!("cannot read {input}: {error}"))?;
     let mut bus = CompilerBus::new(CompilerConfig::new(
@@ -453,6 +597,9 @@ fn pp_prefix(
     let source = bus
         .alloc_source(name, bytes)
         .map_err(|error| format!("source rejected: {error}"))?;
+    // H04 `-D`/`-U` seeds commit before the first PP step (flag order,
+    // last-wins by MacroId).
+    commit_macro_flags(&mut bus, seeds)?;
     // Preprocess from real source bytes (no seeded fixtures).
     let artifact = |value: ResultValue| match value {
         ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
@@ -537,13 +684,13 @@ fn pp_prefix(
 /// Part B `-E` terminal: the shared prefix, then the frozen PP28 worker
 /// over the final pp-token stream. Returns the emitted preprocessed bytes;
 /// persistence stays with the caller (host owns artifact persistence).
-fn run_emit(input: &str) -> Result<Vec<u8>, String> {
-    let (mut bus, workers, mut trace, final_tokens) = pp_prefix(input)?;
+fn run_emit(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Vec<u8>, String> {
+    let (mut bus, workers, mut trace, final_tokens) = pp_prefix(input, seeds)?;
     emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
 }
 
-fn run(input: &str) -> Result<Evidence, String> {
-    let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input)?;
+fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, String> {
+    let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input, seeds)?;
     // Lex over every expanded pp-token (no fixed positions).
     step(
         &mut bus,
@@ -766,7 +913,7 @@ fn main() {
         }
     };
     if invocation.emit {
-        match run_emit(&invocation.input) {
+        match run_emit(&invocation.input, &invocation.macro_flags) {
             Ok(bytes) => match &invocation.output {
                 Some(path) => {
                     if let Err(error) = std::fs::write(path, &bytes) {
@@ -789,7 +936,7 @@ fn main() {
         }
         return;
     }
-    match run(&invocation.input) {
+    match run(&invocation.input, &invocation.macro_flags) {
         Ok(evidence) => {
             let mut report = format!("candidate evidence ({CONTRACT_VERSION})\n");
             report.push_str(&format!("input: {}\n", evidence.input));
