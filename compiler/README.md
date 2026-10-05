@@ -21,16 +21,16 @@ shell. Language work (T02–T13) builds on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/25` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `713176216257d7c254abac79896b50a2cc10db2ed8c2a1afc895e79078530d9a` |
+| Contract version | `t01-c01-c06/26` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `59bdf0f52ef0c03757bdf391f427a7423242b83ae4a5dc35bb9bb8bd9031a006` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/25
-hash=713176216257d7c254abac79896b50a2cc10db2ed8c2a1afc895e79078530d9a
+version=t01-c01-c06/26
+hash=59bdf0f52ef0c03757bdf391f427a7423242b83ae4a5dc35bb9bb8bd9031a006
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)

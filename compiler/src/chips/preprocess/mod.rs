@@ -17,6 +17,7 @@ mod pp_scan;
 mod pp_splice;
 mod pp_substitute;
 mod pp_undef;
+mod pp_variadic;
 
 pub use self::pp_comment::{
     project_pp_comment_input, replace_comments, PpCommentChip, PpCommentInput,
@@ -42,3 +43,6 @@ pub use self::pp_splice::{
 };
 pub use self::pp_substitute::{project_pp_substitute_input, PpSubstituteChip, PpSubstituteInput};
 pub use self::pp_undef::{project_pp_undef_input, PpUndefChip, PpUndefInput};
+pub use self::pp_variadic::{
+    project_pp_variadic_input, PpVariadicChip, PpVariadicInput, PpVariadicMode,
+};

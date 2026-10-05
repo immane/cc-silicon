@@ -468,7 +468,7 @@ fn pp_snapshot_round_trip_new_kinds_and_hash() {
         "header_name",
         "string_literal",
         "char_literal",
-        "t01-c01-c06/25",
+        "t01-c01-c06/26",
     ] {
         assert!(
             bytes

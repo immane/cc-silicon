@@ -62,8 +62,8 @@ pub use self::preprocess::{
     PpDiagnosticInput, PpDirectiveChip, PpDirectiveInput, PpIncludeEnterChip, PpIncludeEnterInput,
     PpIncludeResolveChip, PpIncludeResolveInput, PpInput, PpInvokeChip, PpInvokeInput,
     PpNormalizeChip, PpRedefineChip, PpRedefineInput, PpScanChip, PpScanInput, PpSpliceChip,
-    PpSpliceInput, PpSubstituteChip, PpSubstituteInput, PpUndefChip, PpUndefInput, ScannedToken,
-    M1_PUNCTUATORS,
+    PpSpliceInput, PpSubstituteChip, PpSubstituteInput, PpUndefChip, PpUndefInput, PpVariadicChip,
+    PpVariadicInput, PpVariadicMode, ScannedToken, M1_PUNCTUATORS,
 };
 pub use self::semantic::{
     project_se_binary_input, project_se_literal_input, project_se_return_input, SeBinChip,

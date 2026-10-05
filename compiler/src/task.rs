@@ -344,6 +344,14 @@ impl TaskKind {
     /// splices one level of header tokens, keeps everything else verbatim).
     pub const PREPROCESS_INCLUDE_ENTER: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 29);
+    /// Wave 2 (`/26`) PP-variadic-slice kind: variadic-macro task (single
+    /// kind for both payload shapes: stream mode carries all active
+    /// pp-token refs and fans out one single-mode child per variadic
+    /// invocation; single mode carries one `Macro` def ref plus
+    /// invocation refs and substitutes with `__VA_ARGS__` collection,
+    /// `__VA_OPT__` policy, `#`/`##`, and blue-paint rescan).
+    pub const PREPROCESS_VARIADIC_MACRO: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 30);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -523,6 +531,22 @@ impl TaskKindRegistry {
         let slice: &[(TaskKind, &str)] = &[(
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/26`) PP-variadic-slice registry: the PP-include
+    /// slice plus the frozen variadic-macro kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 31).
+    pub fn pp_variadic_slice() -> Self {
+        let mut registry = Self::pp_include_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_VARIADIC_MACRO,
+            "preprocess.variadic_macro",
         )];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
