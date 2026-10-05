@@ -228,7 +228,7 @@ impl Bus for MyBus {
 
     fn latch(&mut self, pins: &Pins) { self.prev_pulse = pins.pulse; }
     fn tick_count(&self) -> u64 { self.tick_count }
-    fn advance_tick(&mut self) { self.tick_count += 1; }
+    fn advance_tick(&mut self) { self.tick_count = self.tick_count.wrapping_add(1); }
 }
 
 struct EdgeChip;
@@ -241,7 +241,8 @@ impl LogicChip<MyBus> for EdgeChip {
 struct CountChip;
 impl LogicChip<MyBus> for CountChip {
     fn tick(&self, _pins: &Pins, bus: &mut MyBus) {
-        if bus.wires.edge { bus.value += 1; }
+        // Overflow is part of the chip's contract: wrap explicitly.
+        if bus.wires.edge { bus.value = bus.value.wrapping_add(1); }
     }
 }
 
@@ -323,9 +324,17 @@ S(t+1) = F(S(t), I(t))
 ```
 
 where `S` is the full bus snapshot and `F` is the fixed layer-ordered chip
-pipeline. Because `F` is pure and total, the system is fully characterisable as
-a mathematical function, which makes deterministic replay, fuzzing, and
-property-based testing natural fits.
+pipeline. The functional reading is a **conditional property**, not something
+the public API guarantees: [`LogicChip`](src/chip.rs) accepts arbitrary `tick`
+implementations, and the default [`Backend::execute_layers`](src/backend.rs)
+just calls them, so neither trait can enforce purity, termination, or absence
+of panics. The equation holds for chips, bus hooks, adapters, and backends that
+satisfy four conditions: **purity** (no hidden state, I/O, or chip-to-chip
+calls), **determinism** for fixed inputs, **termination**, and an **explicit
+error/overflow contract** (every fault becomes a bus value, never a panic).
+Under those conditions deterministic replay, fuzzing, and property-based
+testing are natural fits; replay tests exercise the property on chosen traces
+and are evidence for it, not a proof that it holds for every input.
 
 ---
 

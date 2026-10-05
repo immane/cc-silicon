@@ -20,7 +20,7 @@ shell. Language work (T02–T13) builds on this foundation.
 | Probe substrate | Planned Linux CI/VM; **not provisioned** |
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
-| Resource limits | Every configured bound enforced before mutation |
+| Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
 | Contract version | `t01-c01-c06/5` (`contracts/CONTRACT_VERSION`) |
 | Contract hash | `61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5` |
 
@@ -49,7 +49,11 @@ identifiers**: record families, task groups/kinds, normative enumerations
 classes, phases, host requests, diagnostic groups, stores), the
 [`contract::NORMATIVE_RULES`] identifier list, the target profile and its
 verification state, limits, probe/corpus policy, and the foundation store
-schema.
+schema. Enumerations are encoded by **variant name**, not by numeric
+discriminant or wire tag: the `*_NAMES` lists and `RECORD_KINDS` pin names and
+order, while the numeric snapshot tags (`snapshot.rs`) are hardcoded and are not
+derived from or cross-checked against those lists. A tag change does not change
+the frozen hash; numeric-value hashing remains a future `/6` item.
 
 It is **not a source-code hash and not a semantic-equivalence proof**. Logic
 inside a function can change without changing any identifier. The hash also
@@ -79,14 +83,21 @@ Verification is deliberately hard to obtain:
   SHA-256 of the canonical unsigned report body. Unknown wide-character
   encodings are rejected.
 - `CompilerConfig::ensure_codegen_ready` fails closed while unverified.
+- `ProbeReport::status` is a weaker, presence-only check: with a valid
+  `verified`/`report_hash` it reports `ProbeStatus::Verified` without checking
+  the frozen identity and even while the four AAPCS64 fields are `unresolved`;
+  only `TargetSpec::attest` checks identity and parses those values, failing
+  with `ProbeError::BadValue` on an unresolved field.
 
 What is unforgeable is the **private verified-state representation**, not the
 report. `attest` validates caller-supplied report data and its hash; it does
 **not** establish authenticity or that a physical probe ran. Whoever supplies
 the report bytes can still supply a fabricated report, and the report file is
 read at a point in time (TOCTOU). Trust and freshness of the report source are
-integration responsibilities. The probe harness (H01) must emit the
-`wchar_t.encoding` field; this repository does not own or edit the probe tool.
+integration responsibilities. The probe harness (H01) emits the
+`wchar_t.encoding` field (utf32 or unresolved); this package does not own or
+edit the probe tool (`tools/torture/probe/**` is the H01 area in this
+repository).
 
 ## Layout
 
@@ -122,15 +133,25 @@ cargo test   --locked --manifest-path compiler/Cargo.toml            # all green
 
 Test breakdown: `c01_arena` 6, `c02_target` 7, `c03_task` 22, `c04_manifest` 11,
 `c05_codec` 14, `c06_routing` 10, `c07_limits` 11, `freeze` 5, plus 2 compile-fail
-doctests for non-forgeable verification.
+doctests for non-forgeable verification. Coverage boundary: `c07_limits`
+exercises the checked bus/commit entry points only, so no test establishes
+global budgets for direct public-store mutation, and `max_intern_bytes` has no
+dedicated test.
 
 ## Guarantees
 
 - Deterministic: stable IDs, no reuse, explicit ordering, canonical encoding.
 - Checked: every access returns a structured error, never a panic.
-- Bounded: every configured limit (source bytes, records total, tasks total,
+- Bounded on the checked paths: `alloc_source`, task allocation (`bootstrap_task`),
+  `intern_name`, routing propagation/diagnostic emission, and `commit_proposals`
+  preflight every configured limit (source bytes, records total, tasks total,
   task depth, diagnostics, queue, per-arena, proposals per tick, ticks, intern)
-  is enforced before mutation.
+  before mutation. The public mutable stores (`bus.arenas` and its public arenas,
+  `bus.patch_log`, `bus.tasks.ready`, ...) are a trusted integration/host
+  boundary: raw `TypedArena`/`ReservedArena` allocation enforces only the
+  per-arena capacity, and public `get_mut` or direct pushes bypass the global
+  budgets. Worker chips mutate only through the checked entry points and the
+  commit path.
 - Atomic: a proposal batch either fully validates and commits or commits
   nothing. Inner `Complete`/`Fail`/`AwaitHost` task IDs are bound to the
   enclosing task; Enqueue parents resolve against existing or earlier predicted
@@ -174,7 +195,7 @@ owner change. Root CI covers the compiler today.
 |---|---|---|
 | T01 schema frozen | **Fulfilled (envelope)** | compiled types + `tests/freeze.rs`; version/hash in `contracts/CONTRACT_VERSION` |
 | Empty task → complete | **Fulfilled** | `c06_routing::noop_task_terminates_normally` |
-| Progress / budget | **Fulfilled** | `c06`/`c07` budget, queue, depth, total, diagnostics, source, proposal bounds |
+| Progress / budget | **Fulfilled (checked paths)** | `c06`/`c07` budget, queue, depth, total, diagnostics, source, proposal bounds |
 | Replay consistent | **Fulfilled** | `c05_codec::snapshot_and_trace_replay_identically` |
 | Full observable snapshot | **Fulfilled (foundation)** | `c05_codec` source/record/routing/manifest sensitivity tests |
 | Unimplemented ≠ success | **Fulfilled** | `c06` unsupported/unregistered fail; `c06` commit failure is explicit |
@@ -198,12 +219,35 @@ owner change. Root CI covers the compiler today.
 - **No C compiler exists.** No language chips, no code generation, no corpus
   run, no pass rate.
 - Attestation validates report data, not authenticity or physical provenance;
-  TOCTOU applies to the report file (documented above and in `target.rs`). The
-  probe harness (H01, not owned here) must emit `wchar_t.encoding`.
-- Integration gap (N1): the H01 probe report's normalization/ABI classification
-  is unresolved; `attest` requires the frozen identity and a normalized report,
-  so the probe is not marked complete and no ABI register values are fabricated
-  here.
+  TOCTOU applies to the report file (documented above and in `target.rs`). It
+  also performs no plausibility cross-checks beyond field presence, frozen
+  identity, and hash (for example, zero or oversized ABI register counts, or
+  `align > size`, would be accepted); `c02_target::signed_report` recomputes the
+  hash over a caller-built report to demonstrate that a fabricated report can be
+  attested. The probe harness (H01, not owned here) emits
+  `wchar_t.encoding` as `utf32` only with positive ISO/IEC 10646/non-BMP
+  evidence, otherwise `unresolved`; a resolved encoding is required before
+  attestation.
+- The T01 §4 deterministic reserved-ID/local-reference relocation protocol is
+  not implemented or frozen: `commit.rs` resolves only earlier predicted
+  `Enqueue`-parent IDs within one batch, store-patch `RecordRef`s are not
+  existence-checked, and no reservation/apply-map protocol or normative rule
+  exists yet (M1 proposal OB-49).
+- The `/6` hash-scope reconciliation is open: the accepted two-tier model
+  (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed
+  `StoreSchema::declare()` stays excluded) is not yet encoded, so
+  `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields`
+  token must change atomically with `FrozenSchema::encode` and `freeze.rs` at
+  `/6` (M1 proposal OB-34).
+- Integration gap (N1): the H01 normalizer emits the four AAPCS64 fields
+  (`abi.gp_arg_regs`, `abi.fp_arg_regs`, `abi.stack_align`,
+  `abi.variadic_register_save_area`) as `unresolved`, and `verified`/`report_hash`
+  are caller-supplied; `attest` requires resolved numeric values, so the raw
+  probe report becomes attestable only after an explicit classifier/integration
+  step fills them (H07 reference-oracle/ABI classification; the T01 integrator
+  owns the `attest`/`Probed` step). The probe is not marked complete and no ABI
+  register values are fabricated here
+  ([T00](../docs/tasks/T00_GCC_TORTURE_GATE.md) §4.1).
 - Per-group task/result payload enums are not frozen. The envelope carries
   typed `RecordRef` payloads; each task group must freeze its own variants.
 - Reserved language stores have no record schema yet; the snapshot encodes
@@ -216,6 +260,13 @@ owner change. Root CI covers the compiler today.
 - Routing has no installed worker handlers; T02 installs them.
 - `bootstrap_task` is integration/job-bootstrap only (CT01) and is documented
   as such; worker chips may only propose `Enqueue` through the commit path.
+- Global resource limits are guaranteed on the checked bus/commit entry points
+  (`alloc_source`, task bootstrap/allocation, `intern_name`, routing
+  propagation/diagnostic emission, `commit_proposals`). The public mutable
+  stores (`bus.arenas`, `bus.patch_log`, `bus.tasks.ready`, ...) are a trusted
+  integration/host surface: direct mutation enforces only arena-local checks and
+  can exceed the global total/source/task/diagnostic budgets, so worker chips
+  must not use it.
 - The `start_job`/`host_responses` pins are reserved for T02 CT01/CT02. The
   `cancel` and `tick_budget_reached` pins have defined behavior in the shell
   (`Cancelled` and `BudgetExhausted` respectively).

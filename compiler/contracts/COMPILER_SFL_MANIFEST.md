@@ -77,29 +77,59 @@ unique in the task-kind registry, so one name can never carry two semantics.
   A group owner must call `StoreSchema::declare` when freezing its record
   fields; until then a manifest referencing them is rejected, not silently
   accepted.
-- Adding fields or rules changes the frozen contract hash in
+- Adding a field to the frozen foundation schema (`StoreSchema::foundation()`)
+  or a normative rule identifier changes the frozen contract hash in
   `compiler/contracts/CONTRACT_VERSION`; the integrator republishes it in one
-  place and dependent packages are retested.
+  place and dependent packages are retested. Group-declared fields added after
+  the foundation via `StoreSchema::declare` are excluded from that hash
+  (`hash_excludes=group-declared-store-fields`) and are captured by the runtime
+  snapshot/schema mechanisms instead; declaring them does not by itself change
+  the frozen artifact.
+
+At `/6`, the accepted two-tier hash scope will change this boundary: the frozen
+seed (`StoreSchema::foundation()` plus the future `M1AppendSchema`) will
+participate in the contract hash, while post-seed runtime
+`StoreSchema::declare()` extensions stay excluded. Applying that scope requires
+an atomic update of this section, the `hash_excludes=group-declared-store-fields`
+token in `CONTRACT_VERSION`/`contract.rs`/`compiler/README.md`,
+`FrozenSchema::encode`, and the freeze test; the current `/5` behavior and hash
+are unchanged.
 
 ## 5. Commit-time enforcement (beyond the lint)
 
 The manifest is not only documentation: the commit path enforces it per
-proposal batch (`compiler/src/commit.rs`):
+proposal batch (`compiler/src/commit.rs`). Enforcement is exact per proposal
+kind; it is not a uniform producer-manifest check:
 
 - `ManifestRegistry::register` validates the manifest against the frozen store
   schema and the task-kind registry before recording it; an invalid manifest
   never enters the registry;
-- the producing chip must be the owning chip of the task;
+- every proposal requires its enclosing task to be `Running` and the producing
+  chip to be the owning chip of that task. This attribution check does not look
+  the producing chip up in the registry, so a task whose owner has no
+  registered manifest (for example a bootstrapped foundation task) can still be
+  completed, failed, or parked with `AwaitHost` (`compiler/tests/c03_task.rs`,
+  `completion_is_exactly_once`);
+- a `StorePatch` is the only proposal kind that enforces the producing chip's
+  manifest: the producer must be registered and accept the task kind; the patch
+  must match the enclosing task and the producing chip; the patched field must
+  be declared in that chip's registered **write** set and in the store schema;
+  the patch is version-guarded and shape-checked. Negative tests live in
+  `compiler/tests/c03_task.rs` (`unregistered_chip_store_patch_is_rejected`,
+  `task_kind_must_be_accepted_by_the_manifest`,
+  `patch_owner_chip_attribution_and_field_are_checked`);
 - an `Enqueue` destination chip must be registered and accept the destination
-  kind (bootstrap is integration-only);
-- a store patch must match the enclosing task and the producing chip;
-- the patched field must be declared in that chip's registered **write** set;
-- the task kind must be accepted by that chip's manifest;
-- the `config` store is **read-only** and is rejected both at manifest
-  registration and at commit;
-- store patches are version-guarded, and a batch is all-or-nothing (no partial
-  commit on validation failure; the apply pass performs only infallible
-  appends after a capacity preflight).
+  kind (bootstrap is integration-only); the producing chip's manifest is not
+  consulted for `Enqueue`;
+- `Complete`, `Fail`, and `AwaitHost` bind their inner task ID to the enclosing
+  task and enforce exactly-once completion; they perform no
+  producer-registration or accepted-kind lookup;
+- the `config` store is **read-only**: a declared `config` write is rejected at
+  manifest registration, and a `config` store patch is rejected at commit;
+- a batch is all-or-nothing (no partial commit on validation failure; the apply
+  pass performs only infallible appends after a capacity preflight).
 
-A producer whose kind or field is not declared is rejected with a structured
-`CommitError`, never silently accepted.
+A **store-patch** producer whose kind or field is not declared is rejected with
+a structured `CommitError`, never silently accepted. `Complete`, `Fail`, and
+`AwaitHost` carry no store mutation and are not rejected on that basis; that is
+the documented exception for tasks whose owning chip has no registered manifest.
