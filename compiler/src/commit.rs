@@ -1198,11 +1198,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     let per_arena = limits.max_records_per_arena;
     let checks: [(u32, u32, &'static str); 6] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
-        (
-            bus.arenas.results.allocated(),
-            plan.new_results,
-            "results",
-        ),
+        (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
             bus.arenas.diagnostics.allocated(),
             plan.new_diagnostics,
@@ -1240,10 +1236,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     // Diagnostic total.
     bus.ensure_diagnostics(plan.new_diagnostics)?;
     // Total records (includes the patch log).
-    let additional = (plan.new_tasks
-        + plan.new_results
-        + plan.new_diagnostics
-        + plan.new_requests) as u64
+    let additional = (plan.new_tasks + plan.new_results + plan.new_diagnostics + plan.new_requests)
+        as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

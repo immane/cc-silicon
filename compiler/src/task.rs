@@ -320,7 +320,10 @@ impl TaskKindRegistry {
                 TaskKind::SEMANTIC_CONST_EVAL_BINARY,
                 "semantic.const_eval_binary",
             ),
-            (TaskKind::CONSTANT_CONST_FOLD, "constant_layout_init.const_fold"),
+            (
+                TaskKind::CONSTANT_CONST_FOLD,
+                "constant_layout_init.const_fold",
+            ),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
@@ -504,7 +507,11 @@ impl std::fmt::Display for RequestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnexpectedKind { kind } => {
-                write!(f, "task kind {} is not a const-evaluate request", kind.raw())
+                write!(
+                    f,
+                    "task kind {} is not a const-evaluate request",
+                    kind.raw()
+                )
             }
             Self::Arity { kind, got } => {
                 write!(

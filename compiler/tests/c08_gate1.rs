@@ -17,9 +17,7 @@
 // addition, no refold), not this test's byte routine.
 // ============================================================================
 
-use cc_silicon_compiler::bus::{
-    CompilerBus, ConstRecord, LiteralRecord, TaggedProposal,
-};
+use cc_silicon_compiler::bus::{CompilerBus, ConstRecord, LiteralRecord, TaggedProposal};
 use cc_silicon_compiler::commit::{commit_proposals, CommitError};
 use cc_silicon_compiler::ids::{ChipId, LiteralId, NodeId, RecordRef, TaskId};
 use cc_silicon_compiler::limits::Limits;
@@ -35,9 +33,9 @@ use cc_silicon_compiler::snapshot::{
 };
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{
-    AppendBatch, ConstantRequest, ConstantResult, ConstExprOp, ConstLegality, DraftRef, Payload,
-    Proposal, RequiredKind, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind,
-    TaskKindRegistry, TaskState,
+    AppendBatch, ConstExprOp, ConstLegality, ConstantRequest, ConstantResult, DraftRef, Payload,
+    Proposal, RequiredKind, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry,
+    TaskState,
 };
 
 /// A committed M1-subset literal fixture: decimal `Integer`, no suffix,
@@ -107,14 +105,22 @@ fn seed_g1_fixtures(bus: &mut CompilerBus) -> (LiteralId, LiteralId, NodeId) {
 fn fold_bytes(lhs: &[u8], rhs: &[u8]) -> Vec<u8> {
     assert_eq!(lhs.len(), 1);
     assert_eq!(rhs.len(), 1);
-    vec![lhs[0].checked_add(rhs[0]).expect("G1-CL-01 fixture overflow")]
+    vec![lhs[0]
+        .checked_add(rhs[0])
+        .expect("G1-CL-01 fixture overflow")]
 }
 
 #[test]
 fn slice_kinds_are_frozen_with_group_local_codes() {
-    assert_eq!(TaskKind::SEMANTIC_CONST_EVAL_LITERAL.group(), TaskGroup::SEMANTIC);
+    assert_eq!(
+        TaskKind::SEMANTIC_CONST_EVAL_LITERAL.group(),
+        TaskGroup::SEMANTIC
+    );
     assert_eq!(TaskKind::SEMANTIC_CONST_EVAL_LITERAL.local(), 16);
-    assert_eq!(TaskKind::SEMANTIC_CONST_EVAL_BINARY.group(), TaskGroup::SEMANTIC);
+    assert_eq!(
+        TaskKind::SEMANTIC_CONST_EVAL_BINARY.group(),
+        TaskGroup::SEMANTIC
+    );
     assert_eq!(TaskKind::SEMANTIC_CONST_EVAL_BINARY.local(), 17);
     assert_eq!(
         TaskKind::CONSTANT_CONST_FOLD.group(),
@@ -152,10 +158,7 @@ fn slice_kinds_are_frozen_with_group_local_codes() {
         let entry = registry.lookup(kind).expect("slice kind registered");
         assert_eq!(entry.name, name);
         assert_eq!(entry.group, kind.group());
-        assert_eq!(
-            entry.status,
-            cc_silicon_compiler::task::KindStatus::Frozen
-        );
+        assert_eq!(entry.status, cc_silicon_compiler::task::KindStatus::Frozen);
         assert!(entry.kind.local() >= 16);
     }
 }
@@ -208,10 +211,7 @@ fn request_decode_accepts_m1_conventions() {
         Err(cc_silicon_compiler::task::RequestError::UnexpectedKind { .. })
     ));
     assert!(matches!(
-        ConstantRequest::decode(
-            TaskKind::SEMANTIC_CONST_EVAL_LITERAL,
-            &Payload::empty()
-        ),
+        ConstantRequest::decode(TaskKind::SEMANTIC_CONST_EVAL_LITERAL, &Payload::empty()),
         Err(cc_silicon_compiler::task::RequestError::Arity { .. })
     ));
     assert!(matches!(
@@ -310,11 +310,9 @@ fn append_materializes_const_record_end_to_end() {
                     batch: AppendBatch {
                         records: vec![DraftRef(0)]
                             .into_iter()
-                            .map(|index| {
-                                RecordDraft {
-                                    family: body.family(),
-                                    index,
-                                }
+                            .map(|index| RecordDraft {
+                                family: body.family(),
+                                index,
                             })
                             .collect(),
                         bodies: vec![body],
@@ -511,22 +509,21 @@ fn stage_assignment_covers_foundation_and_slice() {
     }
     // Chain order: control < request < fold.
     assert_eq!(stage_of(TaskKind::CONTROL_NOOP), Some(0));
-    assert_eq!(
-        stage_of(TaskKind::SEMANTIC_CONST_EVAL_BINARY),
-        Some(1)
-    );
+    assert_eq!(stage_of(TaskKind::SEMANTIC_CONST_EVAL_BINARY), Some(1));
     assert_eq!(stage_of(TaskKind::CONSTANT_CONST_FOLD), Some(2));
     // No silent default: unlisted kinds have no stage.
-    assert_eq!(
-        stage_of(TaskKind::new(TaskGroup::LEX, 16).unwrap()),
-        None
-    );
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 16).unwrap()), None);
 
     // Registration rejects a manifest whose kind has no stage row.
     let mut kinds = TaskKindRegistry::m1_slice();
     let custom = TaskKind::new(TaskGroup::LEX, 16).unwrap();
     kinds
-        .register(custom, "lex.custom", TaskGroup::LEX, cc_silicon_compiler::task::KindStatus::GroupOwned)
+        .register(
+            custom,
+            "lex.custom",
+            TaskGroup::LEX,
+            cc_silicon_compiler::task::KindStatus::GroupOwned,
+        )
         .unwrap();
     let manifest = ChipManifest {
         id: ChipId(11),
@@ -584,11 +581,9 @@ fn stage_assignment_covers_foundation_and_slice() {
 fn allowlist_authorizes_fold_chip_only() {
     // The seed holds exactly the fold-chip row; `tasks.ready` stays writer-free.
     assert_eq!(STORE_OWNER_ALLOWLIST.len(), 1);
-    assert!(
-        !STORE_OWNER_ALLOWLIST
-            .iter()
-            .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready")
-    );
+    assert!(!STORE_OWNER_ALLOWLIST
+        .iter()
+        .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready"));
 
     let kinds = TaskKindRegistry::m1_slice();
     let schema = StoreSchema::m1_slice();
@@ -690,9 +685,7 @@ fn snapshot_carries_literal_and_const_bodies_with_replay() {
                     task,
                     fold_chip(),
                     ConstantResult {
-                        value: RecordRef::Const(
-                            cc_silicon_compiler::ids::ConstId::from_index(0),
-                        ),
+                        value: RecordRef::Const(cc_silicon_compiler::ids::ConstId::from_index(0)),
                         legality: ConstLegality::Legal,
                     }
                     .route(task),
@@ -724,9 +717,9 @@ fn m1_slice_schema_declares_gate1_fields() {
 #[test]
 fn contract_hash_covers_gate1_section() {
     use cc_silicon_compiler::contract::{
-        compute_contract_hash, CONST_EXPR_OP_NAMES, CONST_LEGALITY_NAMES, CONST_RECORD_FIELDS,
-        CONTRACT_HASH, CONTRACT_VERSION, FrozenSchema, LITERAL_KIND_NAMES, LITERAL_RECORD_FIELDS,
-        LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, REQUIRED_KIND_NAMES,
+        compute_contract_hash, FrozenSchema, CONST_EXPR_OP_NAMES, CONST_LEGALITY_NAMES,
+        CONST_RECORD_FIELDS, CONTRACT_HASH, CONTRACT_VERSION, LITERAL_KIND_NAMES,
+        LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, REQUIRED_KIND_NAMES,
     };
     assert_eq!(CONTRACT_VERSION, "t01-c01-c06/7");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);

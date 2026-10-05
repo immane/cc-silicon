@@ -220,10 +220,8 @@ impl StoreSchema {
     /// `foundation()` itself is unchanged and stays the `/6` record.
     pub fn m1_slice() -> Self {
         let mut schema = Self::foundation();
-        let slice: &[(StoreId, &str)] = &[
-            (StoreId::Lex, "literals"),
-            (StoreId::Constants, "records"),
-        ];
+        let slice: &[(StoreId, &str)] =
+            &[(StoreId::Lex, "literals"), (StoreId::Constants, "records")];
         for &(store, field) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = schema.declare(store, field);
@@ -666,8 +664,12 @@ pub struct ManifestRegistry {
 /// field) gets zero allowlisted chip writers — it is a derived quota-1
 /// compatibility view over the canonical per-stage queues, never a second
 /// write target.
-pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] =
-    &[(G1_FOLD_CHIP, StoreId::Constants, "records", TaskKind::CONSTANT_CONST_FOLD)];
+pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[(
+    G1_FOLD_CHIP,
+    StoreId::Constants,
+    "records",
+    TaskKind::CONSTANT_CONST_FOLD,
+)];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
 ///

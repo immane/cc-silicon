@@ -20,13 +20,9 @@
 use crate::codec::{hex32, sha256, Writer};
 use crate::ids::{ChipId, RecordFamily};
 use crate::limits::Limits;
-use crate::manifest::{
-    STAGE_ASSIGNMENT, STORE_OWNER_ALLOWLIST, StoreSchema, is_gate1_slice_kind,
-};
+use crate::manifest::{is_gate1_slice_kind, StoreSchema, STAGE_ASSIGNMENT, STORE_OWNER_ALLOWLIST};
 use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
-use crate::task::{
-    KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS,
-};
+use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
 /// const-fold slice.
