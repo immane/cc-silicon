@@ -1,0 +1,15 @@
+[package]
+name = "cc-silicon-torture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Offline corpus-lock and provenance verifier for the T00/H00 GCC torture gate."
+license = "MIT"
+repository = "https://github.com/immane/cc-silicon"
+
+[dependencies]
+# Only direct dependency: SHA-256 for content digests. The lock pins corpus
+# assets by hash, so a vetted, widely used primitive is required; no parser/CLI
+# framework is pulled in. sha2 itself has a small RustCrypto transitive closure
+# (see Cargo.lock); there is no dependency on cc-silicon or any compiler.
+sha2 = "0.10"

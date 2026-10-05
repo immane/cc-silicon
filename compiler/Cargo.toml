@@ -1,0 +1,22 @@
+[package]
+name = "cc-silicon-compiler"
+version = "0.1.0"
+edition = "2021"
+# `slice::as_chunks` (used by the in-tree SHA-256) is stable since 1.88.
+rust-version = "1.88"
+description = "T01 compiler application contract foundation on top of the cc-silicon framework."
+license = "MIT"
+publish = false
+
+[lib]
+name = "cc_silicon_compiler"
+path = "src/lib.rs"
+
+[dependencies]
+# The root framework stays domain-free. This package owns every compiler type.
+cc-silicon = { path = ".." }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3

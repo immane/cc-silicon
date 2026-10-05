@@ -30,6 +30,7 @@ struct MyBus {
     accumulator: u32,
     phase: Phase,
     tick_count: u64,
+    prev_request: bool, // previous sampled request level, for edge detection
 
     // per-tick signal bundle, reset in one assignment
     wires: MyWires,
@@ -60,7 +61,8 @@ impl Bus for MyBus {
 ### 1.3 Field rules
 
 - Every field is a primitive, a fixed-size array, a plain enum, or `Option` of a
-  flat type. No `Vec`, `HashMap`, `Box`, `Rc`, `Arc`, or `Mutex` in registers.
+  flat type. No `Vec`, `HashMap`, `Box`, `Rc`, `Arc`, or `Mutex` in the bus
+  (registers or wires).
 - Every register has a documented reset policy and an invariant.
 - Naming encodes electrical meaning: `*_requested`, `*_seen`, `*_expired`,
   `*_ready`, `*_triggered`.
@@ -82,6 +84,12 @@ impl LogicChip<MyBus> for DecodeChip {
     }
 }
 ```
+
+For stricter field isolation, implement `RestrictedChip` and install it with
+`Motherboard::install_projected` instead: the chip receives only a read-only
+input projection and returns a typed proposal, and a separate `ChipAdapter`
+projects the bus fields and commits the proposal. `LogicChip` remains the base
+interface.
 
 ### 2.1 Chip contract
 
@@ -173,7 +181,8 @@ let mut mb = Motherboard::<MyBus>::with_backend(2, Box::new(MyBackend::new()));
 
 A backend may batch, fuse, offload, or emulate chips, but the observable tick
 order and bus meaning must be identical. A backend may hold private realization
-state (device contexts, caches) only if it never changes meaning. Unsupported
+state (device contexts, caches) only if it never changes meaning; scheduling and
+ordering state is not realization state and belongs on the bus. Unsupported
 chips must be emulated or explicitly rejected — never silently ignored.
 
 ---

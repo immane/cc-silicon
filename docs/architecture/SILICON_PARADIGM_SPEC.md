@@ -68,20 +68,25 @@ latches.
 - **In cc-silicon:** the [`Bus`] trait, with an embedded
   [`Bus::Wires`] bundle so it can be reset in a single assignment.
 
-### 3.3 Micro-Architecture Chips (`LogicChip`)
+### 3.3 Micro-Architecture Chips (`LogicChip` / `RestrictedChip`)
 
 Stateless code blocks executing a single, pure logical deduction.
 
 - **Statelessness:** the implementing struct contains zero fields.
 - **Single responsibility:** designed to do exactly one concrete thing.
 - **Interface:** implements [`LogicChip`], receiving only the pins and the bus.
+- **Stricter variant:** [`RestrictedChip`] receives only a read-only input
+  projection and returns a typed proposal; a `ChipAdapter` projects the bus
+  fields and commits the proposal. Prefer it where field-scoped isolation is
+  required; [`LogicChip`] remains the base interface.
 - **No return value:** chips communicate by writing to the bus. Errors are "blown
   fuse" wires, never panics or `Result`-driven control flow.
 
 ### 3.4 The Timing Motherboard (`Motherboard`)
 
 The pipeline that physically arranges the chips and provides the clock driver. It
-is the only entity that may reset wires, invoke chips, or latch state.
+is the only entity that may reset wires, define the chip invocation order, or
+latch state.
 
 - **In cc-silicon:** [`Motherboard::clock_tick`] with a layered
   `Vec<Vec<Box<dyn LogicChip<B>>>>` pipeline, plus a pluggable
@@ -94,7 +99,8 @@ is the only entity that may reset wires, invoke chips, or latch state.
 A single tick must strictly follow three hardware phases:
 
 1. **Sampling phase.** The host polls external I/O and freezes the result into
-   `pins`. This lives at the host boundary, outside the semantic core.
+   `pins`. This lives at the host boundary, outside the semantic core, before
+   the tick begins.
 2. **Combinational propagation phase.** Signal flows through the pipeline. The
    motherboard iterates the chip layers; each chip reads the pins and the current
    bus, computes, and writes wires (and, where appropriate, registers).
@@ -102,9 +108,11 @@ A single tick must strictly follow three hardware phases:
    motherboard commits falling-edge state for the next tick and advances the
    Lamport clock.
 
-In cc-silicon, phases 0 and 2 are explicit [`Bus`] hooks
-(`reset_wires`, `latch`, `advance_tick`); phase 1 is delegated to the
-[`Backend`].
+In cc-silicon, `clock_tick` runs the in-tick phases it numbers 0–2: phase 0
+resets every wire ([`Bus::reset_wires`]), phase 1 is the combinational
+propagation delegated to the [`Backend`], and phase 2 commits falling-edge state
+([`Bus::latch`]) and advances the Lamport clock ([`Bus::advance_tick`]).
+Sampling is the host-boundary step that precedes the tick.
 
 ---
 
@@ -156,7 +164,8 @@ cross these red lines:
 - **NO privilege escalation.** A chip must only read/write bus fields relevant to
   its specific duty.
 - **NO hidden semantic state.** A backend may keep private caches or device
-  handles only if they never change observable meaning.
+  handles only if they never change observable meaning. Scheduling and ordering
+  state is semantic state: it belongs on the bus, not in the backend.
 - **Testbenches over anecdotes.** Verify via simulation: inject deterministic (and
   randomized) pin sequences and assert that the bus never violates its
   invariants.

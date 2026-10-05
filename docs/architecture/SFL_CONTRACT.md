@@ -50,9 +50,11 @@ The semantic core is the part every backend must preserve exactly. It consists o
 - `Verifier`: tests or tooling that check semantic equivalence.
 
 `cc-silicon` names these `Bus::Pins`, `Bus`, `Bus::Wires`, `LogicChip`,
-`Motherboard`, `clock_tick`, and `Testbench`. The semantic core must remain
-backend-agnostic: no CUDA, HDL, or quantum detail may leak into the meaning of the
-core contract.
+`Motherboard`, `clock_tick`, and `Testbench`. `LogicChip` is the base chip
+interface; `RestrictedChip` is the stricter form, receiving only a read-only
+input projection and returning a typed proposal that a `ChipAdapter` commits.
+The semantic core must remain backend-agnostic: no CUDA, HDL, or quantum detail
+may leak into the meaning of the core contract.
 
 ### 2.2 Backend Realization Layer
 
@@ -102,6 +104,8 @@ A backend may keep private caches, device handles, contexts, compiled kernels, o
 hardware-specific descriptors. These are allowed only if they do not change the
 observable SFL meaning. Examples: a GPU context and buffers, HDL simulation
 handles, host-side command queues, quantum circuit compilation caches.
+Observable scheduling and ordering decisions are semantic state: they must live
+in the bus, never in private backend storage.
 
 ### 3.3 No Hidden Semantic State
 
