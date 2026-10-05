@@ -184,9 +184,10 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
                 // chip-module re-exports are mechanical, not Host I/O.
                 let allowed_std_collections = path.starts_with("std::collections::")
                     && (path.contains("BTreeMap") || path.contains("BTreeSet"));
-                let allowed_root =
-                    matches!(root, "crate" | "self" | "super" | "core" | "alloc" | "fold")
-                        || allowed_std_collections;
+                let allowed_root = matches!(
+                    root,
+                    "crate" | "self" | "super" | "core" | "alloc" | "fold" | "pp_normalize"
+                ) || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(
                         file,

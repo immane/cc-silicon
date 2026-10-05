@@ -25,15 +25,15 @@ use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
 use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
-/// const-fold slice, the `/8` worker-integration amendment, and the `/9`
-/// pre-chip readiness fixes.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/9";
+/// const-fold slice, the `/8` worker-integration amendment, the `/9`
+/// pre-chip readiness fixes, and the Wave 2 PP01 slice (`/10`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/10";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "f9539895a54177e04224fca3dd3b641c8a08f74d8d2d1107b30afa650745eafb";
+pub const CONTRACT_HASH: &str = "9d2479e7f3f2245f63126c893a3a3f43b712086d36950d5d0626ba962a81a5e9";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -127,6 +127,11 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.binary-node-must-be-live",
     "dispatch.stage-layer-enforced",
     "worker.stateless-unit-required",
+    "artifact.normalized-single-source",
+    "artifact.map-mandatory-invariants",
+    "artifact.total-eight-kinds",
+    "pp.normalize-single-source-convention",
+    "commit.artifact-materialized",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -246,6 +251,18 @@ pub const REQUIRED_KIND_NAMES: &[&str] = &["integer_constant_expression"];
 /// The `ConstLegality` member names.
 pub const CONST_LEGALITY_NAMES: &[&str] = &["legal", "not_constant_expression", "unsupported"];
 
+/// Frozen `/10` total 8-variant `ArtifactKind` names, in declaration order.
+pub const ARTIFACT_KIND_NAMES: &[&str] = &[
+    "normalized",
+    "spliced",
+    "comment_free",
+    "preprocessed",
+    "assembly",
+    "object",
+    "snapshot",
+    "trace",
+];
+
 /// The static, hashable shape of the compiler contract.
 #[derive(Clone, Debug)]
 pub struct FrozenSchema {
@@ -312,6 +329,7 @@ impl FrozenSchema {
         push_str_list(&mut w, CHIP_PHASE_NAMES);
         push_str_list(&mut w, HOST_REQUEST_NAMES);
         push_str_list(&mut w, DIAG_GROUP_NAMES);
+        push_str_list(&mut w, ARTIFACT_KIND_NAMES);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -519,7 +537,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + /9 pre-chip readiness).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PP01 slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

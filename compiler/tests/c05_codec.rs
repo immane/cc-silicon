@@ -514,9 +514,9 @@ fn per_encoder_round_trip_identity() {
     use cc_silicon_compiler::bus::ArtifactKind;
     use cc_silicon_compiler::snapshot::{
         decode_artifact, decode_continuation, decode_literal, decode_scope_event, decode_span,
-        encode_artifact, encode_continuation, encode_literal, encode_scope_event, encode_span,
-        LiteralKind, LiteralRecordView, LiteralSuffix, Lx08CandidateType, ScopeEventKind,
-        ScopeEventRecordView,
+        encode_artifact, encode_artifact_record, encode_continuation, encode_literal,
+        encode_scope_event, encode_span, LiteralKind, LiteralRecordView, LiteralSuffix,
+        Lx08CandidateType, ScopeEventKind, ScopeEventRecordView,
     };
     // Span.
     let span = encode_span(2, 100, 200, None);
@@ -550,12 +550,14 @@ fn per_encoder_round_trip_identity() {
     let decoded = decode_scope_event(&encoded).unwrap();
     assert_eq!(decoded, event);
     assert_eq!(encode_scope_event(&decoded), encoded);
-    // Artifact.
-    let encoded = encode_artifact(ArtifactKind::Assembly, b"mov x0, #0");
-    let (kind, data) = decode_artifact(&encoded).unwrap();
-    assert_eq!(kind, ArtifactKind::Assembly);
-    assert_eq!(data, b"mov x0, #0");
-    assert_eq!(encode_artifact(kind, &data), encoded);
+    // Artifact (`/10` shape with source and map).
+    let encoded = encode_artifact(ArtifactKind::Assembly, None, b"mov x0, #0", &[]);
+    let record = decode_artifact(&encoded).unwrap();
+    assert_eq!(record.kind, ArtifactKind::Assembly);
+    assert_eq!(record.source, None);
+    assert_eq!(record.bytes, b"mov x0, #0");
+    assert!(record.raw_offsets.is_empty());
+    assert_eq!(encode_artifact_record(&record), encoded);
     // Continuation (frozen `/6` nine-field shape; typed round-trip).
     let record = cc_silicon_compiler::task::ContinuationRecord {
         production: TaskKind::CONTROL_NOOP,

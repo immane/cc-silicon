@@ -587,9 +587,10 @@ pub fn commit_proposals(
     let mut progress_failed: Vec<(TaskId, CommitError)> = Vec::new();
     let mut total_drafts: u32 = 0;
     // Gate 1 (`/7`) typed materialization counts, per arena, for the
-    // infallible apply pass below.
+    // infallible apply pass below (`Artifact` added at `/10`).
     let mut new_literals: u32 = 0;
     let mut new_consts: u32 = 0;
+    let mut new_artifacts: u32 = 0;
 
     // Predicted record IDs for this batch's appends, in apply order:
     // `(owning task, family, predicted index)`. A `Complete` that names a
@@ -598,10 +599,12 @@ pub fn commit_proposals(
     // Bases are captured before any mutation (failure atomicity holds).
     let literals_base = bus.arenas.literals.allocated();
     let consts_base = bus.arenas.consts.allocated();
+    let artifacts_base = bus.arenas.artifacts.allocated();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
         let mut next_literal = literals_base;
         let mut next_const = consts_base;
+        let mut next_artifact = artifacts_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -621,6 +624,14 @@ pub fn commit_proposals(
                                 next_const,
                             ));
                             next_const = next_const.saturating_add(1);
+                        }
+                        G1DraftBody::Artifact(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Artifact,
+                                next_artifact,
+                            ));
+                            next_artifact = next_artifact.saturating_add(1);
                         }
                     }
                 }
@@ -705,9 +716,9 @@ pub fn commit_proposals(
                 // Future-dated materialized records must be this task's
                 // own predicted appends (see the prediction table above).
                 // Both `Record` and `Records` carriers are checked: a
-                // future-dated `Literal`/`Const` inside `Records` that is
-                // not this task's own prediction is the same loud reject,
-                // never a silent cross-task alias.
+                // future-dated `Literal`/`Const`/`Artifact` inside `Records`
+                // that is not this task's own prediction is the same loud
+                // reject, never a silent cross-task alias.
                 if let Proposal::Complete { value, .. } = &tagged.proposal {
                     let refs: &[RecordRef] = match value {
                         ResultValue::Record(single) => std::slice::from_ref(single),
@@ -721,6 +732,9 @@ pub fn commit_proposals(
                             }
                             RecordRef::Const(id) if id.index() >= consts_base => {
                                 Some((tagged.task, RecordFamily::Const, id.index()))
+                            }
+                            RecordRef::Artifact(id) if id.index() >= artifacts_base => {
+                                Some((tagged.task, RecordFamily::Artifact, id.index()))
                             }
                             _ => None,
                         };
@@ -827,6 +841,40 @@ pub fn commit_proposals(
                         G1DraftBody::Const(_) => {
                             new_consts = new_consts.saturating_add(1);
                         }
+                        G1DraftBody::Artifact(artifact) => {
+                            // `/10` rev-44/45: map-mandatory kinds need a
+                            // valid source and a well-formed map; map-optional
+                            // kinds need empty offsets. The source length
+                            // comes from the committed source record.
+                            let source_len = match artifact.source {
+                                Some(source) => match bus.arenas.sources.get(source) {
+                                    Ok(record) => record.bytes.len() as u64,
+                                    Err(_) => {
+                                        return Err(CommitError::InvalidPatchShape {
+                                            task: tagged.task,
+                                            reason: "artifact source does not exist",
+                                        });
+                                    }
+                                },
+                                None => 0,
+                            };
+                            if artifact.check_map(source_len).is_err() {
+                                return Err(CommitError::InvalidPatchShape {
+                                    task: tagged.task,
+                                    reason: "artifact map violates mandatory invariants",
+                                });
+                            }
+                            // PP01 slice: only single-source `Normalized`
+                            // artifacts are produced. Other kinds stay
+                            // declared-but-unexercised.
+                            if artifact.kind != crate::bus::ArtifactKind::Normalized {
+                                return Err(CommitError::InvalidPatchShape {
+                                    task: tagged.task,
+                                    reason: "only Normalized artifacts are produced",
+                                });
+                            }
+                            new_artifacts = new_artifacts.saturating_add(1);
+                        }
                     }
                 }
                 // Append authorization mirrors `validate_patch` (shape first
@@ -840,6 +888,7 @@ pub fn commit_proposals(
                     let field = match body {
                         G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
                         G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+                        G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1054,6 +1103,7 @@ pub fn commit_proposals(
             patches,
             new_literals,
             new_consts,
+            new_artifacts,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1148,6 +1198,15 @@ pub fn commit_proposals(
                                 id.index()
                             )));
                             report.appended.push((*task, RecordRef::Const(id)));
+                        }
+                        G1DraftBody::Artifact(record) => {
+                            let id = bus.arenas.artifacts.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Artifact,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Artifact(id)));
                         }
                     }
                 }
@@ -1303,6 +1362,7 @@ fn validate_append_authorization(
         let (store, field) = match body {
             G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
             G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+            G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1418,6 +1478,8 @@ struct CapacityPlan {
     new_literals: u32,
     /// New constant records (Gate 1 `/7` materialization).
     new_consts: u32,
+    /// New artifact records (Wave 2 `/10` PP01 materialization).
+    new_artifacts: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1432,7 +1494,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 6] = [
+    let checks: [(u32, u32, &'static str); 7] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1451,6 +1513,11 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             "literals",
         ),
         (bus.arenas.consts.allocated(), plan.new_consts, "consts"),
+        (
+            bus.arenas.artifacts.allocated(),
+            plan.new_artifacts,
+            "artifacts",
+        ),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1480,7 +1547,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_diagnostics
         + plan.new_requests
         + plan.new_literals
-        + plan.new_consts) as u64
+        + plan.new_consts
+        + plan.new_artifacts) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

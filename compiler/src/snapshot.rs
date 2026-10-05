@@ -613,12 +613,23 @@ impl Snapshot {
             w.bool(request.satisfied);
         }
 
-        // Artifacts.
+        // Artifacts (`/10` rev-44 shape with source and map).
         w.u64(bus.arenas.artifacts.allocated() as u64);
         for (id, artifact) in bus.arenas.artifacts.iter() {
             w.u32(id.index());
             w.str(artifact_kind_name(artifact.kind));
+            match artifact.source {
+                Some(source) => {
+                    w.u8(1);
+                    w.u32(source.index());
+                }
+                None => w.u8(0),
+            }
             w.bytes(&artifact.bytes);
+            w.u64(artifact.raw_offsets.len() as u64);
+            for offset in &artifact.raw_offsets {
+                w.u64(*offset);
+            }
         }
 
         // Sources: full bytes plus a hash recomputed from the bytes.
@@ -894,6 +905,9 @@ fn host_request_kind_name(kind: HostRequestKind) -> &'static str {
 
 fn artifact_kind_name(kind: ArtifactKind) -> &'static str {
     match kind {
+        ArtifactKind::Normalized => "normalized",
+        ArtifactKind::Spliced => "spliced",
+        ArtifactKind::CommentFree => "comment_free",
         ArtifactKind::Preprocessed => "preprocessed",
         ArtifactKind::Assembly => "assembly",
         ArtifactKind::Object => "object",
@@ -1527,23 +1541,46 @@ pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecordView, CodecErr
 
 /// Canonical encoding of one artifact record: kind-name str + fragment bytes.
 ///
-/// Mirrors `Snapshot::capture`. `/6`-open and NOT encoded here: the candidate
-/// `ArtifactRecord { kind, source, bytes, raw_offsets }` adds `source` and
-/// `raw_offsets`; those fields land here at co-freeze.
-pub fn encode_artifact(kind: ArtifactKind, bytes: &[u8]) -> Vec<u8> {
+/// Canonical encoding of a `/10` artifact: kind name, optional source index,
+/// bytes, then the `raw_offsets` map.
+pub fn encode_artifact(
+    kind: ArtifactKind,
+    source: Option<SourceId>,
+    bytes: &[u8],
+    raw_offsets: &[u64],
+) -> Vec<u8> {
     let mut w = Writer::new();
     w.str(artifact_kind_name(kind));
+    match source {
+        Some(id) => {
+            w.u8(1);
+            w.u32(id.index());
+        }
+        None => w.u8(0),
+    }
     w.bytes(bytes);
+    w.u64(raw_offsets.len() as u64);
+    for offset in raw_offsets {
+        w.u64(*offset);
+    }
     w.finish()
 }
 
-/// Canonical encoding of a bus artifact record.
+/// Canonical encoding of a bus artifact record. Mirrors `Snapshot::capture`.
 pub fn encode_artifact_record(record: &ArtifactRecord) -> Vec<u8> {
-    encode_artifact(record.kind, &record.bytes)
+    encode_artifact(
+        record.kind,
+        record.source,
+        &record.bytes,
+        &record.raw_offsets,
+    )
 }
 
 fn parse_artifact_kind(name: &str) -> Option<ArtifactKind> {
     match name {
+        "normalized" => Some(ArtifactKind::Normalized),
+        "spliced" => Some(ArtifactKind::Spliced),
+        "comment_free" => Some(ArtifactKind::CommentFree),
         "preprocessed" => Some(ArtifactKind::Preprocessed),
         "assembly" => Some(ArtifactKind::Assembly),
         "object" => Some(ArtifactKind::Object),
@@ -1557,14 +1594,29 @@ fn parse_artifact_kind(name: &str) -> Option<ArtifactKind> {
 ///
 /// Unknown kind names are [`CodecError::Unsupported`]: a future `ArtifactKind`
 /// addition, never silent corruption.
-pub fn decode_artifact(bytes: &[u8]) -> Result<(ArtifactKind, Vec<u8>), CodecError> {
+pub fn decode_artifact(bytes: &[u8]) -> Result<ArtifactRecord, CodecError> {
     let mut r = Reader::new(bytes);
     let name = r.string()?;
     let kind =
         parse_artifact_kind(&name).ok_or(CodecError::Unsupported("unknown artifact kind name"))?;
+    let source = match r.u8()? {
+        0 => None,
+        1 => Some(SourceId::from_index(r.u32()?)),
+        _ => return Err(CodecError::Unsupported("unknown artifact source tag")),
+    };
     let data = r.bytes()?;
+    let map_len = r.u64()? as usize;
+    let mut raw_offsets = Vec::with_capacity(map_len);
+    for _ in 0..map_len {
+        raw_offsets.push(r.u64()?);
+    }
     r.finish()?;
-    Ok((kind, data))
+    Ok(ArtifactRecord {
+        kind,
+        source,
+        bytes: data,
+        raw_offsets,
+    })
 }
 
 /// Canonical encoding of one continuation record (frozen `/6` nine-field shape).

@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/9");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/10");
 }
 
 #[test]
@@ -95,6 +95,11 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "const.binary-node-must-be-live",
         "dispatch.stage-layer-enforced",
         "worker.stateless-unit-required",
+        "artifact.normalized-single-source",
+        "artifact.map-mandatory-invariants",
+        "artifact.total-eight-kinds",
+        "pp.normalize-single-source-convention",
+        "commit.artifact-materialized",
         "probe.wchar-encoding-required",
         "probe.attestation.private-state-not-provenance",
         "config.structurally-immutable",

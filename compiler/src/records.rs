@@ -14,7 +14,7 @@
 // protocol order or hash-relevant wire tags.
 // ============================================================================
 
-use crate::bus::{ConstRecord, LiteralRecord};
+use crate::bus::{ArtifactRecord, ConstRecord, LiteralRecord};
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
 
@@ -31,8 +31,9 @@ pub struct RecordDraft {
     pub index: DraftRef,
 }
 
-/// Gate 1 (`/7`) closed typed draft bodies: the only families the commit
-/// materialization path accepts.
+/// Closed typed draft bodies: the only families the commit
+/// materialization path accepts (`Literal`/`Const` frozen at Gate 1 `/7`;
+/// `Artifact` added at Wave 2 `/10` for the PP01 slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
 /// draft body and the committed record share their fields exactly. Bodies
@@ -46,6 +47,8 @@ pub enum G1DraftBody {
     Literal(LiteralRecord),
     /// A folded constant to append to the `consts` arena.
     Const(ConstRecord),
+    /// A normalized artifact to append to the `artifacts` arena (`/10`).
+    Artifact(ArtifactRecord),
 }
 
 impl G1DraftBody {
@@ -54,6 +57,7 @@ impl G1DraftBody {
         match self {
             Self::Literal(_) => RecordFamily::Literal,
             Self::Const(_) => RecordFamily::Const,
+            Self::Artifact(_) => RecordFamily::Artifact,
         }
     }
 }

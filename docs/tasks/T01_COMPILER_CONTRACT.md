@@ -226,7 +226,25 @@ allowlists `BTreeMap`/`BTreeSet`/`vec!`/`format!`. New hashed rules
 `append.patch-conflict-rejected`, `const.binary-node-must-be-live`,
 `dispatch.stage-layer-enforced`, `worker.stateless-unit-required`. New artifact
 `t01-c01-c06/9` (`f9539895…eafb`); regression suite `compiler/tests/c09_readiness.rs`
-(13 tests); item list in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §9.
+(14 tests); item list in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §9.
+
+`/10` amendment — Wave 2 slice 1, PP01 source-normalize (R1 auto-bump; `/9`
+preserved as history): `ArtifactRecord { kind, source, bytes, raw_offsets }`
+(rev-44) + total 8 `ArtifactKind` with `requires_map`; mandatory-map
+invariants + optional-kind empty-offset rule (rev-45/47); M1 boundary
+convention frozen for the exercised scope (identity / inserted-LF zero-width /
+CRLF collapse); `preprocess.normalize` kind (`group 2`, local `16`) with
+`pp01_slice()` registry; stage row (`normalize → 1`) + allowlist row (`PP01`,
+`Artifacts/fragments`); `AppendRecords` materialization for the `Artifact`
+family (`Normalized`-only, map validation, capacity, predicted refs);
+snapshot bodies + `ARTIFACT_KIND_NAMES` hash participation;
+`PpNormalizeChip` worker (`PpInput`, pure `compute`, ZST, stage/layer, lint).
+New hashed rules `artifact.normalized-single-source`,
+`artifact.map-mandatory-invariants`, `artifact.total-eight-kinds`,
+`pp.normalize-single-source-convention`, `commit.artifact-materialized`.
+New artifact `t01-c01-c06/10` (`9d2479e7…81a5e9`); acceptance
+`compiler/tests/c10_pp01.rs` (7 tests); item list in
+[PP01_NORMALIZE_SLICE.md](PP01_NORMALIZE_SLICE.md).
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
@@ -237,6 +255,6 @@ allowlists `BTreeMap`/`BTreeSet`/`vec!`/`format!`. New hashed rules
 | C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs` |
 | C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; transition-free worker vectors fail per-task (`TaskNotTransitioned`); idle ticks drain await-all joins with closure (`Joined`); stage/layer enforced on the driver path; cancel clears stale selection; defined cancel/budget pin behavior | Wave 1 fold worker installed via `drive_task`/`handler_for`; no broader language pipeline yet |
 
-Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 13, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
+Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 14, `c10_pp01` 7, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
 
 Full test commands and results are in `compiler/README.md`.

@@ -181,6 +181,12 @@ impl TaskKind {
     /// `ConstRecord`).
     pub const CONSTANT_CONST_FOLD: Self =
         Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/10`) PP01 slice kind: T03 source-normalize task (payload:
+    /// exactly one `RecordRef::Source`; completes with
+    /// `Record(RecordRef::Artifact)` carrying the single-source `Normalized`
+    /// artifact, or `Fail` with a typed diagnostic).
+    pub const PREPROCESS_NORMALIZE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 16);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -300,6 +306,20 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/10`) PP01 slice registry: the Gate 1 M1 slice plus
+    /// the frozen PP01 kind (all `Frozen`; `PREPROCESS` owners start new
+    /// codes at local 17).
+    pub fn pp01_slice() -> Self {
+        let mut registry = Self::m1_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_NORMALIZE, "preprocess.normalize")];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

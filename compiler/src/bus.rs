@@ -74,9 +74,15 @@ pub struct ExpansionRecord {
     pub ordinal: u32,
 }
 
-/// Kind of output artifact.
+/// Kind of output artifact (`/10` total 8-variant set, rev-44).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArtifactKind {
+    /// Newline-normalized single-source bytes (M1 PP01 exercised).
+    Normalized,
+    /// Line-spliced bytes (declared, unexercised in M1).
+    Spliced,
+    /// Comment-free bytes (declared, unexercised in M1).
+    CommentFree,
     /// Preprocessed source.
     Preprocessed,
     /// Generated assembly.
@@ -89,13 +95,71 @@ pub enum ArtifactKind {
     Trace,
 }
 
-/// An output artifact fragment.
+impl ArtifactKind {
+    /// Whether this kind requires a location map (`/10` rev-44 total rule).
+    pub const fn requires_map(self) -> bool {
+        match self {
+            Self::Normalized | Self::Spliced | Self::CommentFree | Self::Preprocessed => true,
+            Self::Assembly | Self::Object | Self::Snapshot | Self::Trace => false,
+        }
+    }
+}
+
+/// An output artifact fragment (`/10` rev-44 shape).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactRecord {
     /// Artifact kind.
     pub kind: ArtifactKind,
+    /// Owning source (`Some` required for map-mandatory kinds).
+    pub source: Option<SourceId>,
     /// Fragment bytes.
     pub bytes: Vec<u8>,
+    /// Output-boundary to raw-source-boundary map.
+    pub raw_offsets: Vec<u64>,
+}
+
+impl ArtifactRecord {
+    /// Validate the rev-45 mandatory-map invariants plus the rev-47
+    /// optional-kind rule: map-mandatory kinds need `raw_offsets.len() ==
+    /// bytes.len()+1`, first `== 0`, monotonic nondecreasing, last `<=`
+    /// source length, and a valid `source`; map-optional kinds need empty
+    /// `raw_offsets` with an optional valid `source`.
+    pub fn check_map(&self, source_len: u64) -> Result<(), &'static str> {
+        if self.kind.requires_map() {
+            if self.source.is_none() {
+                return Err("map-mandatory artifact requires a source");
+            }
+            if self.raw_offsets.len() as u64 != self.bytes.len() as u64 + 1 {
+                return Err("raw_offsets length must equal bytes length plus one");
+            }
+            if self.raw_offsets.first() != Some(&0) {
+                return Err("raw_offsets must start at zero");
+            }
+            let mut prev = 0u64;
+            for offset in &self.raw_offsets {
+                if *offset < prev {
+                    return Err("raw_offsets must be monotonic nondecreasing");
+                }
+                prev = *offset;
+            }
+            if self
+                .raw_offsets
+                .last()
+                .is_some_and(|last| *last > source_len)
+            {
+                return Err("raw_offsets end must not exceed source length");
+            }
+            // Note: the inserted-LF zero-width case ends at raw EOF, which
+            // equals `source_len`; the CRLF collapse ends after the raw LF,
+            // also `<= source_len`. Both satisfy the bound above.
+            Ok(())
+        } else {
+            if !self.raw_offsets.is_empty() {
+                return Err("map-optional artifact requires empty raw_offsets");
+            }
+            Ok(())
+        }
+    }
 }
 
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`

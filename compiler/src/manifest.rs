@@ -664,12 +664,20 @@ pub struct ManifestRegistry {
 /// field) gets zero allowlisted chip writers — it is a derived quota-1
 /// compatibility view over the canonical per-stage queues, never a second
 /// write target.
-pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[(
-    G1_FOLD_CHIP,
-    StoreId::Constants,
-    "records",
-    TaskKind::CONSTANT_CONST_FOLD,
-)];
+pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
+    (
+        G1_FOLD_CHIP,
+        StoreId::Constants,
+        "records",
+        TaskKind::CONSTANT_CONST_FOLD,
+    ),
+    (
+        PP01_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_NORMALIZE,
+    ),
+];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
 ///
@@ -680,11 +688,23 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[(
 /// writes.)
 pub const G1_FOLD_CHIP: ChipId = ChipId(2);
 
+/// Wave 2 (`/10`) PP01 normalize chip reservation.
+///
+/// The PP01 chip registers with this ID and claims
+/// [`TaskKind::PREPROCESS_NORMALIZE`]; the allowlist row above authorizes
+/// its `artifacts.fragments` appends.
+pub const PP01_CHIP: ChipId = ChipId(3);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
         || kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_BINARY.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_FOLD.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/10`) PP01 slice.
+pub const fn is_pp01_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_NORMALIZE.raw()
 }
 
 /// Enforce the store-owner allowlist for one manifest.
@@ -700,7 +720,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
     if !manifest
         .task_kinds
         .iter()
-        .any(|&kind| is_gate1_slice_kind(kind))
+        .any(|&kind| is_gate1_slice_kind(kind) || is_pp01_slice_kind(kind))
     {
         return Ok(());
     }
@@ -744,6 +764,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONTROL_UNSUPPORTED, 0),
     (TaskKind::CONTROL_START_JOB, 0),
     (TaskKind::CONTROL_IMPORT_SOURCE, 0),
+    (TaskKind::PREPROCESS_NORMALIZE, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

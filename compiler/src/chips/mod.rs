@@ -33,8 +33,10 @@
 // ============================================================================
 
 mod fold;
+mod pp_normalize;
 
 pub use fold::{const_bits_required, project_fold_input, FoldChip, FoldInput};
+pub use pp_normalize::{normalize, project_pp_input, PpInput, PpNormalizeChip};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
