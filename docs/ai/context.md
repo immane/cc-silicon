@@ -1,7 +1,7 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/36` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/37` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/35` with `/36` implemented and test-green
+> 2026-10-06 after landing `/36` with `/37` implemented and test-green
 > but NOT yet fully verified or committed.
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
@@ -9,16 +9,17 @@
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/35` (PA expr), hash
-  `88107dd33033b854c9b98c9aac5db36446786ed067c944049100622a687f8983`.
-- In worktree, UNCOMMITTED: `/36` PA recovery (PA14 pod finish +
-  PA38 recovery chips; both delivered files claimed local 25 / chip
-  50 — arbitrated to 25/50 + 26/51), contract already bumped to
-  `t01-c01-c06/36`, hash recomputed
-  (`c8d2135b684bbec4c609db9bef15f8087c05c8ecc45cf9c648b68637b6d766e6`).
-  `c36_recovery` green (11 tests), but the final full-suite (§5) run
+- Committed: `t01-c01-c06/36` (PA recovery), hash
+  `c8d2135b684bbec4c609db9bef15f8087c05c8ecc45cf9c648b68637b6d766e6`.
+- In worktree, UNCOMMITTED: `/37` T08 const-branch (CL04 `&&`/`||`/`?:`
+  selected-branch + CL07 static-assert chips; delivered draft
+  `fold_branch.rs` claimed `CONSTANT_CONST_FOLD` descriptively + chip
+  IDs 52–55 — arbitrated to locals 17/18/19/20 + chips 52/53/54/55),
+  contract already bumped to `t01-c01-c06/37`, hash recomputed
+  (`59721bd8870722785e43ed48680d818ca1d913641009fab8e8a8a503b562fc8c`).
+  `c37_const_branch` green (10 tests), but the final full-suite (§5) run
   is still pending — run §5 fully, then commit as
-  `feat: add T05 parse pod-recovery slice as t01-c01-c06/36`.
+  `feat: add T08 const-branch slice as t01-c01-c06/37`.
 - Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
   H04) is MERGED; `/20`–`/32` are committed locally,
   UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
@@ -65,7 +66,8 @@
 | `/33` | LX string | `lex/{lx_escape,lx_char,lx_string}.rs` | `c33_string` 14 |
 | `/34` | PA decl | `parse/{pa_external,pa_specifier,pa_declarator,pa_block}.rs` | `c34_parse` 12 |
 | `/35` | PA expr | `parse/{pa_binary,pa_unary}.rs` | `c35_expr` 10 |
-| `/36` | PA recovery (UNCOMMITTED) | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
+| `/36` | PA recovery | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
+| `/37` | T08 const-branch (UNCOMMITTED) | `constant_layout_init/fold_branch.rs` | `c37_const_branch` 10 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
@@ -161,7 +163,7 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/36` (run §5 first), then PP remainder in pipeline
+- NEXT UP: commit `/37` (run §5 first), then PP remainder in pipeline
   order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +

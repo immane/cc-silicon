@@ -46,7 +46,10 @@ pub mod types;
 pub mod verify;
 
 pub use self::constant_layout_init::{
-    const_bits_required, project_fold_input, FoldChip, FoldInput,
+    const_bits_required, eval_assert, eval_branch, project_assert_input, project_branch_input,
+    project_fold_input, AssertCond, AssertInput, BranchAndChip, BranchCondChip, BranchInput,
+    BranchOp, BranchOperand, BranchOrChip, BranchValue, FoldChip, FoldInput, StaticAssertChip,
+    CL04_AND_TASK_KIND, CL04_COND_TASK_KIND, CL04_OR_TASK_KIND, CL07_ASSERT_TASK_KIND,
 };
 pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
 pub use self::lex::{

@@ -210,14 +210,14 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - SE30 AlignmentSpecifierChip | layout protocol | 3
 - All (except SE02/SE07): `SemRecord` carrier/link encoding + conversion matrix.
 
-### T08 Const/Layout/Init (CL01–CL26) — Wave 1 (fold) → 2
+### T08 Const/Layout/Init (CL01–CL26) — Wave 1 (fold) + const-branch slice (`/37`)
 
 - CL01 ConstantContextChip (legality gate) | const kinds | 2
 - CL02 ConstantUnaryChip / CL03 ConstantBinaryChip (int subset; no host overflow; one fold worker proves the pattern) | — | 1
-- CL04 ConstantBranchChip | kinds | 2
+- CL04 ConstantBranchChip | ✅ DONE (`/37` BranchAnd/Or/CondChips, `c37_const_branch` 10 tests shared; condition plus ONLY the short-circuit-selected branch, canonical `0`/`1` for `&&`/`||`, magnitude passthrough for `?:`, unselected operand never gated, Ack-only) | 2
 - CL05 ConstantCastChip | conversion schemas | 2–3
 - CL06 AddressConstantChip | symbol protocol | 3
-- CL07 StaticAssertChip | kinds | 2–3
+- CL07 StaticAssertChip | ✅ DONE (`/37` StaticAssertChip, `c37_const_branch`; nonzero passes, zero fails, non-literal payload is `NotConstantExpression`, Ack-only) | 2–3
 - CL08 ScalarLayoutChip … CL13 FlexibleArrayChip (six layout facets) | layout schemas | 2–3
 - CL14 MemberOffsetChip | layout schemas | 2–3
 - CL15 VlaBoundChip / CL25 VlaLifetimeChip | VLA schemas | 3

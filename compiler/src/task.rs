@@ -475,6 +475,31 @@ impl TaskKind {
     /// cursor; synchronizes to an explicit `;`/`)`/`}`/`{`-stop/EOF;
     /// completes `Ack`, appends nothing; caller holds the cursor).
     pub const PARSE_RECOVERY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 26);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `&&`
+    /// certification (payload: `[lhs, rhs]` literal refs, `lhs` doubles
+    /// as the condition; evaluates the condition plus ONLY the
+    /// short-circuit-selected branch; completes `Ack`, appends
+    /// nothing).
+    pub const CONSTANT_CONST_BRANCH_AND: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `||`
+    /// certification (payload: `[lhs, rhs]` literal refs, `lhs` doubles
+    /// as the condition; completes `Ack`, appends nothing).
+    pub const CONSTANT_CONST_BRANCH_OR: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `?:`
+    /// certification (payload: `[cond, then, else]` literal refs;
+    /// passes the selected magnitude through; completes `Ack`, appends
+    /// nothing).
+    pub const CONSTANT_CONST_BRANCH_COND: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: static-assert check
+    /// (payload: exactly one `RecordRef::Literal` naming the asserted
+    /// ICE; nonzero passes `Ack`, zero fails as a failed assertion, a
+    /// non-literal payload fails as `NotConstantExpression`; appends
+    /// nothing).
+    pub const CONSTANT_CONST_STATIC_ASSERT: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 20);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -671,6 +696,37 @@ impl TaskKindRegistry {
             (TaskKind::LEX_ESCAPE_DECODE, "lex.escape_decode"),
             (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
             (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/37`) T08 const-branch-slice registry: the
+    /// PA-recovery slice plus the frozen selected-branch `&&` / `||` /
+    /// `?:` and static-assert kinds (all `Frozen`; `CONSTANT_LAYOUT_INIT`
+    /// owners start new codes at local 21).
+    pub fn const_branch_slice() -> Self {
+        let mut registry = Self::pa_recovery_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_AND,
+                "constant_layout_init.const_branch_and",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_OR,
+                "constant_layout_init.const_branch_or",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_COND,
+                "constant_layout_init.const_branch_cond",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_STATIC_ASSERT,
+                "constant_layout_init.const_static_assert",
+            ),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

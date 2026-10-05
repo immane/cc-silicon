@@ -1133,6 +1133,21 @@ pub const PA14_CHIP: ChipId = ChipId(50);
 /// delimiter sync to `;`/`)`/`}`/`{`-stop/EOF with the finite-advance
 /// guarantee, Ack-only).
 pub const PA38_CHIP: ChipId = ChipId(51);
+/// Wave 3 (`/37`) T08 selected-branch `&&` chip reservation (CL04
+/// scope: condition plus ONLY the short-circuit-selected branch,
+/// Ack-only).
+pub const CL04_AND_CHIP: ChipId = ChipId(52);
+/// Wave 3 (`/37`) T08 selected-branch `||` chip reservation (CL04
+/// scope: condition plus ONLY the short-circuit-selected branch,
+/// Ack-only).
+pub const CL04_OR_CHIP: ChipId = ChipId(53);
+/// Wave 3 (`/37`) T08 selected-branch `?:` chip reservation (CL04
+/// scope: passes the selected magnitude through verbatim, Ack-only).
+pub const CL04_COND_CHIP: ChipId = ChipId(54);
+/// Wave 3 (`/37`) T08 static-assert chip reservation (CL07 scope: one
+/// asserted ICE, nonzero passes, zero fails, non-ICE is
+/// `NotConstantExpression`, Ack-only).
+pub const CL07_ASSERT_CHIP: ChipId = ChipId(55);
 
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
@@ -1164,6 +1179,15 @@ pub const fn is_lx_string_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::LEX_ESCAPE_DECODE.raw()
         || kind.raw() == TaskKind::LEX_CHAR_DECODE.raw()
         || kind.raw() == TaskKind::LEX_STRING_DECODE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/37`) T08 const-branch
+/// slice (selected-branch `&&` / `||` / `?:`, static assert).
+pub const fn is_const_branch_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_AND.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_OR.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_COND.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_STATIC_ASSERT.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/36`) PA recovery slice
@@ -1344,6 +1368,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pa_decl_slice_kind(kind)
             || is_pa_expr_slice_kind(kind)
             || is_pa_recovery_slice_kind(kind)
+            || is_const_branch_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1443,6 +1468,10 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PARSE_UNARY, 2),
     (TaskKind::PARSE_DECL_FINISH, 2),
     (TaskKind::PARSE_RECOVERY, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_AND, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_OR, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_COND, 2),
+    (TaskKind::CONSTANT_CONST_STATIC_ASSERT, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),
