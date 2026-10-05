@@ -590,7 +590,7 @@ fn append_enforces_per_arena_capacity() {
 #[test]
 fn stage_assignment_covers_foundation_and_slice() {
     use cc_silicon_compiler::manifest::check_stage_layer_agreement;
-    assert_eq!(STAGE_ASSIGNMENT.len(), 48);
+    assert_eq!(STAGE_ASSIGNMENT.len(), 50);
     for (kind, stage) in STAGE_ASSIGNMENT {
         assert_eq!(stage_of(*kind), Some(*stage));
         assert!((*stage as usize) < Limits::fixture().stage_queue_bound.len());
@@ -600,11 +600,13 @@ fn stage_assignment_covers_foundation_and_slice() {
     assert_eq!(stage_of(TaskKind::SEMANTIC_CONST_EVAL_BINARY), Some(1));
     assert_eq!(stage_of(TaskKind::CONSTANT_CONST_FOLD), Some(2));
     // No silent default: unlisted kinds have no stage.
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 19).unwrap()), None);
+    assert_eq!(stage_of(TaskKind::LEX_FLOAT_SYNTAX), Some(2));
+    assert_eq!(stage_of(TaskKind::LEX_FLOAT_VALUE), Some(2));
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 21).unwrap()), None);
 
     // Registration rejects a manifest whose kind has no stage row.
     let mut kinds = TaskKindRegistry::m1_slice();
-    let custom = TaskKind::new(TaskGroup::LEX, 19).unwrap();
+    let custom = TaskKind::new(TaskGroup::LEX, 21).unwrap();
     kinds
         .register(
             custom,
@@ -671,7 +673,8 @@ fn allowlist_authorizes_fold_chip_only() {
     // `tasks.ready` stays writer-free. Later slices append their rows
     // (LX/PA/TY/SE/IR/PP/SPAN kinds through `/22`, macro rows in `/23`,
     // expansion rows in `/24`, the variadic row in `/26`, the builtin row
-    // in `/27`, the emit row in `/31`; `/25` and the Ack-only line (`/28`), pragma (`/29`), and expansion-map (`/30`) slices add no rows).
+    // in `/27`, the emit row in `/31`; `/25` and the Ack-only line (`/28`), pragma (`/29`),
+    // expansion-map (`/30`), and LX float (`/32`) slices add no rows).
     assert_eq!(STORE_OWNER_ALLOWLIST.len(), 30);
     assert!(!STORE_OWNER_ALLOWLIST
         .iter()
@@ -814,7 +817,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/31");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/32");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -858,7 +861,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/31",
+        "t01-c01-c06/32",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",

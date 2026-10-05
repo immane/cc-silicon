@@ -27,15 +27,16 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
 /// const-fold slice, the `/8` worker-integration amendment, the `/9`
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
-/// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
-/// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/31";
+/// slice (`/11`), the Wave 2 PA slice (`/12`), the Wave 2 TY slice
+/// (`/13`), and the Wave 2 SE/IR/PP/VF slices through the Wave 3 PP
+/// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/32";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "ce4dd42279db0677db76f314f4177b14b386a78f86c4750fc1f64a6c2e2998c1";
+pub const CONTRACT_HASH: &str = "0dd8da06535af8cf4ffef87ccbf45b9529c6c3e77e1f283f028c46de4a6e1167";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -210,6 +211,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.emit-directive-strip",
     "pp.emit-no-gluing",
     "pp.emit-map",
+    "lx.float-syntax",
+    "lx.float-value-rounding",
+    "lx.float-overflow",
 ];
 
 /// The `TaskState` variant names, in encoding order.

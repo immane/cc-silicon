@@ -50,9 +50,14 @@ pub use self::constant_layout_init::{
 };
 pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
 pub use self::lex::{
-    decimal_magnitude, is_keyword, project_lx_classify_input, project_lx_decode_input,
-    project_lx_intern_input, LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip,
-    LxInternChip, LxInternInput, C11_KEYWORDS,
+    convert_float_parts, decimal_magnitude, is_keyword, parse_float_parts,
+    project_lx_classify_input, project_lx_decode_input, project_lx_float_syntax_input,
+    project_lx_float_value_input, project_lx_intern_input, spelling_to_value_parts,
+    FloatConvertOutcome, FloatSyntaxError, FloatValueError, LxClassifyChip, LxClassifyInput,
+    LxDecodeInput, LxDecodeLiteralChip, LxFloatSyntaxChip, LxFloatSyntaxExponent,
+    LxFloatSyntaxInput, LxFloatSyntaxParts, LxFloatSyntaxSuffix, LxFloatValueChip,
+    LxFloatValueInput, LxFloatValueParts, LxFloatValueSuffix, LxInternChip, LxInternInput,
+    C11_KEYWORDS, LX09_TASK_KIND, LX10_TASK_KIND,
 };
 pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use self::preprocess::{

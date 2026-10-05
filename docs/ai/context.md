@@ -1,24 +1,24 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/31` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/32` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/30` (committed) with `/31` implemented
-> and test-green but NOT yet fully verified or committed.
+> 2026-10-06 after landing `/31` (committed as `acc2f21`) with `/32`
+> implemented and test-green but NOT yet fully verified or committed.
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/30` (`27cceac`), hash
-  `76bf628e298aea5556b74df220d1c56b3ceedd8c1242a38476a55706bf2f3592`.
-- In worktree, UNCOMMITTED: `/31` PP emit (PP28 chip), contract
-  already bumped to `t01-c01-c06/31`, hash recomputed
-  (`ce4dd42279db0677db76f314f4177b14b386a78f86c4750fc1f64a6c2e2998c1`).
-  `c31_emit` green, but the final full-suite (§5) run is still
+- Committed: `t01-c01-c06/31` (`acc2f21`), hash
+  `ce4dd42279db0677db76f314f4177b14b386a78f86c4750fc1f64a6c2e2998c1`.
+- In worktree, UNCOMMITTED: `/32` LX float (LX09 syntax + LX10 value
+  chips), contract already bumped to `t01-c01-c06/32`, hash recomputed
+  (`0dd8da06535af8cf4ffef87ccbf45b9529c6c3e77e1f283f028c46de4a6e1167`).
+  `c32_float` green, but the final full-suite (§5) run is still
   pending — run §5 fully, then commit as
-  `feat: add Wave 3 PP emit slice as t01-c01-c06/31`.
+  `feat: add LX float slice as t01-c01-c06/32`.
 - Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
-  H04) is MERGED; `/20`–`/30` (11 commits) are committed locally,
+  H04) is MERGED; `/20`–`/31` (12 commits) are committed locally,
   UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
 - The M1 C frontend is closed end-to-end with a working PP pipeline:
   normalize→splice→comment→scan→conditional→define→expand→directive→LX
@@ -58,7 +58,8 @@
 | `/28` | PP line directives | `preprocess/pp_line.rs` | `c28_line` 10 |
 | `/29` | PP pragma dispatch | `preprocess/pp_pragma.rs` | `c29_pragma` 9 |
 | `/30` | PP expansion map | `preprocess/pp_expand_map.rs` | `c30_expand_map` 10 |
-| `/31` | PP emit (UNCOMMITTED) | `preprocess/pp_emit.rs` | `c31_emit` 11 |
+| `/31` | PP emit | `preprocess/pp_emit.rs` | `c31_emit` 11 |
+| `/32` | LX float (UNCOMMITTED) | `lex/{lx_float_syntax,lx_float_value}.rs` | `c32_float` 12 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
@@ -154,9 +155,9 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/31` (run §5 first), then PP remainder in pipeline
+- NEXT UP: commit `/32` (run §5 first), then PP remainder in pipeline
   order — then T04 LX
-  remainder (strings/chars/floats), T05/T06/T07 remainders, T08
+  remainder (strings/chars, adjacent strings), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells
   per R2 until a Linux runner exists), T13 VF02–04/VF13–14 (H6/H9-gated),

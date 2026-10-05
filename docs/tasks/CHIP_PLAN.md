@@ -112,8 +112,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX06 IntegerSuffixChip | ✅ DONE (`/11` None-only gate) | 2
 - LX07 IntegerValueChip (big-int, no host overflow) | ✅ DONE (`/11` decimal_magnitude in decode) | 2
 - LX08 IntegerTypeSelectChip → `Int` only | ✅ DONE (`/11` Int-only in decode) | 2
-- LX09 FloatSyntaxChip | float schemas | 3
-- LX10 FloatValueChip (correct rounding) | target formats | 3–4
+- LX09 FloatSyntaxChip | ✅ DONE (`/32` LxFloatSyntaxChip, `c32_float` 12 tests shared with LX10; decimal/hex exponent, point, `f`/`F`/`l`/`L` suffix lexing, integer/GNU shapes fail loud, Ack-only) | 3
+- LX10 FloatValueChip (correct rounding) | ✅ DONE (`/32` LxFloatValueChip, `c32_float`; RNE binary32/binary64 over integer arithmetic, halfway-even/`0.1`/overflow-inf/subnormal oracle bits, `l` binary128 deferred `Unsupported`, range-as-flags Ack-only) | 3–4
 - LX11 EscapeDecodeChip | — | 3
 - LX12 CharacterLiteralChip | char schemas | 3
 - LX13 StringLiteralChip | string schemas | 3

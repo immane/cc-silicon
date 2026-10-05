@@ -1071,6 +1071,14 @@ pub const PP27_CHIP: ChipId = ChipId(37);
 /// Wave 3 (`/31`) PP preprocessed-emit chip reservation.
 pub const PP28_CHIP: ChipId = ChipId(38);
 
+/// Wave 3 (`/32`) LX float-syntax chip reservation (LX09 scope:
+/// `NumberSpelling → FloatParts` syntax validation, Ack-only).
+pub const LX09_CHIP: ChipId = ChipId(39);
+/// Wave 3 (`/32`) LX float-value chip reservation (LX10 scope:
+/// spelling → correctly-rounded binary32/binary64 value check,
+/// Ack-only; binary128 and wider formats are explicit `Unsupported`).
+pub const LX10_CHIP: ChipId = ChipId(40);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1093,6 +1101,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/32`) LX float slice.
+pub const fn is_lx_float_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_FLOAT_SYNTAX.raw() || kind.raw() == TaskKind::LEX_FLOAT_VALUE.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/31`) PP emit slice.
@@ -1238,6 +1251,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_pragma_slice_kind(kind)
             || is_pp_expand_map_slice_kind(kind)
             || is_pp_emit_slice_kind(kind)
+            || is_lx_float_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1322,6 +1336,8 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_PRAGMA_DIRECTIVE, 1),
     (TaskKind::PREPROCESS_EXPAND_MAP, 1),
     (TaskKind::PREPROCESS_EMIT, 1),
+    (TaskKind::LEX_FLOAT_SYNTAX, 2),
+    (TaskKind::LEX_FLOAT_VALUE, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

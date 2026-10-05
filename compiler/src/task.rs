@@ -386,6 +386,23 @@ impl TaskKind {
     /// same token stream; completes `Record(Artifact)`).
     pub const PREPROCESS_EMIT: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 35);
+    /// Wave 3 (`/32`) LX-float-slice kind: float-syntax task (payload:
+    /// exactly one `RecordRef::PpToken` of kind `PpNumber`; validates the
+    /// decimal/hex float spelling, suffix included, against the frozen
+    /// syntax rule; completes `Ack` on a valid spelling or fails with a
+    /// typed `Invalid` diagnostic; appends nothing — pp-numbers are never
+    /// treated as valid C constants here).
+    pub const LEX_FLOAT_SYNTAX: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/32`) LX-float-slice kind: float-value task (payload:
+    /// exactly one `RecordRef::PpToken` of kind `PpNumber`; converts the
+    /// committed spelling to the suffix-selected binary32/binary64 format
+    /// with correct round-to-nearest-even; completes `Ack` when the
+    /// spelling converts — range outcomes ride as value flags, never as
+    /// value-level failures — or fails loud (`Invalid` on malformed
+    /// spellings, `Unsupported` on non-float spellings and deferred
+    /// formats); appends nothing: the bits are certified by the pure
+    /// core, and no `FloatBits` result carrier is frozen yet).
+    pub const LEX_FLOAT_VALUE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 20);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -566,6 +583,22 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/32`) LX-float-slice registry: the PP-emit slice
+    /// plus the frozen float-syntax and float-value kinds (all `Frozen`;
+    /// `LEX` owners start new codes at local 21).
+    pub fn lx_float_slice() -> Self {
+        let mut registry = Self::pp_emit_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_FLOAT_SYNTAX, "lex.float_syntax"),
+            (TaskKind::LEX_FLOAT_VALUE, "lex.float_value"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

@@ -633,6 +633,31 @@ artifact `t01-c01-c06/31` (`ce4dd422…2e2998c1`); acceptance
 `compiler/tests/c31_emit.rs` (11 tests); item list in
 [PP_EMIT_SLICE.md](PP_EMIT_SLICE.md).
 
+`/32` amendment — Wave 3 slice 7, LX float (R1 auto-bump; `/31`
+preserved as history): two Ack-only workers closing the float USE
+(T04:17–18). `LxFloatSyntaxChip` (chip 39, LX09) validates one
+committed pp-number spelling (decimal with optional `e`/`E`
+exponent, hex with mandatory `p`/`P` exponent, optional
+`f`/`F`/`l`/`L` suffix); `LxFloatValueChip` (chip 40, LX10) checks
+the same spelling converts to its suffix-selected format
+(`f`/`F` → binary32, absent → binary64) with correct
+round-to-nearest-even over integer arithmetic only. Both read
+exactly one `RecordRef::PpToken` of kind `PpNumber` (DOC-10),
+complete `Ack`, append nothing (no `LiteralRecord`: the M1 record
+stays integer-only), and fail loud (`Invalid` on malformed shapes,
+`Unsupported` on integer-shaped spellings and on the deferred
+binary128 `l`/`L` path). Range rides as value flags, never as
+value-level failure. The frozen interchange is the spelling (no
+frozen `FloatParts`/`FloatBits` carrier yet; each chip keeps its own
+local shape by copy precedent). `lex.float_syntax` (local 19) and
+`lex.float_value` (local 20), stage 2, layer 2,
+`lx_float_slice()` registry (50 entries, cumulative over
+`pp_emit_slice()`); no schema change; no allowlist rows (Ack-only).
+New hashed rules `lx.float-syntax`, `lx.float-value-rounding`,
+`lx.float-overflow`. New artifact `t01-c01-c06/32`
+(`0dd8da06…4a6e1167`); acceptance `compiler/tests/c32_float.rs`
+(12 tests); item list in [LX_FLOAT_SLICE.md](LX_FLOAT_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
