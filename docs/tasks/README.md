@@ -54,6 +54,7 @@ Distinguish two kinds of backend: `cc-silicon::Backend` is the compute backend t
 | [ADR-0002 (PROPOSED)](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | Proposed ADR for deterministic staged compiler pipelines with bounded in-flight tasks (quota 1 baseline). **Proposal only**: not accepted, does not amend T01, does not change `t01-c01-c06/5`, authorizes no implementation | Proposed; requires integrator/owner acceptance |
 | [Gate 1 first-slice checklist](GATE_1_M1_FIRST_SLICE.md) | **Proposed** freeze work list for the M1 const-fold chain (M1-CL-05): typed literal/const schemas, slice task kinds/stages/allowlist, narrow `AppendRecords` materialization, freeze tests, version rule. Not a freeze, authorizes no chip code | T01 §7.1 `/6` foundation; M1 proposal rev 40; CDR rev 56 |
 | [Chip plan](CHIP_PLAN.md) | **Plan**: readiness grades, wave assignment, and per-chip unblock conditions for all 332 table rows. Not a freeze, authorizes no chip code | All T02–T13 tables; `TASK_TEMPLATE.md`; T01 §7; Gate 1 |
+| [Wave dispatch](WAVE_DISPATCH.md) | **Design**: serial-bootstrap → 100+ parallel generation pipeline, agent contract, merge loop, R1/R2/R3 rules (accepted 2026-10-06) | `CHIP_PLAN.md`; `PARALLEL_EXECUTION.md` |
 
 T00's Host work items H00–H10 are defined in
 [T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4. They are host/tooling
