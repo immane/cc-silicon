@@ -39,6 +39,8 @@ pub mod limits;
 pub mod manifest;
 /// Minimal routing integration shell (C06).
 pub mod routing;
+/// Draft-record envelope handles (C01/C03, integrator interim).
+pub mod records;
 /// Deterministic snapshot and trace (C05).
 pub mod snapshot;
 /// Target/dialect/configuration schema (C02).

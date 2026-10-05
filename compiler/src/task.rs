@@ -6,7 +6,8 @@
 //   Task   { id, kind, payload, owner, parent, continuation, state, ... }
 //   State  = Ready | Running | Waiting(child/request ids) | Completed | Failed
 //   Result = tagged payload matching the task kind
-//   Proposal = Enqueue | Complete | Fail | AwaitHost | StorePatch
+//   Proposal = Enqueue | Complete | Fail | AwaitHost | AwaitChildren
+//            | StorePatch | AppendRecords | Progress
 //
 // A task enqueued in tick T is ready in tick T+1. The selection order is
 // deterministic: (phase priority, enqueue ordinal, TaskId). Completion and
@@ -16,10 +17,19 @@
 
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{
-    ChipId, ContinuationId, DiagnosticId, HostRequestId, RecordRef, ResultId, ScopeId, TaskId,
+    ChipId, ContinuationId, DiagnosticId, HostRequestId, NodeId, RecordRef, ResultId, ScopeId,
+    TaskId, TokenId,
 };
+use crate::records::RecordDraft;
 
 /// A compiler pipeline group. Each group owns one stage of the compiler.
+///
+/// Integrator note: assigning every task kind to exactly one scheduled stage
+/// (the versioned kind-to-stage table) and enforcing it at registration with
+/// `ManifestError::StageUnassigned { kind }` and
+/// `ManifestError::StageLayerMismatch { kind, stage, layer }` is
+/// manifest-track work in `manifest.rs`; only the variant shapes are noted
+/// here so the two tracks use identical spellings.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct TaskGroup(u8);
 
@@ -365,17 +375,134 @@ impl Payload {
     }
 }
 
-/// A registered continuation: the state a parent task needs to resume after
-/// its children complete. Continuations are mechanical; resume semantics
+/// A registered continuation: the parse state a task needs to resume with
+/// after its children complete. Continuations are mechanical; resume semantics
 /// belong to the producing chip.
+///
+/// Frozen `/6` shape: exactly these nine ordered fields. The `/5` fields
+/// `resume_kind` (now [`ContinuationRecord::production`]) and `awaited` are
+/// superseded: awaited children live only in [`TaskState::Waiting`] around a
+/// [`WaitSet`], never duplicated here (the T01 §4 supersession is catalogued
+/// at `/6`; there is no `/5` edit). Parse state extends this record; no
+/// competing `ParseContinuation` struct exists.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContinuationRecord {
     /// Task kind the parent will resume with.
-    pub resume_kind: TaskKind,
-    /// Child tasks awaited, in enqueue order.
-    pub awaited: Vec<TaskId>,
+    pub production: TaskKind,
+    /// Committed token cursor where parsing resumes (the EOF token is allowed).
+    pub cursor: TokenId,
+    /// Parser context of this frame, semantically distinct from `production`.
+    pub context: ParseContext,
+    /// Precedence level of this frame.
+    pub binding_power: u16,
     /// Optional scope the continuation belongs to.
     pub scope: Option<ScopeId>,
+    /// Committed parent node; `None` only for the translation-unit root frame.
+    pub parent: Option<NodeId>,
+    /// Committed child nodes produced so far, sorted by contiguous ordinals.
+    pub partial_children: Vec<NodeId>,
+    /// Uniqueness source for the next child ordinal (`max(ordinal) + 1`).
+    pub next_child_ordinal: u32,
+    /// Committed predecessor frame; frames form a committed-only acyclic chain.
+    pub previous: Option<ContinuationId>,
+}
+
+/// Parser context of a [`ContinuationRecord`] frame.
+///
+/// Closed 10-member vocabulary with explicit discriminants 0-9 in declaration
+/// order. `context` is semantically distinct from the frame's
+/// [`ContinuationRecord::production`] task kind; no mapping between contexts
+/// and task kinds is derived here (the context-to-chip mapping is a T05
+/// co-freeze item).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum ParseContext {
+    /// Top-level translation unit frame.
+    TranslationUnit = 0,
+    /// External declaration frame.
+    ExternalDecl = 1,
+    /// Specifier frame.
+    Specifier = 2,
+    /// Declarator frame.
+    Declarator = 3,
+    /// Parameter list frame.
+    ParameterList = 4,
+    /// Block frame.
+    Block = 5,
+    /// Expression frame.
+    Expression = 6,
+    /// Assignment frame.
+    Assignment = 7,
+    /// Unary frame.
+    Unary = 8,
+    /// Primary frame.
+    Primary = 9,
+}
+
+impl ParseContext {
+    /// Every context in discriminant order.
+    pub const ALL: [Self; 10] = [
+        Self::TranslationUnit,
+        Self::ExternalDecl,
+        Self::Specifier,
+        Self::Declarator,
+        Self::ParameterList,
+        Self::Block,
+        Self::Expression,
+        Self::Assignment,
+        Self::Unary,
+        Self::Primary,
+    ];
+
+    /// Explicit discriminant (declaration order, 0-9).
+    pub const fn ordinal(self) -> u8 {
+        self as u8
+    }
+}
+
+/// Key of a draft inside one task's own [`AppendBatch`], in append order.
+///
+/// Scoped to a single task's single batch: a `DraftRef` never names another
+/// task's draft. It is a transient wire/proposal input only, resolved to a
+/// committed ID before any persistent state exists.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct DraftRef(pub u32);
+
+impl DraftRef {
+    /// Raw position within the task's own batch.
+    pub const fn index(self) -> u32 {
+        self.0
+    }
+}
+
+/// A child task awaited by the same task that enqueued it.
+///
+/// `Committed` names a live committed child whose `Enqueue` record shows this
+/// task as parent. `OwnBatch(k)` indexes this task's own `Enqueue` list in the
+/// same batch (`k <` own enqueue count, same task only); a cross-task index is
+/// unrepresentable. Own-batch keys are validated in the no-mutation pass
+/// before apply and resolved to committed IDs before persistent state.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum ChildRef {
+    /// A live committed child task.
+    Committed(TaskId),
+    /// An index into this task's own `Enqueue` list in the same batch.
+    OwnBatch(u32),
+}
+
+/// Reference to a continuation from an `Enqueue`.
+///
+/// `Committed` names a live committed continuation. `OwnBatch` names a draft
+/// in this task's own [`AppendBatch`] draft range (which must have the
+/// `Continuation` family). Own-batch keys are transient wire/proposal inputs
+/// only: commit validates and resolves them to a committed [`ContinuationId`]
+/// before any persistent state, and no durable cursor, [`WaitSet`], or join
+/// may point at a draft, wire, or address.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum ContinuationRef {
+    /// A live committed continuation.
+    Committed(ContinuationId),
+    /// A key into this task's own batch draft range.
+    OwnBatch(DraftRef),
 }
 
 /// Task lifecycle state.
@@ -423,6 +550,12 @@ pub struct WaitSet {
 /// A result payload. Concrete variants are extended by each group; the
 /// foundation variants cover no-op, acknowledgement, record references, and
 /// committed diagnostics.
+///
+/// Frozen: this set is unchanged (no `DraftRecords` variant). A legal
+/// constant result completes with `Record(RecordRef::Const)`; multi-record
+/// results use `Records`; non-legal constant outcomes fail through the chip
+/// diagnostic path instead of materializing a value; a parse cursor reuses
+/// `ContinuationDraft.cursor`, not a new result variant.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResultValue {
     /// No value (a successful no-op).
@@ -473,6 +606,10 @@ pub struct Task {
     pub enqueue_ordinal: u64,
     /// Earliest tick in which this task may be selected.
     pub ready_tick: u64,
+    /// Number of `Progress` reinserts consumed (`max_task_progress` bound).
+    pub progress_count: u32,
+    /// Last accepted `Progress` ordinal (strictly increasing).
+    pub progress_ordinal: u64,
 }
 
 impl Task {
@@ -495,6 +632,12 @@ pub struct TaskDraft {
     /// Producing parent task.
     pub parent: Option<TaskId>,
     /// Continuation to attach.
+    ///
+    /// Frozen `/5` shape (`Option<ContinuationId>`) is kept byte-compatible.
+    /// Carrying a [`ContinuationRef`] (in particular an own-batch draft key)
+    /// requires migrating this field plus `Task.continuation` and the
+    /// snapshot wire encoding, which is integrator-owned commit-track work;
+    /// the [`ContinuationRef`] type itself is frozen here.
     pub continuation: Option<ContinuationId>,
 }
 
@@ -534,7 +677,47 @@ pub enum PatchOp {
     Tombstone,
 }
 
+/// An ordered batch of typed record drafts appended by one task in one tick.
+///
+/// At most one batch per task per batch is allowed; an empty batch is
+/// rejected at commit. The batch counts against
+/// `limits.max_proposals_per_tick` together with the proposal count
+/// (`proposals.len() + total_drafts`; the limit fields live in `limits.rs`,
+/// owned by the limits track).
+///
+/// Integrator note: the element type is the closed `RecordDraft` enum owned
+/// by the records track (group-owned record bodies; no settled module path
+/// yet). Wire the import to the records track's frozen path when it lands;
+/// until then the name below is intentionally unresolved.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AppendBatch {
+    /// Draft record bodies in append order.
+    pub records: Vec<RecordDraft>,
+}
+
 /// A proposal emitted by a worker during a tick.
+///
+/// Coexistence (enforced by the commit track, which owns the checks):
+///
+/// - Per dispatched task per batch, exactly one of `Complete`, `Fail`,
+///   `AwaitHost`, `AwaitChildren`, `Progress` (see [`Proposal::is_transition`]);
+///   a dispatched task with an empty proposal vector fails per-task rather
+///   than completing silently or staying `Running`.
+/// - At most one `AppendRecords` per task per batch; `Enqueue` may accompany
+///   any transition (a task may spawn children and then await them) and
+///   `StorePatch` may accompany a transition.
+/// - `AppendRecords` and a `StorePatch` append must not target the same
+///   `(store, field)`; `Progress`/`AwaitChildren` are incompatible with
+///   `Complete`/`Fail`/`AwaitHost`.
+/// - `AwaitChildren.children` entries of the `OwnBatch(k)` form must satisfy
+///   `k <` this task's own `Enqueue` count (same task only).
+/// - `Payload` stays [`RecordRef`]-only; cross-task committed references are
+///   the normal data flow while cross-task draft references are
+///   unrepresentable.
+///
+/// Wire tags: `Enqueue` = 0, `Complete` = 1, `Fail` = 2, `AwaitHost` = 3,
+/// `StorePatch` = 4 (frozen `/5`, unchanged), `AppendRecords` = 5,
+/// `Progress` = 6, `AwaitChildren` = 7.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     /// Create a new task, visible next tick.
@@ -561,7 +744,78 @@ pub enum Proposal {
         request: HostRequestDraft,
     },
     /// Stage a field-scoped store write.
+    ///
+    /// Field-scoped ownership is registration-time: the
+    /// (`ChipId`, `StoreId`, field, kind) allowlist and its
+    /// `ManifestError::StoreOwnerViolation { chip, store, field, expected_kind }`
+    /// enforcement live in `manifest.rs` (manifest track), never in the
+    /// commit. A second chip writer to `tasks.ready` is rejected there.
     StorePatch(StorePatch),
+    /// Append typed record drafts owned by this task, in one atomic batch.
+    ///
+    /// Validated and resolved in the no-mutation pass before apply; apply
+    /// performs only infallible pushes. Per-arena capacity is checked per
+    /// backing family against `limits.max_records_per_arena` (limits track);
+    /// names are bounded only by the intern limits.
+    AppendRecords {
+        /// Task owning the batch.
+        task: TaskId,
+        /// Drafts in append order.
+        batch: AppendBatch,
+    },
+    /// Reschedule the task for the next tick without completing it.
+    ///
+    /// Reinserts exactly once into the task's own stage queue with
+    /// `ready_tick = tick + 1`. The ordinal must advance every reschedule;
+    /// exceeding `limits.max_task_progress` (limits track; zero disables
+    /// `Progress`) is a per-task failure, mutually exclusive with reinsert.
+    Progress {
+        /// Task being rescheduled.
+        task: TaskId,
+        /// Monotonic progress ordinal.
+        ordinal: u64,
+    },
+    /// Block the selected task until its children are terminal.
+    ///
+    /// Sets `Waiting(WaitSet { children, host_request: None })`; the existing
+    /// [`WaitSet`] is the sole awaited-child-ID source. The join itself is
+    /// commit-apply work owned by the commit track.
+    AwaitChildren {
+        /// Task being blocked.
+        task: TaskId,
+        /// Children awaited: committed children or own-batch enqueue indices.
+        children: Vec<ChildRef>,
+    },
+}
+
+impl Proposal {
+    /// Frozen wire tag, in declaration order.
+    pub const fn wire_tag(&self) -> u8 {
+        match self {
+            Self::Enqueue(_) => 0,
+            Self::Complete { .. } => 1,
+            Self::Fail { .. } => 2,
+            Self::AwaitHost { .. } => 3,
+            Self::StorePatch(_) => 4,
+            Self::AppendRecords { .. } => 5,
+            Self::Progress { .. } => 6,
+            Self::AwaitChildren { .. } => 7,
+        }
+    }
+
+    /// Whether this proposal is one of the five per-task transitions
+    /// (`Complete`, `Fail`, `AwaitHost`, `AwaitChildren`, `Progress`).
+    /// Exactly one transition per dispatched task per batch is required.
+    pub const fn is_transition(&self) -> bool {
+        matches!(
+            self,
+            Self::Complete { .. }
+                | Self::Fail { .. }
+                | Self::AwaitHost { .. }
+                | Self::AwaitChildren { .. }
+                | Self::Progress { .. }
+        )
+    }
 }
 
 /// A not-yet-committed host request.
@@ -643,11 +897,19 @@ pub enum StoreId {
     Artifacts,
     /// Per-tick proposals.
     Wires,
+    /// Interned names (`InternTable`-backed; field `entries`). Frozen index 20.
+    ///
+    /// This store exists so the manifest write-authorization model (keyed by
+    /// `StoreId`/field) can authorize and audit name interning like every
+    /// other append family. It maps to the `InternTable`, not to an arena;
+    /// its version slot bumps only when at least one genuinely new name is
+    /// interned (commit-track behavior).
+    Names,
 }
 
 impl StoreId {
     /// Every store in canonical order.
-    pub const ALL: [StoreId; 20] = [
+    pub const ALL: [StoreId; 21] = [
         StoreId::Config,
         StoreId::Control,
         StoreId::Sources,
@@ -668,6 +930,7 @@ impl StoreId {
         StoreId::Diagnostics,
         StoreId::Artifacts,
         StoreId::Wires,
+        StoreId::Names,
     ];
 
     /// Number of stores, derived from [`StoreId::ALL`].
@@ -696,6 +959,7 @@ impl StoreId {
             Self::Diagnostics => "diagnostics",
             Self::Artifacts => "artifacts",
             Self::Wires => "wires",
+            Self::Names => "names",
         }
     }
 
@@ -727,12 +991,13 @@ impl StoreId {
             Self::Diagnostics => 17,
             Self::Artifacts => 18,
             Self::Wires => 19,
+            Self::Names => 20,
         }
     }
 
     /// Rebuild from a canonical index.
     pub const fn from_index(index: usize) -> Option<Self> {
-        if index < 20 {
+        if index < 21 {
             Some(Self::ALL[index])
         } else {
             None
@@ -743,6 +1008,9 @@ impl StoreId {
 /// The full set of ID types declared by this contract, in canonical order.
 ///
 /// Used by the frozen schema hash and by manifest/registry documentation.
+/// Labels 0-23 are the frozen `/5` inventory, unchanged; the `/6` appends
+/// follow in wire-tag order (`literals` = 24, `sem` = 25, `scope_events` =
+/// 26). See the wire-tag note on [`RecordRef::wire_tag`].
 pub const RECORD_KINDS: &[&str] = &[
     "sources",
     "spans",
@@ -768,4 +1036,7 @@ pub const RECORD_KINDS: &[&str] = &[
     "diagnostics",
     "host_requests",
     "artifacts",
+    "literals",
+    "sem",
+    "scope_events",
 ];

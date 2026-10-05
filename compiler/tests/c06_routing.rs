@@ -274,3 +274,111 @@ fn propagate_rejects_prepopulated_malformed_wires_without_stranding() {
     assert_eq!(bus.tasks.active, None);
     assert_eq!(bus.arenas.results.allocated(), 0);
 }
+
+#[test]
+fn cancel_takes_precedence_over_tick_budget() {
+    // Even with the tick budget exhausted, a requested cancel wins
+    // pre-selection: no dispatch, no commit.
+    let mut bus = CompilerBus::new(config_with_limits(Limits {
+        max_ticks: 0,
+        ..Limits::fixture()
+    }));
+    let task = bus.bootstrap_task(draft(TaskKind::CONTROL_NOOP)).unwrap();
+    bus.control.cancel_requested = true;
+    let shell = RoutingShell::new();
+    let report = shell.propagate(&mut bus).unwrap();
+    assert_eq!(report.outcome, TickOutcome::Cancelled);
+    assert_eq!(report.selected, None);
+    assert_eq!(bus.control.job_state, JobState::Failed);
+    assert_eq!(bus.get_task(task).unwrap().state, TaskState::Ready);
+    assert!(bus.tasks.in_flight.is_empty());
+    // Idempotent: a second cancel tick repeats the outcome.
+    let report = shell.propagate(&mut bus).unwrap();
+    assert_eq!(report.outcome, TickOutcome::Cancelled);
+    assert_eq!(bus.control.job_state, JobState::Failed);
+}
+
+#[test]
+fn cancel_tick_records_one_terminal_record() {
+    let (mut bus, _) = boot(TaskKind::CONTROL_NOOP);
+    let shell = RoutingShell::new();
+    let pins = CompilerPins {
+        cancel: true,
+        ..CompilerPins::default()
+    };
+    let report = shell.clock_tick(&pins, &mut bus).unwrap();
+    assert_eq!(report.outcome, TickOutcome::Cancelled);
+    assert_eq!(bus.report.len(), 1);
+    let record = &bus.report[0];
+    assert!(record.dispatched.is_empty());
+    assert_eq!(record.selected, None);
+    assert_eq!(record.metrics.dispatched, 0);
+}
+
+#[test]
+fn in_flight_is_empty_at_latch_after_execution() {
+    let (mut bus, task) = boot(TaskKind::CONTROL_NOOP);
+    let shell = RoutingShell::new();
+    let report = shell
+        .clock_tick(&CompilerPins::default(), &mut bus)
+        .unwrap();
+    assert!(matches!(report.outcome, TickOutcome::Executed { .. }));
+    // No dispatched task remains `Running`; no residual in-flight entry
+    // survives at latch or at the next tick start.
+    assert!(bus.tasks.in_flight.is_empty());
+    assert!(matches!(
+        bus.get_task(task).unwrap().state,
+        TaskState::Completed(_)
+    ));
+    assert_eq!(bus.report.len(), 1);
+    assert_eq!(bus.report[0].dispatched, vec![task]);
+    assert_eq!(bus.report[0].selected, Some(task));
+    assert_eq!(bus.report[0].metrics.dispatched, 1);
+}
+
+#[test]
+fn in_flight_is_empty_after_commit_failure() {
+    let mut bus = CompilerBus::new(config_with_limits(Limits {
+        max_records_total: 1,
+        ..Limits::fixture()
+    }));
+    let task = bus.bootstrap_task(draft(TaskKind::CONTROL_NOOP)).unwrap();
+    let shell = RoutingShell::new();
+    let report = shell
+        .clock_tick(&CompilerPins::default(), &mut bus)
+        .unwrap();
+    assert!(matches!(report.outcome, TickOutcome::CommitFailed { .. }));
+    assert!(bus.tasks.in_flight.is_empty());
+    assert!(matches!(
+        bus.get_task(task).unwrap().state,
+        TaskState::Failed(_)
+    ));
+    // The failed tick still records exactly one terminal record.
+    assert_eq!(bus.report.len(), 1);
+    assert_eq!(bus.report[0].selected, Some(task));
+}
+
+#[test]
+fn quota_selection_paths() {
+    let mut bus = CompilerBus::default();
+    let kinds = [
+        TaskKind::CONTROL_NOOP,
+        TaskKind::CONTROL_UNSUPPORTED,
+        TaskKind::new(TaskGroup::LEX, 16).unwrap(),
+    ];
+    bus.kinds
+        .register(kinds[2], "lex.scan", TaskGroup::LEX, KindStatus::GroupOwned)
+        .unwrap();
+    let mut ids = Vec::new();
+    for kind in kinds {
+        ids.push(bus.bootstrap_task(draft(kind)).unwrap());
+    }
+    let shell = RoutingShell::new();
+    assert_eq!(RoutingShell::dispatch_quota(&bus), 1);
+    // Quota-1 projects onto the frozen head of the order.
+    assert_eq!(shell.select(&bus), Some(ids[0]));
+    // Wider quotas select deterministically in the same frozen order.
+    assert_eq!(shell.select_batch(&bus, 5), ids);
+    assert_eq!(shell.select_batch(&bus, 2), ids[..2].to_vec());
+    assert!(shell.select_batch(&bus, 0).is_empty());
+}

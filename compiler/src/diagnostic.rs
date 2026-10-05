@@ -83,6 +83,17 @@ impl DiagnosticCode {
     pub const fn new(group: DiagGroup, code: u16) -> Self {
         Self { group, code }
     }
+
+    /// Chip diagnostic: a constant value overflows its representable range
+    /// (T08 `Fail`/`DiagnosticDraft` path; never a `CommitError`).
+    pub const CONST_OVERFLOW: Self = Self::new(DiagGroup::Unsupported, 2);
+    /// Chip diagnostic: a constant expression uses an unsupported form (T08
+    /// `Fail`/`DiagnosticDraft` path; never a `CommitError`).
+    pub const CONST_UNSUPPORTED: Self = Self::new(DiagGroup::Unsupported, 3);
+    /// Chip diagnostic: an expression is not a constant expression
+    /// (`NotConstantExpression` legality family; T08 `Fail`/`DiagnosticDraft`
+    /// path; never a `CommitError`).
+    pub const CONST_NOT_CONSTANT_EXPRESSION: Self = Self::new(DiagGroup::Unsupported, 4);
 }
 
 /// A not-yet-committed diagnostic produced by a worker or the protocol layer.

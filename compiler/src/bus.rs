@@ -17,8 +17,9 @@ use crate::arena::{ReservedArena, TypedArena};
 use crate::diagnostic::DiagnosticRecord;
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
-    HostRequestId, InitId, InstructionId, LayoutId, NameId, NodeId, PpTokenId, ResultId, ScopeId,
-    SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId, VRegId, ValueId,
+    HostRequestId, InitId, InstructionId, LayoutId, LiteralId, NameId, NodeId, PpTokenId, ResultId,
+    ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId, VRegId,
+    ValueId,
 };
 use crate::intern::InternTable;
 use crate::limits::{LimitError, Limits};
@@ -43,14 +44,18 @@ pub struct SourceRecord {
 }
 
 /// A source span record.
+///
+/// Offsets are `u64` half-open raw-byte offsets bounded by
+/// `limits.max_source_bytes` (the `/6` widening of the `/5` `u32` offsets;
+/// T03 finding 5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SpanRecord {
     /// Owning source.
     pub source: SourceId,
     /// Start byte offset.
-    pub start: u32,
+    pub start: u64,
     /// End byte offset (exclusive).
-    pub end: u32,
+    pub end: u64,
     /// Expansion that produced this span, if any.
     pub expansion: Option<ExpansionId>,
 }
@@ -111,12 +116,30 @@ pub struct Arenas {
     pub tokens: ReservedArena<TokenId>,
     /// Scopes (schema owned by T06).
     pub scopes: ReservedArena<ScopeId>,
+    /// Scope lifecycle events (schema owned by T06).
+    ///
+    /// A [`ReservedArena`] (stable IDs only): the T06 owner replaces this
+    /// with a real typed arena when it freezes the `ScopeEventRecord` schema.
+    pub scope_events: ReservedArena<ScopeEventId>,
     /// Symbols (schema owned by T06).
     pub symbols: ReservedArena<SymbolId>,
     /// Canonical types (schema owned by T06).
     pub types: ReservedArena<TypeId>,
+    /// Semantic facts, one per checked node (schema owned by T07).
+    ///
+    /// A [`ReservedArena`] (stable IDs only): the T07 owner replaces this
+    /// with a real typed arena when it freezes the `SemRecord` schema.
+    pub sem: ReservedArena<SemId>,
     /// AST nodes (schema owned by T05).
     pub nodes: ReservedArena<NodeId>,
+    /// T04-owned decoded literals (raw lexical facts; record schema owned by
+    /// T04).
+    ///
+    /// A [`ReservedArena`] (stable IDs only, no fabricated record): the T04
+    /// owner replaces this with a real typed arena when it freezes the
+    /// `LiteralRecord` schema. (The `ids.rs` working-basis note names a
+    /// `TypedArena`; that replacement is the T04 freeze, not this bus change.)
+    pub literals: ReservedArena<LiteralId>,
     /// Constants (schema owned by T08).
     pub consts: ReservedArena<ConstId>,
     /// Layout descriptors (schema owned by T08).
@@ -161,9 +184,12 @@ impl Arenas {
             + self.pp_tokens.allocated() as u64
             + self.tokens.allocated() as u64
             + self.scopes.allocated() as u64
+            + self.scope_events.allocated() as u64
             + self.symbols.allocated() as u64
             + self.types.allocated() as u64
+            + self.sem.allocated() as u64
             + self.nodes.allocated() as u64
+            + self.literals.allocated() as u64
             + self.consts.allocated() as u64
             + self.layouts.allocated() as u64
             + self.inits.allocated() as u64
@@ -182,6 +208,10 @@ impl Arenas {
 }
 
 /// Job lifecycle state.
+///
+/// The `Idle` default is the pre-job state. The CT01 job-start transition
+/// (`Idle` → `Running`) is control-chip work owned by T02 and is NOT performed
+/// here; this type only records the state.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum JobState {
     /// No job has been started.
@@ -299,7 +329,64 @@ pub struct TaskStore {
     pub ready: Vec<TaskId>,
     /// Task selected this tick.
     pub active: Option<TaskId>,
+    /// Ephemeral per-tick scheduler batch: tasks dispatched this tick.
+    ///
+    /// Populated by the dispatcher's distinct pre-worker `Ready → Running`
+    /// mutation and cleared at latch only after every dispatched task has a
+    /// terminal/`Waiting`/`Progress` outcome (or the H6 bounded recovery).
+    /// Clearing this set is not itself a transition and never clears a task's
+    /// `Running` state. `reset_wires` at tick start is a wire reset only and
+    /// is not an in-flight lifecycle step; a next-tick-start clear is rejected
+    /// as latch-residual-incompatible. The exact clear owner/order is a T01
+    /// decision. `Waiting` tasks are never in-flight.
+    pub in_flight: Vec<TaskId>,
 }
+
+/// Minimal per-tick dispatch metrics (`/6` working basis).
+///
+/// This is the deferred-minimal carrier: dispatched counts only. The full
+/// `PipelineMetrics` shape (per-stage counts, fairness cursor, backpressure
+/// counters) is deferred to Part B and is NOT defined here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TickMetrics {
+    /// Number of tasks dispatched this tick.
+    pub dispatched: u32,
+}
+
+/// One tick's dispatch record for the canonical bounded bus report.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TickRecord {
+    /// Tasks dispatched this tick, in dispatch order (canonical).
+    pub dispatched: Vec<TaskId>,
+    /// Minimal per-tick metrics (dispatched counts only; see [`TickMetrics`]).
+    pub metrics: TickMetrics,
+    /// Quota-1 projection of the dispatch (derived view of `dispatched`).
+    pub selected: Option<TaskId>,
+}
+
+/// Structured bus-report failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReportCapacityError {
+    /// The bounded report (`max_ticks + 1` records) is full.
+    ReportFull {
+        /// Configured bound (`max_ticks + 1`).
+        limit: u64,
+        /// Records that would result.
+        requested: u64,
+    },
+}
+
+impl std::fmt::Display for ReportCapacityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ReportFull { limit, requested } => {
+                write!(f, "bus report {requested} exceeds limit {limit}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ReportCapacityError {}
 
 /// A worker proposal tagged with its producing chip and task.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -371,6 +458,14 @@ pub struct CompilerBus {
     pub patch_log: Vec<crate::commit::CommittedPatch>,
     /// Per-store revision counters.
     pub store_versions: crate::commit::StoreVersions,
+    /// Canonical bounded tick report (`/6` working basis).
+    ///
+    /// Bounded by `max_ticks + 1` records. Sole-append-site rule: only the
+    /// driver step 6 appends here (the proposed `report.rs`/`driver.rs`; T02).
+    /// The current quota-1 routing shell acts as that driver until the
+    /// proposed modules land, and appends exactly one record per tick through
+    /// [`CompilerBus::push_tick_record`].
+    pub report: Vec<TickRecord>,
 }
 
 impl CompilerBus {
@@ -390,7 +485,23 @@ impl CompilerBus {
             wires: CompilerWires::default(),
             patch_log: Vec::new(),
             store_versions: crate::commit::StoreVersions::new(),
+            report: Vec::new(),
         }
+    }
+
+    /// Append one tick record to the canonical bounded report.
+    ///
+    /// Fails with [`ReportCapacityError::ReportFull`] once `max_ticks + 1`
+    /// records are retained. The bound uses saturating arithmetic so a
+    /// `u64::MAX` tick budget cannot wrap.
+    pub fn push_tick_record(&mut self, record: TickRecord) -> Result<(), ReportCapacityError> {
+        let limit = self.limits().max_ticks.saturating_add(1);
+        let requested = self.report.len() as u64 + 1;
+        if requested > limit {
+            return Err(ReportCapacityError::ReportFull { limit, requested });
+        }
+        self.report.push(record);
+        Ok(())
     }
 
     /// The configured resource limits.
@@ -562,6 +673,8 @@ impl CompilerBus {
                 state: crate::task::TaskState::Ready,
                 enqueue_ordinal: ordinal,
                 ready_tick,
+                progress_count: 0,
+                progress_ordinal: 0,
             },
             &limits,
         )?;
@@ -589,6 +702,8 @@ impl CompilerBus {
             state: crate::task::TaskState::Ready,
             enqueue_ordinal: ordinal,
             ready_tick,
+            progress_count: 0,
+            progress_ordinal: 0,
         });
         self.control.next_enqueue_ordinal += 1;
         id

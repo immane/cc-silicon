@@ -194,3 +194,163 @@ pub fn hex32(hash: &[u8; 32]) -> String {
     }
     out
 }
+
+/// Structured decode failure.
+///
+/// Every decoder built on [`Reader`] returns `Result<_, CodecError>`; no
+/// decoder panics on malformed input, per the crate's checked-errors-only
+/// guarantee (`todo!()`/`unimplemented!()`/`unwrap()` are banned in decoders).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CodecError {
+    /// The input ended before the value was complete.
+    Truncated,
+    /// Bytes remain after the value was fully read.
+    TrailingBytes,
+    /// A length-prefixed string is not valid UTF-8.
+    InvalidUtf8,
+    /// An unknown tag or discriminant byte. Carries the offending tag.
+    InvalidTag(u8),
+    /// A recognized tag whose record shape is reserved for a future contract
+    /// revision and has no frozen encoding yet. Carries a static context note.
+    /// Returned instead of panicking for pending `/6` shapes.
+    Unsupported(&'static str),
+}
+
+impl std::fmt::Display for CodecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated => write!(f, "truncated input"),
+            Self::TrailingBytes => write!(f, "trailing bytes after value"),
+            Self::InvalidUtf8 => write!(f, "invalid UTF-8 in length-prefixed string"),
+            Self::InvalidTag(tag) => write!(f, "unknown tag {tag}"),
+            Self::Unsupported(note) => write!(f, "unsupported shape: {note}"),
+        }
+    }
+}
+
+impl std::error::Error for CodecError {}
+
+/// A checked little-endian reader: the fallible mirror of [`Writer`].
+///
+/// Every read is bounds-checked and returns [`CodecError`] on short input, so
+/// malformed snapshots fail as structured errors rather than panics. The
+/// primitive order and layout exactly mirror [`Writer`] (`u64` length prefixes
+/// for `bytes`/`str`, fixed little-endian integers); this type only adds the
+/// read direction and changes no existing byte format.
+#[derive(Clone, Copy, Debug)]
+pub struct Reader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Reader<'a> {
+    /// Borrow `bytes` as a readable cursor positioned at the start.
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self { buf: bytes, pos: 0 }
+    }
+
+    /// Number of bytes not yet consumed.
+    pub fn remaining(&self) -> usize {
+        self.buf.len().saturating_sub(self.pos)
+    }
+
+    /// Whether every byte was consumed.
+    pub fn is_empty(&self) -> bool {
+        self.pos >= self.buf.len()
+    }
+
+    /// Current cursor offset.
+    pub fn position(&self) -> usize {
+        self.pos
+    }
+
+    /// Take exactly `len` bytes or fail with [`CodecError::Truncated`].
+    pub fn raw(&mut self, len: usize) -> Result<&'a [u8], CodecError> {
+        let end = self.pos.saturating_add(len);
+        let slice = self.buf.get(self.pos..end).ok_or(CodecError::Truncated)?;
+        self.pos = end;
+        Ok(slice)
+    }
+
+    /// Read one byte.
+    pub fn u8(&mut self) -> Result<u8, CodecError> {
+        let byte = *self.buf.get(self.pos).ok_or(CodecError::Truncated)?;
+        self.pos = self.pos.saturating_add(1);
+        Ok(byte)
+    }
+
+    /// Read a boolean encoded as `0`/`1`; any other byte is [`CodecError::InvalidTag`].
+    pub fn bool(&mut self) -> Result<bool, CodecError> {
+        match self.u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            tag => Err(CodecError::InvalidTag(tag)),
+        }
+    }
+
+    /// Read a little-endian `u16`.
+    pub fn u16(&mut self) -> Result<u16, CodecError> {
+        let bytes: [u8; 2] = self
+            .raw(2)?
+            .try_into()
+            .map_err(|_| CodecError::Truncated)?;
+        Ok(u16::from_le_bytes(bytes))
+    }
+
+    /// Read a little-endian `u32`.
+    pub fn u32(&mut self) -> Result<u32, CodecError> {
+        let bytes: [u8; 4] = self
+            .raw(4)?
+            .try_into()
+            .map_err(|_| CodecError::Truncated)?;
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    /// Read a little-endian `u64`.
+    pub fn u64(&mut self) -> Result<u64, CodecError> {
+        let bytes: [u8; 8] = self
+            .raw(8)?
+            .try_into()
+            .map_err(|_| CodecError::Truncated)?;
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    /// Read a little-endian `i64`.
+    pub fn i64(&mut self) -> Result<i64, CodecError> {
+        let bytes: [u8; 8] = self
+            .raw(8)?
+            .try_into()
+            .map_err(|_| CodecError::Truncated)?;
+        Ok(i64::from_le_bytes(bytes))
+    }
+
+    /// Read a little-endian `i128`.
+    pub fn i128(&mut self) -> Result<i128, CodecError> {
+        let bytes: [u8; 16] = self
+            .raw(16)?
+            .try_into()
+            .map_err(|_| CodecError::Truncated)?;
+        Ok(i128::from_le_bytes(bytes))
+    }
+
+    /// Read a length-prefixed byte string (mirrors [`Writer::bytes`]).
+    pub fn bytes(&mut self) -> Result<Vec<u8>, CodecError> {
+        let len = usize::try_from(self.u64()?).map_err(|_| CodecError::Truncated)?;
+        Ok(self.raw(len)?.to_vec())
+    }
+
+    /// Read a length-prefixed UTF-8 string (mirrors [`Writer::str`]).
+    pub fn string(&mut self) -> Result<String, CodecError> {
+        let bytes = self.bytes()?;
+        String::from_utf8(bytes).map_err(|_| CodecError::InvalidUtf8)
+    }
+
+    /// Fail with [`CodecError::TrailingBytes`] unless every byte was consumed.
+    pub fn finish(&self) -> Result<(), CodecError> {
+        if self.pos == self.buf.len() {
+            Ok(())
+        } else {
+            Err(CodecError::TrailingBytes)
+        }
+    }
+}

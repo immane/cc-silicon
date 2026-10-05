@@ -18,19 +18,20 @@
 // ============================================================================
 
 use crate::codec::{hex32, sha256, Writer};
+use crate::ids::RecordFamily;
 use crate::limits::Limits;
 use crate::manifest::StoreSchema;
 use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
 use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
 /// Frozen contract version for T01 C01-C06.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/5";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/6";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5";
+pub const CONTRACT_HASH: &str = "60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -82,6 +83,23 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "routing.commit-failure-not-stranded",
     "routing.propagate-mutation-after-read",
     "config.structurally-immutable",
+    // `/6` scheduler/commit additions (Groups A/B decisions).
+    "dispatch.inflight-cleared-at-latch",
+    "dispatch.cancel-precedes-budget",
+    "commit.empty-proposal-fails-explicitly",
+    "commit.batch-recovery-bounded-dispatch-order",
+    "commit.no-running-at-latch",
+    "task.progress-reinsert-exactly-once",
+    "task.progress-limit-fails-task",
+    "join.await-all-terminal-state-only",
+    "join.no-consume-at-join",
+    "result.file-enter-structural",
+    "const.legal-completes-record",
+    "const.non-legal-fails-no-record",
+    "const.one-record-per-request",
+    "sem.effect-mask-zero-only",
+    "parse.cursor-via-continuation",
+    "manifest.store-owner-allowlist",
     "bootstrap.integration-only",
     "snapshot.wire-payloads-encoded",
     "snapshot.reserved-tombstones-visible",
@@ -92,8 +110,61 @@ pub const NORMATIVE_RULES: &[&str] = &[
 pub const TASK_STATE_NAMES: &[&str] = &["ready", "running", "waiting", "completed", "failed"];
 /// The `ResultValue` variant names, in encoding order.
 pub const RESULT_VALUE_NAMES: &[&str] = &["empty", "ack", "record", "records", "diagnostic"];
+/// The `/6` M1 append seed version: inventories plus encode presence.
+///
+/// Full metrics/report bodies stay deferred to Part B with a re-entry
+/// criterion; only scheduler-observable facts are hashed.
+pub const M1_SEED_VERSION: &str = "m1-append/1";
+
+/// Store-to-family-to-backing-arena mapping, in proposal §8 row order.
+///
+/// `(store name, append field, family name, backing arena)`. The `Names`
+/// family maps to the `InternTable`, not an arena. Order is part of the
+/// frozen seed.
+pub const M1_STORE_FAMILY_ARENA: &[(&str, &str, &str, &str)] = &[
+    ("sources", "spans", "span", "spans"),
+    ("sources", "expansions", "expansion", "expansions"),
+    ("names", "entries", "name", "intern-table"),
+    ("pp", "tokens", "pp_token", "pp_tokens"),
+    ("lex", "tokens", "token", "tokens"),
+    ("lex", "literals", "literal", "literals"),
+    ("parse", "nodes", "node", "nodes"),
+    ("tasks", "continuations", "continuation", "continuations"),
+    ("symbols", "scopes", "scope", "scopes"),
+    ("symbols", "scope_events", "scope_event", "scope_events"),
+    ("symbols", "symbols", "symbol", "symbols"),
+    ("types", "records", "type", "types"),
+    ("sem", "records", "sem", "sem"),
+    ("constants", "records", "const", "consts"),
+    ("ir", "functions", "function", "functions"),
+    ("ir", "blocks", "block", "blocks"),
+    ("ir", "values", "value", "values"),
+    ("ir", "instructions", "instruction", "instructions"),
+    ("artifacts", "fragments", "artifact", "artifacts"),
+];
+
+/// Proposal wire tags, in `PROPOSAL_NAMES` order.
+pub const M1_PROPOSAL_WIRE_TAGS: &[(&str, u8)] = &[
+    ("enqueue", 0),
+    ("complete", 1),
+    ("fail", 2),
+    ("await_host", 3),
+    ("store_patch", 4),
+    ("append_records", 5),
+    ("progress", 6),
+    ("await_children", 7),
+];
 /// The `Proposal` variant names, in encoding order.
-pub const PROPOSAL_NAMES: &[&str] = &["enqueue", "complete", "fail", "await_host", "store_patch"];
+pub const PROPOSAL_NAMES: &[&str] = &[
+    "enqueue",
+    "complete",
+    "fail",
+    "await_host",
+    "store_patch",
+    "append_records",
+    "progress",
+    "await_children",
+];
 /// The `PatchOp` variant names, in encoding order.
 pub const PATCH_OP_NAMES: &[&str] = &["append", "replace", "tombstone"];
 /// The `Capability` variant names.
@@ -268,6 +339,14 @@ impl FrozenSchema {
         w.u32(self.limits.max_diagnostics);
         w.u64(self.limits.max_ticks);
         w.u32(self.limits.max_proposals_per_tick);
+        // `/6` scheduler bounds (sole per-tick dispatch bound; the redundant
+        // `max_dispatches_per_tick` stays dropped).
+        w.u32(self.limits.max_inflight_per_tick);
+        for bound in self.limits.stage_queue_bound {
+            w.u32(bound);
+        }
+        w.u32(self.limits.max_const_bits);
+        w.u32(self.limits.max_task_progress);
 
         // Foundation store schema.
         let schema = StoreSchema::foundation();
@@ -279,6 +358,35 @@ impl FrozenSchema {
                 w.str(field);
             }
         }
+
+        // `/6` M1 append seed: inventories plus encode presence. Full
+        // metrics/report bodies stay deferred to Part B with a re-entry
+        // criterion; only the scheduler-observable facts below are hashed.
+        w.str(M1_SEED_VERSION);
+        // Record families: (name, wire tag, ordinal) in `RecordFamily::ALL`
+        // order. Tags and ordinals are separate inventories by design.
+        w.u64(RecordFamily::ALL.len() as u64);
+        for family in RecordFamily::ALL {
+            w.str(family.name());
+            w.u8(family.ordinal());
+        }
+        // Store-to-family-to-arena mapping, in proposal §8 row order.
+        w.u64(M1_STORE_FAMILY_ARENA.len() as u64);
+        for (store, field, family, arena) in M1_STORE_FAMILY_ARENA {
+            w.str(store);
+            w.str(field);
+            w.str(family);
+            w.str(arena);
+        }
+        // Proposal wire tags, in `PROPOSAL_NAMES` order.
+        w.u64(M1_PROPOSAL_WIRE_TAGS.len() as u64);
+        for &(name, tag) in M1_PROPOSAL_WIRE_TAGS {
+            w.str(name);
+            w.u8(tag);
+        }
+        // Scheduler-observable report facts (presence only; bodies deferred).
+        w.str("tick-record.dispatched");
+        w.str("tick-record.selected");
 
         w.finish()
     }
@@ -318,7 +426,7 @@ pub fn contract_version_file() -> String {
          corpus_fetch=on-demand hash-locked\n\
          reference_baseline=authorized, not available, not candidate evidence\n\
          hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)\n\
-         hash_excludes=runtime-registrations, routing-content, group-declared-store-fields, chip-logic\n\
+         hash_excludes=runtime-registrations, routing-content, post-seed-declarations, chip-logic\n\
          verified_state=private-VerifiedState; attest validates caller-supplied report data and hash, not authenticity or physical provenance\n"
     )
 }

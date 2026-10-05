@@ -80,20 +80,24 @@ unique in the task-kind registry, so one name can never carry two semantics.
 - Adding a field to the frozen foundation schema (`StoreSchema::foundation()`)
   or a normative rule identifier changes the frozen contract hash in
   `compiler/contracts/CONTRACT_VERSION`; the integrator republishes it in one
-  place and dependent packages are retested. Group-declared fields added after
-  the foundation via `StoreSchema::declare` are excluded from that hash
-  (`hash_excludes=group-declared-store-fields`) and are captured by the runtime
+  place and dependent packages are retested.
+- Two-tier hash scope: the frozen seed (`StoreSchema::foundation()` plus the
+  `M1AppendSchema` section frozen at `/6`) participates in the contract hash,
+  while post-seed runtime `StoreSchema::declare()` extensions stay excluded
+  from that hash (`hash_excludes=... post-seed-declarations ...`, scoped to
+  post-seed runtime declarations only) and are captured by the runtime
   snapshot/schema mechanisms instead; declaring them does not by itself change
-  the frozen artifact.
-
-At `/6`, the accepted two-tier hash scope will change this boundary: the frozen
-seed (`StoreSchema::foundation()` plus the future `M1AppendSchema`) will
-participate in the contract hash, while post-seed runtime
-`StoreSchema::declare()` extensions stay excluded. Applying that scope requires
-an atomic update of this section, the `hash_excludes=group-declared-store-fields`
-token in `CONTRACT_VERSION`/`contract.rs`/`compiler/README.md`,
-`FrozenSchema::encode`, and the freeze test; the current `/5` behavior and hash
-are unchanged.
+  the frozen artifact. Per-chip allowlist rows land wave-gated into the seed,
+  not here.
+- History: at `/5` the boundary was coarser — the whole foundation was the
+  seed and every group-declared field added after the foundation via
+  `StoreSchema::declare` was excluded from the frozen hash
+  (`hash_excludes=group-declared-store-fields`) and captured by the runtime
+  snapshot/schema mechanisms instead, without changing the frozen artifact by
+  itself. That `/5` behavior and hash are preserved as history; the two-tier
+  scope above was applied atomically at `/6` together with the matching
+  `hash_excludes` token in `CONTRACT_VERSION`/`contract.rs`/`compiler/README.md`,
+  `FrozenSchema::encode`, and the freeze test.
 
 ## 5. Commit-time enforcement (beyond the lint)
 

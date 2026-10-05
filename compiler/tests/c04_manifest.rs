@@ -1,7 +1,8 @@
+use cc_silicon_compiler::diagnostic::DiagGroup;
 use cc_silicon_compiler::ids::ChipId;
 use cc_silicon_compiler::manifest::{
     validate_manifest, BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, ManifestError,
-    ManifestRegistry, StoreSchema,
+    ManifestRegistry, StoreSchema, STORE_OWNER_ALLOWLIST,
 };
 use cc_silicon_compiler::task::{KindStatus, StoreId, TaskGroup, TaskKind, TaskKindRegistry};
 
@@ -208,4 +209,76 @@ fn group_owners_can_declare_new_store_fields() {
     schema.declare(StoreId::Parse, "frame.cursor").unwrap();
     assert!(schema.has_field(&FieldPath::new(StoreId::Parse, "frame.cursor")));
     assert!(schema.declare(StoreId::Parse, "frame.cursor").is_err());
+}
+
+#[test]
+fn names_store_entry_resolves_for_group_manifests() {
+    // (Names, "entries") is the intern backing label: the manifest model can
+    // authorize name interning like every other append family. Registration
+    // enforcement itself (the chip-keyed allowlist and any
+    // store-ownership/stage-assignment errors) is manifest-track work in
+    // `manifest.rs` and is not constructed here.
+    assert_eq!(StoreId::Names.index(), 20);
+    assert_eq!(StoreId::Names.name(), "names");
+    assert_eq!(
+        FieldPath::parse("names.entries"),
+        Some(FieldPath::new(StoreId::Names, "entries"))
+    );
+    let mut schema = StoreSchema::foundation();
+    assert!(!schema.has_field(&FieldPath::new(StoreId::Names, "entries")));
+    schema.declare(StoreId::Names, "entries").unwrap();
+    let mut manifest = base_manifest();
+    manifest
+        .writes
+        .push(FieldPath::new(StoreId::Names, "entries"));
+    assert!(validate_manifest(&manifest, &schema, &TaskKindRegistry::foundation()).is_ok());
+}
+
+#[test]
+fn store_owner_allowlist_seed_is_empty_with_zero_ready_writers() {
+    // Mechanism frozen, seed pending: per-chip rows land wave-gated at /6.
+    assert!(STORE_OWNER_ALLOWLIST.is_empty());
+    // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
+    // writers, now and for every future seed this test guards.
+    assert!(
+        !STORE_OWNER_ALLOWLIST
+            .iter()
+            .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready"),
+        "tasks.ready must never gain an allowlisted chip writer"
+    );
+}
+
+#[test]
+fn register_accepts_valid_manifests_while_the_allowlist_seed_is_empty() {
+    let schema = StoreSchema::foundation();
+    let kinds = TaskKindRegistry::foundation();
+    let mut registry = ManifestRegistry::new();
+    // The dormant allowlist skeleton must not break existing validation.
+    registry.register(base_manifest(), &schema, &kinds).unwrap();
+}
+
+#[test]
+fn new_manifest_error_variants_render() {
+    let violation = ManifestError::StoreOwnerViolation {
+        chip: "NoopChip",
+        store: StoreId::Tasks,
+        field: "queue.ready",
+        expected_kind: TaskKind::CONTROL_NOOP,
+    };
+    assert!(violation.to_string().contains("allowlist"));
+    assert_eq!(violation.to_diagnostic().code.group, DiagGroup::Manifest);
+
+    let unassigned = ManifestError::StageUnassigned {
+        kind: TaskKind::CONTROL_NOOP,
+    };
+    assert!(unassigned.to_string().contains("stage"));
+    assert_eq!(unassigned.to_diagnostic().code.group, DiagGroup::Manifest);
+
+    let mismatch = ManifestError::StageLayerMismatch {
+        kind: TaskKind::CONTROL_NOOP,
+        stage: 2,
+        layer: 7,
+    };
+    assert!(mismatch.to_string().contains("layer"));
+    assert_eq!(mismatch.to_diagnostic().code.group, DiagGroup::Manifest);
 }
