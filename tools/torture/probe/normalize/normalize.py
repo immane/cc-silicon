@@ -22,7 +22,10 @@ Normalization rules (all deterministic):
     asserted, and ``utf32`` is named only when the ISO/IEC 10646 macro, an
     actually compiled non-BMP wide literal, the width, and the range jointly
     justify it, otherwise ``unresolved``;
-  - every T01 required probe field is present, or explicitly `unresolved`.
+  - every T01 required probe field is present, or explicitly `unresolved`;
+  - the ``abi.*.ok`` behavioural self-check values are copied through as
+    measured evidence and are not required to be ``1``, so report success does
+    not mean the self-checks passed.
 
 All required raw captures are validated before the output directory is created
 or written, so a missing capture leaves no partial report or evidence behind.

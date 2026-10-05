@@ -17,6 +17,10 @@
  * classifier/integration review must interpret. The scalar values in
  * scalar-layout.c are directly measured and carry no such caveat.
  *
+ * Not covered: HVA (homogeneous short-vector aggregate). This file defines no
+ * short-vector fixture, so no HVA ABI class may be claimed from its assembly
+ * evidence.
+ *
  * It prints deterministic `key=value` lines only: no timestamps, addresses,
  * host names, or locale-dependent floating formatting.
  */
@@ -35,7 +39,14 @@ typedef struct {
     double a, b, c, d;
 } hfa_4d;
 
-/* Aggregate with one GP and one FP member: split classification. */
+/*
+ * Non-homogeneous 16-byte aggregate: one integer and one floating member.
+ * AAPCS64 classifies a non-HFA/HVA composite as a whole, not member by
+ * member: it is passed in two consecutive general-purpose registers (x0/x1),
+ * never split across GP and FP registers, with the double bits carried in the
+ * second GPR. The `split_gp_fp` name is historical and is not a
+ * classification claim; only the emitted assembly is evidence.
+ */
 typedef struct {
     long i;
     double d;
@@ -61,13 +72,21 @@ double abi_fp_ten(double a, double b, double c, double d, double e,
     return a + b + c + d + e + f + g + h + i + j;
 }
 
-/* Aggregate returns: HFA in FP registers, split in GP+FP, large indirectly. */
+/*
+ * Aggregate returns: HFA in FP/SIMD registers; the non-HFA/HVA 16-byte
+ * aggregate above in two GPRs (x0/x1), never GP+FP split; aggregates larger
+ * than 16 bytes indirectly, with the caller-supplied result address in x8.
+ */
 hfa_4f abi_ret_hfa_4f(hfa_4f s) { return s; }
 hfa_4d abi_ret_hfa_4d(hfa_4d s) { return s; }
 split_gp_fp abi_ret_split(split_gp_fp s) { return s; }
 big_32 abi_ret_big(big_32 s) { return s; }
 
-/* Interleaved GP/FP scalar arguments. */
+/*
+ * Interleaved GP/FP scalar arguments. Each scalar is classified on its own:
+ * integer scalars use GPRs, floating scalars use FP/SIMD registers. This is
+ * scalar classification and must not be read as an aggregate split.
+ */
 double abi_mixed_many(long i0, double d0, long i1, double d1, long i2,
                       double d2, long i3, double d3, long i4, double d4) {
     return (double)(i0 + i1 + i2 + i3 + i4) + d0 + d1 + d2 + d3 + d4;
@@ -135,7 +154,10 @@ int main(void) {
     printf("abi.alignof.va_list=%zu\n", (size_t)__alignof__(va_list));
 
     /* Behavioural self-checks. These prove the reference ABI round-trips the
-     * values; they do not by themselves count registers. */
+     * values; they do not by themselves count registers. A failed check prints
+     * ok=0 but does not change this program's exit status, and the normalizer
+     * records the values without enforcing them: report success is not a
+     * self-check pass. */
     printf("abi.gp_ten.ok=%d\n", gp == 45);
     printf("abi.fp_ten.ok=%d\n", fp == 45.0);
     printf("abi.mixed_many.ok=%d\n", mixed == 27.5);

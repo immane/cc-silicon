@@ -21,21 +21,29 @@ A reference-only target probe for the frozen target identity
   `long double`) and their raw encodings, and the compiler's own identity
   macros. Every value is measured at run time.
 - `src/abi-args.c` — exercises AAPCS64 argument/return classification
-  (scalar GP/FP, HFA/HVA, split aggregates, by-reference aggregates, and
-  variadic calls). It runs behavioural self-checks and is also compiled to
-  assembly as classification evidence.
+  (scalar GP/FP, HFA, non-homogeneous aggregates passed and returned in
+  general-purpose registers, by-reference aggregates, and variadic calls).
+  It runs behavioural self-checks and is also compiled to assembly as
+  classification evidence. HVA (homogeneous short-vector aggregate) is
+  **not** covered: the file defines no short-vector fixture, so the probe
+  makes no HVA claim. A failed self-check prints
+  `abi.*.ok=0` but the program still exits 0; the results are recorded
+  evidence, not a pass/fail gate (see "Self-check results are not a gate").
 - `run-probe.sh` — fails closed unless it is on 64-bit Linux aarch64, uses the
   one explicitly pinned reference GCC, then compiles/runs the probes, captures
   toolchain identity and predefined macros, normalizes the capture, and writes a
-  deterministic report plus SHA-256.
+  deterministic report plus SHA-256. Fail-closed covers the platform, the pins,
+  and capture completeness; it does **not** cover the behavioural `abi.*.ok`
+  self-checks (see "Self-check results are not a gate").
 - `lib/guard.sh` — pure, testable fail-closed predicates.
 - `normalize/normalize.py` — deterministic normalizer (sorting, path/timestamp
-  stripping, pure classifications, evidence hashing). It validates every
-  required capture before creating output, writes binary LF, and drops
+  stripping, pure classifications, evidence hashing). It validates that every
+  required capture exists before creating output, writes binary LF, and drops
   clock/path-dependent macros from both the report and the hashed macro
   evidence, so two probes on different clocks/checkouts yield identical bytes.
   It also re-reads the written report and verifies it against
-  `report.sha256`.
+  `report.sha256`. It copies `abi.*.ok` values through without requiring them
+  to be `1`, so a successfully normalized report is not a self-check pass.
 - `tests/` — normalizer and guard self-tests that need **no compiler**.
 - `.github/workflows/t00-target-probes.yml` — isolated CI: a compiler-free
   self-test job, and a manual, pinned, fail-closed real-probe job.
@@ -51,6 +59,10 @@ A reference-only target probe for the frozen target identity
   that is not Linux aarch64 before a single probe is compiled.
 - It never invents a toolchain digest or version; unresolved pins are required
   inputs and the harness fails closed.
+- It never fails the run on a behavioural self-check: a failed `abi.*.ok`
+  check prints `0` but the probe still exits 0, the report is still written,
+  and its `report.sha256` still verifies. Report success is **not** a
+  self-check pass (see "Self-check results are not a gate").
 
 ## Exact host prerequisites
 
@@ -143,6 +155,27 @@ machine-specific path affects `report.txt`, `report.sha256`, or any
 (platform newline translation cannot change the hash), and the written report
 is re-read and checked against `report.sha256` before the script succeeds.
 
+### Self-check results are not a gate
+
+`src/abi-args.c` prints eight behavioural self-checks (`abi.gp_ten.ok`,
+`abi.fp_ten.ok`, `abi.mixed_many.ok`, `abi.variadic.ok`,
+`abi.ret_hfa_4f.ok`, `abi.ret_hfa_4d.ok`, `abi.ret_split.ok`,
+`abi.ret_big.ok`). They are measured evidence that the reference ABI
+round-trips the exercised values, but nothing in the harness enforces them:
+
+- a failed check prints `abi.*.ok=0` and the probe program still exits 0, so
+  `run-probe.sh` completes and writes the report;
+- `normalize/normalize.py` copies the fields through and does not require them
+  to be `1` (they are not part of the required-field floor or of the
+  `REQUIRED_FIELDS` list).
+
+A complete report with a valid `report.sha256` is therefore **not** evidence
+that the self-checks passed. A consumer must require every `abi.*.ok` field to
+be present and equal to `1`; a `0` or a missing field means there is no passing
+evidence for the corresponding round-trip check, and the report must not be
+treated as passing ABI evidence. The probe exits 0 regardless of the
+self-check results, and the normalizer does not enforce them.
+
 The substrate is assumed to be a **native** aarch64 Linux host. The platform
 guard records `uname`/`getconf` and rejects anything that is not Linux/aarch64/
 64-bit, but it cannot detect aarch64 emulated on another kernel; the report
@@ -183,7 +216,9 @@ explicitly `unresolved`:
 The emitted assembly (`gcc -S` of `abi-args.c`, hashed in
 `evidence.abi-args.s.sha256`) is the classification evidence for those fields.
 The harness deliberately does **not** guess numeric register counts; a later
-classifier/integration review must interpret that evidence.
+classifier/integration review (the H07 reference-oracle/target-capability
+classification) must interpret that evidence, and only the T01 integrator may
+mark the target verified (`Probed`) after incorporating a real report hash.
 
 ## Unverified requirements (until an arm64 CI artifact exists)
 
@@ -196,7 +231,9 @@ classifier/integration review must interpret that evidence.
 3. The concrete scalar/ABI values — measured only when the harness runs on the
    substrate.
 4. The AAPCS64 argument-register counts and variadic register-save-area
-   behaviour — evidence captured, not derived numerically.
+   behaviour — evidence captured, not derived numerically. HVA
+   classification is not exercised at all (no short-vector fixture), so no
+   HVA class may be claimed from the captured assembly.
 5. C02 is not verified. Only the T01 integrator may set
    `VerificationState::Probed` after incorporating a real report hash.
 
@@ -214,6 +251,11 @@ classifier/integration review must interpret that evidence.
 ## Ownership
 
 This area (`tools/torture/probe/**` and
-`.github/workflows/t00-target-probes.yml`) is owned by the H01 probe task. It is
-separate from the H00 verifier (`tools/torture/src/**`, `tools/torture/README.md`)
-and from the T01 compiler integrator (`compiler/**`). Do not overwrite either.
+`.github/workflows/t00-target-probes.yml`) is owned by the H01 probe task. The
+T00 H01/H07 boundary (H01 owns the harness and the hashed report; H07 owns the
+reference-oracle classification, including the four ABI fields this report
+leaves `unresolved`) is recorded in
+[T00_GCC_TORTURE_GATE.md §4.1](../../../docs/tasks/T00_GCC_TORTURE_GATE.md). It
+is separate from the H00 verifier (`tools/torture/src/**`,
+`tools/torture/README.md`) and from the T01 compiler integrator
+(`compiler/**`). Do not overwrite either.
