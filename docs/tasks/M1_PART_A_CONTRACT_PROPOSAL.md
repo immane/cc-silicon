@@ -6405,11 +6405,23 @@ remain **pending**.
 - **Finding.** The CDR `§G2` signed-range overflow formula
   `-(2^(max_const_bits-1)) <= v <= 2^(max_const_bits-1)-1` was, in an earlier draft,
   phrased as if it were an operative selected step. The T08 package (task-package
-  revision 3, with a **same-revision correction note and no new revision**) records
-  that this was a **wording error**: the only `max_const_bits` claim the M1-only
-  evaluator candidate makes is that the exercised M1 results (`2`, `3`, `5`) are
-  **representable for every accepted valid `max_const_bits` value** (any cap `<= 128`,
-  including the default `128`). The candidate settles **neither** the general overflow
+  revision 3, with a **same-revision correction note and no new revision**) recorded
+  that phrasing as a **wording error**; that same-revision note is preserved as
+  history, but its own `max_const_bits` sentence — that the exercised M1 results
+  (`2`, `3`, `5`) are **representable for every accepted valid `max_const_bits`
+  value** (any cap `<= 128`, including the default `128`) — was itself overbroad
+  and is **superseded** (review
+  [DOC-14](../reviews/2026-10-05_DOCUMENTATION_REVIEW.md); T08 task-package
+  revision 4). At a budget of `1` the magnitude `2` already needs two bits and `5`
+  needs three, before any sign representation, so those values cannot be
+  representable there. **Corrected position (DOC-14; no acceptance change, no
+  freeze, no code):** M1 **success acceptance is limited to a sufficient
+  budget** (e.g. the default `128`); an **insufficient budget** must produce a
+  **typed overflow/capacity result** — the accepted `ConstOverflow`
+  chip-diagnostic classification, whose exact trigger formula remains open —
+  **not** a `Legal` success or a committed `ConstRecord`. The configuration
+  range and minimum are **unchanged**: valid values `<= 128` remain valid and
+  **no minimum is raised**. The candidate settles **neither** the general overflow
   bound formula, **nor** the signed/unsigned representation, **nor** the
   representation carrier, **nor** the chip-vs-commit enforcement. The `§G2` formula
   and the `ConstRecord { ty, value: i128 }` carrier are retained **only as unselected
