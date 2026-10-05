@@ -104,15 +104,17 @@ This table is a work plan; naming a task does not mean it exists. Current state:
   hash. `attest` validates caller-supplied data and its hash, not authenticity
   or physical provenance (TOCTOU), and the ABI classification is unresolved, so
   no probe has been attested and C02 remains unverified.
-- **H04 is absent, and it gates Part A evidence as well as Part B.** There is no
-  candidate driver or binary (`compiler/` builds a library only). H04's surface
-  is not limited to the torture flags above: the M1 Part A evidence commands
-  (snapshot/trace emission and IR interpretation;
-  [M1_TARGET_ACCEPTANCE.md](M1_TARGET_ACCEPTANCE.md) §9) also require an
-  H04-owned CLI, so the absent driver blocks Part A **evidence collection** —
-  the Part A contract and fixtures remain probe- and driver-independent for
-  drafting. H02–H03 and H05–H10 are planned only; H02–H03 remain required for
-  any torture run and H05–H10 for the final gate.
+- **H04 is present for Part A, still absent for the rest.** The candidate
+  driver binary (`compiler/src/bin/candidate.rs`, `compiler/tests/h04_candidate.rs`,
+  6 tests) drives the M1 pipeline from source bytes and emits Part A
+  evidence (snapshot/trace hashes, modeled constant), refuses `-S`/`-c`
+  while the target is unverified, and rejects invalid input with a
+  structured diagnostic. `-E`, `-I`/`-D`/`-U`, multi-source compilation,
+  and the torture flag matrix remain deferred (explicit errors, never a
+  fallback to another C compiler). See
+  [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md). H02–H03 and H05–H10
+  are planned only; H02–H03 remain required for any torture run and H05–H10
+  for the final gate.
 
 H02–H03 do not require fully rewriting Tcl/DejaGnu from scratch. Prefer retaining the official driver and integrating it through a compiler-under-test wrapper and board; if a runner is built from scratch, verify item by item that it matches the official instances/judging. A directive that cannot be recognized must be reported as a harness gap and must block the final claim; it must not be ignored.
 

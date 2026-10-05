@@ -60,9 +60,10 @@ T00's Host work items H00–H10 are defined in
 [T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4. They are host/tooling
 tasks, not C-language chips, and none is complete today: H00 is scaffold only
 (no corpus, no frozen lock), H01's probe harness exists but has **never run**
-(no report; C02 unverified), and H04's candidate driver is absent (the M1 Part A
-evidence commands and the torture flag path both need it); H02–H03 and H05–H10
-are planned only. The probe→attestation handoff is T01-integrator-owned, with
+(no report; C02 unverified), and H04's candidate driver exists for Part A
+only (M1 evidence commands work; `-E`/`-I`/`-D`/`-U`/multi-source and the
+torture flag path are deferred — see [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md));
+H02–H03 and H05–H10 are planned only. The probe→attestation handoff is T01-integrator-owned, with
 H07 owning the classification of the report's `unresolved` ABI fields. No
 torture rate, probe result, or M1 acceptance may be claimed from this state.
 

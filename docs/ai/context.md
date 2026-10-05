@@ -96,7 +96,7 @@ git diff --check
 
 ## 6. Open threads (do not treat as settled)
 
-- T02 control subset + H04 candidate driver (evidence CLI) — biggest gap.
+- T02 control subset (blocked on the `/6` co-freeze) + H04 remainder (`-E`/`-I`/`-D`/`-U`/multi-source/torture flags; Part A driver present) — biggest gap.
 - T13 VF remainder on real records (VF02–04/VF13–14; VF01/VF05/VF06/VF12-M1 exist).
 - File-Enter edge auto-firing; `TokenRecord.literal` forward link;
   `ConversionPlan`; query-point lookup ordering; FunctionEnd/IR28 hook
