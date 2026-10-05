@@ -151,10 +151,25 @@ fn parse_failure_is_a_lint_failure() {
 }
 
 #[test]
-fn accepts_deterministic_btree_and_sibling_reexport() {
+fn accepts_deterministic_btree_and_self_rooted_reexport() {
     assert!(messages("use std::collections::BTreeMap;").is_empty());
     assert!(messages("use std::collections::BTreeSet;").is_empty());
-    assert!(messages("pub use fold::{FoldChip};").is_empty());
+    assert!(messages("pub use self::fold::{FoldChip};").is_empty());
+    // A bare module root stays rejected so cross-chip imports are visible.
+    assert!(!messages("pub use fold::{FoldChip};").is_empty());
+}
+
+#[test]
+fn accepts_transparent_matches_macro() {
+    let source = r#"
+        struct MatchChip;
+        impl MatchChip {
+            fn compute(&self, kind: u32) -> bool {
+                matches!(kind, 1 | 2 | 3)
+            }
+        }
+    "#;
+    assert!(messages(source).is_empty());
 }
 
 #[test]
@@ -169,4 +184,31 @@ fn rejects_worker_compute_host_api() {
     assert!(diagnostics
         .iter()
         .any(|message| message.contains("Host or nondeterministic")));
+}
+
+#[test]
+fn accepts_type_constructors_but_rejects_bare_unknown_calls() {
+    let source = r#"
+        struct TokenChip;
+        impl TokenChip {
+            fn compute(&self) -> u32 {
+                let handle = DraftRef(0);
+                let ok: Option<u32> = Some(1);
+                handle.0 + ok.unwrap_or(0)
+            }
+        }
+    "#;
+    assert!(messages(source).is_empty());
+
+    let source = r#"
+        struct UnknownCallChip;
+        impl UnknownCallChip {
+            fn compute(&self) -> u32 {
+                mystery_helper(1)
+            }
+        }
+    "#;
+    assert!(messages(source)
+        .iter()
+        .any(|message| message.contains("not statically auditable")));
 }

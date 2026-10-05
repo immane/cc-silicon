@@ -307,6 +307,9 @@ pub enum CommitError {
     Limit(LimitError),
     /// An arena is at capacity; nothing was committed.
     Capacity(ArenaError),
+    /// The intern table would exceed its entry or byte budget; nothing was
+    /// committed (`/11` LX-slice `Name` appends).
+    Intern(InternError),
 }
 
 impl std::fmt::Display for CommitError {
@@ -434,6 +437,7 @@ impl std::fmt::Display for CommitError {
             ),
             Self::Limit(error) => write!(f, "limit: {error}"),
             Self::Capacity(error) => write!(f, "capacity: {error}"),
+            Self::Intern(error) => write!(f, "intern: {error}"),
         }
     }
 }
@@ -454,7 +458,8 @@ impl CommitError {
     /// `NonAdvancingProgress` → `(Protocol, 15)`,
     /// `ProgressLimit` → `(Protocol, 16)`,
     /// `TerminatorMissing` → `(Task, 10)`,
-    /// `UnpredictedRecord` → `(Protocol, 17)`.
+    /// `UnpredictedRecord` → `(Protocol, 17)`,
+    /// `Intern` → `(Protocol, 18)`.
     pub fn code(&self) -> DiagnosticCode {
         match self {
             Self::BackpressureCapacity { .. } => DiagnosticCode::new(DiagGroup::Protocol, 10),
@@ -465,6 +470,7 @@ impl CommitError {
             Self::NonAdvancingProgress { .. } => DiagnosticCode::new(DiagGroup::Protocol, 15),
             Self::ProgressLimit { .. } => DiagnosticCode::new(DiagGroup::Protocol, 16),
             Self::UnpredictedRecord { .. } => DiagnosticCode::new(DiagGroup::Protocol, 17),
+            Self::Intern { .. } => DiagnosticCode::new(DiagGroup::Protocol, 18),
             Self::TerminatorMissing { .. } => DiagnosticCode::new(DiagGroup::Task, 10),
             _ => DiagnosticCode::new(DiagGroup::Protocol, 1),
         }
@@ -587,9 +593,28 @@ pub fn commit_proposals(
     let mut progress_failed: Vec<(TaskId, CommitError)> = Vec::new();
     let mut total_drafts: u32 = 0;
     // Gate 1 (`/7`) typed materialization counts, per arena, for the
-    // infallible apply pass below.
+    // infallible apply pass below (`Artifact` added at `/10`).
     let mut new_literals: u32 = 0;
     let mut new_consts: u32 = 0;
+    let mut new_artifacts: u32 = 0;
+    let mut new_tokens: u32 = 0;
+    let mut new_nodes: u32 = 0;
+    let mut new_types: u32 = 0;
+    let mut new_symbols: u32 = 0;
+    let mut new_scopes: u32 = 0;
+    let mut new_scope_events: u32 = 0;
+    let mut new_sems: u32 = 0;
+    let mut new_functions: u32 = 0;
+    let mut new_blocks: u32 = 0;
+    let mut new_values: u32 = 0;
+    let mut new_instructions: u32 = 0;
+    let mut new_spans: u32 = 0;
+    let mut new_pptokens: u32 = 0;
+    // Simulated intern table for `Name` bodies (`/11`): cloned once, then
+    // fed every `Name` spelling in validation order so capacity is decided
+    // without mutating the bus. The apply pass repeats the identical
+    // sequence, so its interns are infallible after this preflight.
+    let mut intern_sim = bus.intern.clone();
 
     // Predicted record IDs for this batch's appends, in apply order:
     // `(owning task, family, predicted index)`. A `Complete` that names a
@@ -598,10 +623,36 @@ pub fn commit_proposals(
     // Bases are captured before any mutation (failure atomicity holds).
     let literals_base = bus.arenas.literals.allocated();
     let consts_base = bus.arenas.consts.allocated();
+    let artifacts_base = bus.arenas.artifacts.allocated();
+    let tokens_base = bus.arenas.tokens.allocated();
+    let nodes_base = bus.arenas.nodes.allocated();
+    let types_base = bus.arenas.types.allocated();
+    let symbols_base = bus.arenas.symbols.allocated();
+    let scopes_base = bus.arenas.scopes.allocated();
+    let sem_base = bus.arenas.sem.allocated();
+    let functions_base = bus.arenas.functions.allocated();
+    let blocks_base = bus.arenas.blocks.allocated();
+    let values_base = bus.arenas.values.allocated();
+    let instructions_base = bus.arenas.instructions.allocated();
+    let spans_base = bus.arenas.spans.allocated();
+    let pp_tokens_base = bus.arenas.pp_tokens.allocated();
+    let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
         let mut next_literal = literals_base;
         let mut next_const = consts_base;
+        let mut next_artifact = artifacts_base;
+        let mut next_token = tokens_base;
+        let mut next_node = nodes_base;
+        let mut next_type = types_base;
+        let mut next_symbol = symbols_base;
+        let mut next_scope = scopes_base;
+        let mut next_sem = sem_base;
+        let mut next_function = functions_base;
+        let mut next_block = blocks_base;
+        let mut next_value = values_base;
+        let mut next_instruction = instructions_base;
+        let mut next_pptoken = pp_tokens_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -621,6 +672,113 @@ pub fn commit_proposals(
                                 next_const,
                             ));
                             next_const = next_const.saturating_add(1);
+                        }
+                        G1DraftBody::Artifact(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Artifact,
+                                next_artifact,
+                            ));
+                            next_artifact = next_artifact.saturating_add(1);
+                        }
+                        G1DraftBody::Token(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Token,
+                                next_token,
+                            ));
+                            next_token = next_token.saturating_add(1);
+                        }
+                        G1DraftBody::Node(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Node,
+                                next_node,
+                            ));
+                            next_node = next_node.saturating_add(1);
+                        }
+                        G1DraftBody::Type(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Type,
+                                next_type,
+                            ));
+                            next_type = next_type.saturating_add(1);
+                        }
+                        G1DraftBody::Symbol(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Symbol,
+                                next_symbol,
+                            ));
+                            next_symbol = next_symbol.saturating_add(1);
+                        }
+                        G1DraftBody::Scope(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Scope,
+                                next_scope,
+                            ));
+                            next_scope = next_scope.saturating_add(1);
+                        }
+                        G1DraftBody::Sem(_) => {
+                            predicted.insert((proposals[index].task, RecordFamily::Sem, next_sem));
+                            next_sem = next_sem.saturating_add(1);
+                        }
+                        G1DraftBody::Function(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Function,
+                                next_function,
+                            ));
+                            next_function = next_function.saturating_add(1);
+                        }
+                        G1DraftBody::Block(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Block,
+                                next_block,
+                            ));
+                            next_block = next_block.saturating_add(1);
+                        }
+                        G1DraftBody::Value(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Value,
+                                next_value,
+                            ));
+                            next_value = next_value.saturating_add(1);
+                        }
+                        G1DraftBody::Instruction(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Instruction,
+                                next_instruction,
+                            ));
+                            next_instruction = next_instruction.saturating_add(1);
+                        }
+                        G1DraftBody::PpToken(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::PpToken,
+                                next_pptoken,
+                            ));
+                            next_pptoken = next_pptoken.saturating_add(1);
+                        }
+                        G1DraftBody::Span { .. } => {
+                            // Spans are referenced through token bodies, never
+                            // by a `Complete` carrier (same rule as `Name`).
+                        }
+                        G1DraftBody::ScopeEvent { .. } => {
+                            // Scope events are observed via arena scan, never
+                            // referenced by a `Complete` carrier (same rule as
+                            // `Name` bodies above).
+                        }
+                        G1DraftBody::Name { .. } => {
+                            // Names intern lookup-first: no predicted ID is
+                            // needed because no `Complete` carrier references
+                            // a same-batch name (future-dated `Name` refs are
+                            // rejected below; workers read committed names).
                         }
                     }
                 }
@@ -705,9 +863,9 @@ pub fn commit_proposals(
                 // Future-dated materialized records must be this task's
                 // own predicted appends (see the prediction table above).
                 // Both `Record` and `Records` carriers are checked: a
-                // future-dated `Literal`/`Const` inside `Records` that is
-                // not this task's own prediction is the same loud reject,
-                // never a silent cross-task alias.
+                // future-dated `Literal`/`Const`/`Artifact` inside `Records`
+                // that is not this task's own prediction is the same loud
+                // reject, never a silent cross-task alias.
                 if let Proposal::Complete { value, .. } = &tagged.proposal {
                     let refs: &[RecordRef] = match value {
                         ResultValue::Record(single) => std::slice::from_ref(single),
@@ -721,6 +879,59 @@ pub fn commit_proposals(
                             }
                             RecordRef::Const(id) if id.index() >= consts_base => {
                                 Some((tagged.task, RecordFamily::Const, id.index()))
+                            }
+                            RecordRef::Artifact(id) if id.index() >= artifacts_base => {
+                                Some((tagged.task, RecordFamily::Artifact, id.index()))
+                            }
+                            RecordRef::Token(id) if id.index() >= tokens_base => {
+                                Some((tagged.task, RecordFamily::Token, id.index()))
+                            }
+                            RecordRef::Node(id) if id.index() >= nodes_base => {
+                                Some((tagged.task, RecordFamily::Node, id.index()))
+                            }
+                            RecordRef::Type(id) if id.index() >= types_base => {
+                                Some((tagged.task, RecordFamily::Type, id.index()))
+                            }
+                            RecordRef::Symbol(id) if id.index() >= symbols_base => {
+                                Some((tagged.task, RecordFamily::Symbol, id.index()))
+                            }
+                            RecordRef::Scope(id) if id.index() >= scopes_base => {
+                                Some((tagged.task, RecordFamily::Scope, id.index()))
+                            }
+                            RecordRef::Sem(id) if id.index() >= sem_base => {
+                                Some((tagged.task, RecordFamily::Sem, id.index()))
+                            }
+                            RecordRef::Function(id) if id.index() >= functions_base => {
+                                Some((tagged.task, RecordFamily::Function, id.index()))
+                            }
+                            RecordRef::Block(id) if id.index() >= blocks_base => {
+                                Some((tagged.task, RecordFamily::Block, id.index()))
+                            }
+                            RecordRef::Value(id) if id.index() >= values_base => {
+                                Some((tagged.task, RecordFamily::Value, id.index()))
+                            }
+                            RecordRef::Instruction(id) if id.index() >= instructions_base => {
+                                Some((tagged.task, RecordFamily::Instruction, id.index()))
+                            }
+                            RecordRef::PpToken(id) if id.index() >= pp_tokens_base => {
+                                Some((tagged.task, RecordFamily::PpToken, id.index()))
+                            }
+                            RecordRef::Span(id) if id.index() >= spans_base => {
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
+                            }
+                            RecordRef::ScopeEvent(id) => {
+                                // Scope events are never completion carriers:
+                                // reject rather than guess (same rule as `Name`).
+                                let _ = id;
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
+                            }
+                            RecordRef::Name(id) if id.index() >= intern_base => {
+                                // Names must be committed before use: same-batch
+                                // names are interned in this batch, but no
+                                // prediction carrier exists for them (lookup-first
+                                // dedup), so a future-dated `Name` ref is a loud
+                                // reject, never a guessed ID.
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
                             }
                             _ => None,
                         };
@@ -827,6 +1038,94 @@ pub fn commit_proposals(
                         G1DraftBody::Const(_) => {
                             new_consts = new_consts.saturating_add(1);
                         }
+                        G1DraftBody::Token(_) => {
+                            new_tokens = new_tokens.saturating_add(1);
+                        }
+                        G1DraftBody::Node(_) => {
+                            new_nodes = new_nodes.saturating_add(1);
+                        }
+                        G1DraftBody::Type(_) => {
+                            new_types = new_types.saturating_add(1);
+                        }
+                        G1DraftBody::Symbol(_) => {
+                            new_symbols = new_symbols.saturating_add(1);
+                        }
+                        G1DraftBody::Scope(_) => {
+                            new_scopes = new_scopes.saturating_add(1);
+                        }
+                        G1DraftBody::ScopeEvent(_) => {
+                            new_scope_events = new_scope_events.saturating_add(1);
+                        }
+                        G1DraftBody::Sem(_) => {
+                            new_sems = new_sems.saturating_add(1);
+                        }
+                        G1DraftBody::Function(_) => {
+                            new_functions = new_functions.saturating_add(1);
+                        }
+                        G1DraftBody::Block(_) => {
+                            new_blocks = new_blocks.saturating_add(1);
+                        }
+                        G1DraftBody::Value(_) => {
+                            new_values = new_values.saturating_add(1);
+                        }
+                        G1DraftBody::Instruction(_) => {
+                            new_instructions = new_instructions.saturating_add(1);
+                        }
+                        G1DraftBody::Span(_) => {
+                            new_spans = new_spans.saturating_add(1);
+                        }
+                        G1DraftBody::PpToken(_) => {
+                            new_pptokens = new_pptokens.saturating_add(1);
+                        }
+                        G1DraftBody::Name { spelling } => {
+                            // Lookup-first dedup: already-interned spellings
+                            // consume no capacity and produce no new ID.
+                            if intern_sim.lookup(spelling).is_none() {
+                                intern_sim
+                                    .intern(spelling, &limits)
+                                    .map_err(CommitError::Intern)?;
+                            }
+                        }
+                        G1DraftBody::Artifact(artifact) => {
+                            // `/10` rev-44/45: map-mandatory kinds need a
+                            // valid source and a well-formed map; map-optional
+                            // kinds need empty offsets. The source length
+                            // comes from the committed source record.
+                            let source_len = match artifact.source {
+                                Some(source) => match bus.arenas.sources.get(source) {
+                                    Ok(record) => record.bytes.len() as u64,
+                                    Err(_) => {
+                                        return Err(CommitError::InvalidPatchShape {
+                                            task: tagged.task,
+                                            reason: "artifact source does not exist",
+                                        });
+                                    }
+                                },
+                                None => 0,
+                            };
+                            if artifact.check_map(source_len).is_err() {
+                                return Err(CommitError::InvalidPatchShape {
+                                    task: tagged.task,
+                                    reason: "artifact map violates mandatory invariants",
+                                });
+                            }
+                            // Map-mandatory kinds only (`/16`): the PP chain
+                            // produces `Normalized`/`Spliced`/`CommentFree`;
+                            // `Preprocessed` and map-optional kinds stay
+                            // declared-but-unexercised.
+                            if !matches!(
+                                artifact.kind,
+                                crate::bus::ArtifactKind::Normalized
+                                    | crate::bus::ArtifactKind::Spliced
+                                    | crate::bus::ArtifactKind::CommentFree
+                            ) {
+                                return Err(CommitError::InvalidPatchShape {
+                                    task: tagged.task,
+                                    reason: "only map-mandatory artifacts are produced",
+                                });
+                            }
+                            new_artifacts = new_artifacts.saturating_add(1);
+                        }
                     }
                 }
                 // Append authorization mirrors `validate_patch` (shape first
@@ -840,6 +1139,21 @@ pub fn commit_proposals(
                     let field = match body {
                         G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
                         G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+                        G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
+                        G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
+                        G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
+                        G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
+                        G1DraftBody::Type(_) => (StoreId::Types, "records"),
+                        G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
+                        G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
+                        G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
+                        G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
+                        G1DraftBody::Function(_) => (StoreId::Ir, "functions"),
+                        G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
+                        G1DraftBody::Value(_) => (StoreId::Ir, "values"),
+                        G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
+                        G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
+                        G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1054,6 +1368,20 @@ pub fn commit_proposals(
             patches,
             new_literals,
             new_consts,
+            new_artifacts,
+            new_tokens,
+            new_nodes,
+            new_types,
+            new_symbols,
+            new_scopes,
+            new_scope_events,
+            new_sems,
+            new_functions,
+            new_blocks,
+            new_values,
+            new_instructions,
+            new_spans,
+            new_pptokens,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1148,6 +1476,136 @@ pub fn commit_proposals(
                                 id.index()
                             )));
                             report.appended.push((*task, RecordRef::Const(id)));
+                        }
+                        G1DraftBody::Artifact(record) => {
+                            let id = bus.arenas.artifacts.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Artifact,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Artifact(id)));
+                        }
+                        G1DraftBody::Token(record) => {
+                            let id = bus.arenas.tokens.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Token,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Token(id)));
+                        }
+                        G1DraftBody::Node(record) => {
+                            let id = bus.arenas.nodes.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Node,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Node(id)));
+                        }
+                        G1DraftBody::Type(record) => {
+                            let id = bus.arenas.types.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Type,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Type(id)));
+                        }
+                        G1DraftBody::Symbol(record) => {
+                            let id = bus.arenas.symbols.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Symbol,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Symbol(id)));
+                        }
+                        G1DraftBody::Scope(record) => {
+                            let id = bus.arenas.scopes.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Scope,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Scope(id)));
+                        }
+                        G1DraftBody::ScopeEvent(record) => {
+                            let id = bus.arenas.scope_events.push(record.clone());
+                            report.appended.push((*task, RecordRef::ScopeEvent(id)));
+                        }
+                        G1DraftBody::Sem(record) => {
+                            let id = bus.arenas.sem.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Sem,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Sem(id)));
+                        }
+                        G1DraftBody::Function(record) => {
+                            let id = bus.arenas.functions.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Function,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Function(id)));
+                        }
+                        G1DraftBody::Block(record) => {
+                            let id = bus.arenas.blocks.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Block,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Block(id)));
+                        }
+                        G1DraftBody::Value(record) => {
+                            let id = bus.arenas.values.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Value,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Value(id)));
+                        }
+                        G1DraftBody::Instruction(record) => {
+                            let id = bus.arenas.instructions.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Instruction,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Instruction(id)));
+                        }
+                        G1DraftBody::Span(record) => {
+                            let id = bus.arenas.spans.push(*record);
+                            report.appended.push((*task, RecordRef::Span(id)));
+                        }
+                        G1DraftBody::PpToken(record) => {
+                            let id = bus.arenas.pp_tokens.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::PpToken,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::PpToken(id)));
+                        }
+                        G1DraftBody::Name { spelling } => {
+                            // Preflighted exactly (same order, same table
+                            // state): infallible here. Limits are immutable
+                            // mid-batch, so capacity reserved above holds.
+                            let limits = bus.limits();
+                            match bus.intern.intern(spelling, &limits) {
+                                Ok(id) => {
+                                    report.appended.push((*task, RecordRef::Name(id)));
+                                }
+                                Err(_) => {
+                                    debug_assert!(false, "intern preflight reserved this entry");
+                                }
+                            }
                         }
                     }
                 }
@@ -1303,6 +1761,21 @@ fn validate_append_authorization(
         let (store, field) = match body {
             G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
             G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+            G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
+            G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
+            G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
+            G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
+            G1DraftBody::Type(_) => (StoreId::Types, "records"),
+            G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
+            G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
+            G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
+            G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
+            G1DraftBody::Function(_) => (StoreId::Ir, "functions"),
+            G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
+            G1DraftBody::Value(_) => (StoreId::Ir, "values"),
+            G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
+            G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
+            G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1418,6 +1891,34 @@ struct CapacityPlan {
     new_literals: u32,
     /// New constant records (Gate 1 `/7` materialization).
     new_consts: u32,
+    /// New artifact records (Wave 2 `/10` PP01 materialization).
+    new_artifacts: u32,
+    /// New C-token records (Wave 2 `/11` LX-slice materialization).
+    new_tokens: u32,
+    /// New AST node records (Wave 2 `/12` PA-slice materialization).
+    new_nodes: u32,
+    /// New canonical type records (Wave 2 `/13` TY-slice materialization).
+    new_types: u32,
+    /// New symbol records (Wave 2 `/13`).
+    new_symbols: u32,
+    /// New scope records (Wave 2 `/13`).
+    new_scopes: u32,
+    /// New scope-event records (Wave 2 `/13`).
+    new_scope_events: u32,
+    /// New semantic-fact records (Wave 2 `/14` SE-slice materialization).
+    new_sems: u32,
+    /// New IR function records (Wave 2 `/15` IR-slice materialization).
+    new_functions: u32,
+    /// New IR block records (Wave 2 `/15`).
+    new_blocks: u32,
+    /// New IR value records (Wave 2 `/15`).
+    new_values: u32,
+    /// New IR instruction records (Wave 2 `/15`).
+    new_instructions: u32,
+    /// New source-span records (Wave 2 `/16` PP-slice materialization).
+    new_spans: u32,
+    /// New preprocessing-token records (Wave 2 `/16`).
+    new_pptokens: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1432,7 +1933,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 6] = [
+    let checks: [(u32, u32, &'static str); 20] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1451,6 +1952,40 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             "literals",
         ),
         (bus.arenas.consts.allocated(), plan.new_consts, "consts"),
+        (
+            bus.arenas.artifacts.allocated(),
+            plan.new_artifacts,
+            "artifacts",
+        ),
+        (bus.arenas.tokens.allocated(), plan.new_tokens, "tokens"),
+        (bus.arenas.nodes.allocated(), plan.new_nodes, "nodes"),
+        (bus.arenas.types.allocated(), plan.new_types, "types"),
+        (bus.arenas.symbols.allocated(), plan.new_symbols, "symbols"),
+        (bus.arenas.scopes.allocated(), plan.new_scopes, "scopes"),
+        (
+            bus.arenas.scope_events.allocated(),
+            plan.new_scope_events,
+            "scope_events",
+        ),
+        (bus.arenas.sem.allocated(), plan.new_sems, "sem"),
+        (
+            bus.arenas.functions.allocated(),
+            plan.new_functions,
+            "functions",
+        ),
+        (bus.arenas.blocks.allocated(), plan.new_blocks, "blocks"),
+        (bus.arenas.values.allocated(), plan.new_values, "values"),
+        (
+            bus.arenas.instructions.allocated(),
+            plan.new_instructions,
+            "instructions",
+        ),
+        (bus.arenas.spans.allocated(), plan.new_spans, "spans"),
+        (
+            bus.arenas.pp_tokens.allocated(),
+            plan.new_pptokens,
+            "pp_tokens",
+        ),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1480,7 +2015,21 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_diagnostics
         + plan.new_requests
         + plan.new_literals
-        + plan.new_consts) as u64
+        + plan.new_consts
+        + plan.new_artifacts
+        + plan.new_tokens
+        + plan.new_nodes
+        + plan.new_types
+        + plan.new_symbols
+        + plan.new_scopes
+        + plan.new_scope_events
+        + plan.new_sems
+        + plan.new_functions
+        + plan.new_blocks
+        + plan.new_values
+        + plan.new_instructions
+        + plan.new_spans
+        + plan.new_pptokens) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

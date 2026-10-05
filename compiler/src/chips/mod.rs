@@ -10,12 +10,15 @@
 // this boundary as `Proposal` values — workers never mutate the bus, never
 // perform Host I/O, and never call other workers.
 //
-// Template rules (every later chip copies this file's shape):
+// Template rules (every later chip copies its group file's shape):
 //
-// * One file per chip under `chips/`; the file owns the worker struct, its
-//   `Worker` impl, its narrow `Input` projection plus projector, its pure
-//   `compute(&Input)`, and chip-local helpers. The computation never takes
-//   the full bus; the adapter owns the projection.
+// * One file per chip under `chips/<group>/`; the file owns the worker
+//   struct, its `Worker` impl, its narrow `Input` projection plus projector,
+//   its pure `compute(&Input)`, and chip-local helpers. The computation
+//   never takes the full bus; the adapter owns the projection. Group layout
+//   mirrors the owning task group (`preprocess`, `lex`, `parse`, `types`,
+//   `symbols`, `constant_layout_init`, …); the integrator owns every
+//   `mod.rs` and no chip file is ever written by two owners.
 // * `manifest()` is the chip's exact C04 declaration (frozen kinds, exact
 //   reads/writes, phase, capability). The manifest registers cleanly or the
 //   chip does not exist.
@@ -32,9 +35,48 @@
 //   accepted: colliding predictions fail loudly, they do not alias.
 // ============================================================================
 
-mod fold;
+pub mod constant_layout_init;
+pub mod ir_lower;
+pub mod lex;
+pub mod parse;
+pub mod preprocess;
+pub mod semantic;
+pub mod symbols;
+pub mod types;
+pub mod verify;
 
-pub use fold::{const_bits_required, project_fold_input, FoldChip, FoldInput};
+pub use self::constant_layout_init::{
+    const_bits_required, project_fold_input, FoldChip, FoldInput,
+};
+pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
+pub use self::lex::{
+    decimal_magnitude, is_keyword, project_lx_classify_input, project_lx_decode_input,
+    project_lx_intern_input, LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip,
+    LxInternChip, LxInternInput, C11_KEYWORDS,
+};
+pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
+pub use self::preprocess::{
+    compose_map, normalize, project_pp_comment_input, project_pp_input, project_pp_scan_input,
+    project_pp_splice_input, replace_comments, scan, splice, PpCommentChip, PpCommentInput,
+    PpInput, PpNormalizeChip, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, M1_PUNCTUATORS,
+};
+pub use self::semantic::{
+    project_se_binary_input, project_se_literal_input, project_se_return_input, SeBinChip,
+    SeBinaryInput, SeLitChip, SeLiteralInput, SeRetChip, SeReturnInput,
+};
+pub use self::symbols::{
+    in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input,
+    project_ty_scope_enter_input, project_ty_scope_exit_input, TyScopeChip, TyScopeEnterInput,
+    TyScopeExitInput, TySymbolChip,
+};
+pub use self::types::{
+    canonical_scan, is_m1_int, m1_int, project_ty_conv_input, project_ty_type_input, TyConvChip,
+    TyConvInput, TyTypeChip, TyTypeInput,
+};
+pub use self::verify::{
+    project_vf01_input, project_vf05_input, project_vf06_input, project_vf12_input, Vf01Chip,
+    Vf01Input, Vf05Chip, Vf05Input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input,
+};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};

@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/9");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/19");
 }
 
 #[test]
@@ -95,6 +95,41 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "const.binary-node-must-be-live",
         "dispatch.stage-layer-enforced",
         "worker.stateless-unit-required",
+        "artifact.normalized-single-source",
+        "artifact.map-mandatory-invariants",
+        "artifact.total-eight-kinds",
+        "pp.normalize-single-source-convention",
+        "commit.artifact-materialized",
+        "lex.intern-first-seen-order",
+        "lex.keyword-table-membership",
+        "lex.integer-decimal-only",
+        "lex.token-back-link-committed",
+        "commit.name-interned-lookup-first",
+        "commit.token-materialized",
+        "parse.tu-fixed-nine-node-tree",
+        "parse.token-range-committed",
+        "commit.node-materialized",
+        "ty.canonical-int-reuse-scan",
+        "ty.func-single-producer",
+        "scope.enter-after-tu-guarded-once",
+        "scope.lifecycle-worker-enforced",
+        "symbol.declare-no-duplicate",
+        "symbol.lookup-chain-hit-or-typed-miss",
+        "ty.identity-completes-no-plan",
+        "commit.type-symbol-scope-materialized",
+        "se.literal-checked-nonlvalue",
+        "se.binary-forwards-identical-fold",
+        "se.return-identity-no-plan",
+        "vf06.checked-set-complete",
+        "commit.sem-materialized",
+        "ir.constant-no-refold",
+        "ir.return-single-terminator",
+        "ir.function-single-entry",
+        "commit.ir-materialized",
+        "pp.splice-exact-map",
+        "pp.comment-m1-scope",
+        "pp.scan-maximal-munch",
+        "commit.span-pptoken-materialized",
         "probe.wchar-encoding-required",
         "probe.attestation.private-state-not-provenance",
         "config.structurally-immutable",
@@ -212,6 +247,7 @@ fn frozen_enum_names_match_implementations() {
         (DiagGroup::Target, "target"),
         (DiagGroup::Manifest, "manifest"),
         (DiagGroup::Task, "task"),
+        (DiagGroup::Semantic, "semantic"),
         (DiagGroup::Unsupported, "unsupported"),
         (DiagGroup::Internal, "internal"),
     ];

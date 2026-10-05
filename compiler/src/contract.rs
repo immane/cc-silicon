@@ -25,15 +25,17 @@ use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
 use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
-/// const-fold slice, the `/8` worker-integration amendment, and the `/9`
-/// pre-chip readiness fixes.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/9";
+/// const-fold slice, the `/8` worker-integration amendment, the `/9`
+/// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
+/// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
+/// (`/13`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/19";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "f9539895a54177e04224fca3dd3b641c8a08f74d8d2d1107b30afa650745eafb";
+pub const CONTRACT_HASH: &str = "76155ee8b66bd3a8e60c3e812a25301abcfd4ffffbf6e0dfbda3be25f6b476a4";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -127,6 +129,48 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.binary-node-must-be-live",
     "dispatch.stage-layer-enforced",
     "worker.stateless-unit-required",
+    "artifact.normalized-single-source",
+    "artifact.map-mandatory-invariants",
+    "artifact.total-eight-kinds",
+    "pp.normalize-single-source-convention",
+    "commit.artifact-materialized",
+    "lex.intern-first-seen-order",
+    "lex.keyword-table-membership",
+    "lex.integer-decimal-only",
+    "lex.token-back-link-committed",
+    "commit.name-interned-lookup-first",
+    "commit.token-materialized",
+    "parse.tu-fixed-nine-node-tree",
+    "parse.token-range-committed",
+    "commit.node-materialized",
+    "ty.canonical-int-reuse-scan",
+    "ty.func-single-producer",
+    "scope.enter-after-tu-guarded-once",
+    "scope.lifecycle-worker-enforced",
+    "symbol.declare-no-duplicate",
+    "symbol.lookup-chain-hit-or-typed-miss",
+    "ty.identity-completes-no-plan",
+    "commit.type-symbol-scope-materialized",
+    "se.literal-checked-nonlvalue",
+    "se.binary-forwards-identical-fold",
+    "se.return-identity-no-plan",
+    "vf06.checked-set-complete",
+    "commit.sem-materialized",
+    "ir.constant-no-refold",
+    "ir.return-single-terminator",
+    "ir.function-single-entry",
+    "commit.ir-materialized",
+    "pp.splice-exact-map",
+    "pp.comment-m1-scope",
+    "pp.scan-maximal-munch",
+    "commit.span-pptoken-materialized",
+    "vf12.interpret-symbolic-m1",
+    "vf12.unsupported-never-pass",
+    "vf05.syntax-ranges-ordered",
+    "vf05.required-fields-complete",
+    "vf01.refs-resolve",
+    "vf01.span-bounds",
+    "vf01.reserved-unused-m1",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -217,6 +261,7 @@ pub const DIAG_GROUP_NAMES: &[&str] = &[
     "target",
     "manifest",
     "task",
+    "semantic",
     "unsupported",
     "internal",
 ];
@@ -245,6 +290,114 @@ pub const CONST_EXPR_OP_NAMES: &[&str] = &["add"];
 pub const REQUIRED_KIND_NAMES: &[&str] = &["integer_constant_expression"];
 /// The `ConstLegality` member names.
 pub const CONST_LEGALITY_NAMES: &[&str] = &["legal", "not_constant_expression", "unsupported"];
+
+/// Frozen `/11` `PpTokenKind` names, in declaration order.
+pub const PPTOKEN_KIND_NAMES: &[&str] = &["identifier", "pp_number", "punctuator", "eof"];
+
+/// Frozen `/11` `TokenKind` names, in declaration order.
+pub const TOKEN_KIND_NAMES: &[&str] = &["keyword", "identifier", "punctuator", "integer", "eof"];
+
+/// Frozen `/11` `PpTokenRecord` fields, in declaration order.
+pub const PPTOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "spelling"];
+
+/// Frozen `/12` `NodeKind` names, in declaration order.
+pub const NODE_KIND_NAMES: &[&str] = &[
+    "translation_unit",
+    "function_definition",
+    "specifiers",
+    "declarator",
+    "compound",
+    "return",
+    "binary_add",
+    "int_literal",
+];
+
+/// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).
+pub const TYPE_KIND_NAMES: &[&str] = &["void", "bool", "char", "int", "function"];
+
+/// Frozen `/13` `IntRank` names, in declaration order.
+pub const INT_RANK_NAMES: &[&str] = &["short", "int", "long", "long_long"];
+
+/// Frozen `/13` `CharKind` names, in declaration order.
+pub const CHAR_KIND_NAMES: &[&str] = &["plain", "signed", "unsigned"];
+
+/// Frozen `/13` `TypeRecord` fields, in declaration order.
+pub const TYPE_RECORD_FIELDS: &[&str] = &["kind"];
+
+/// Frozen `/13` `SymbolKind` names, in declaration order.
+pub const SYMBOL_KIND_NAMES: &[&str] = &["function", "variable"];
+
+/// Frozen `/13` `Linkage` names, in declaration order.
+pub const LINKAGE_NAMES: &[&str] = &["none", "internal", "external"];
+
+/// Frozen `/13` `StorageDuration` names, in declaration order.
+pub const STORAGE_DURATION_NAMES: &[&str] = &["none", "static", "automatic", "thread", "allocated"];
+
+/// Frozen `/13` `SymbolRecord` fields, in declaration order.
+pub const SYMBOL_RECORD_FIELDS: &[&str] =
+    &["name", "scope", "kind", "ty", "linkage", "storage", "decl"];
+
+/// Frozen `/13` `ScopeKind` names, in declaration order.
+pub const SCOPE_KIND_NAMES: &[&str] = &["file", "block"];
+
+/// Frozen `/13` `ScopeRecord` fields, in declaration order.
+pub const SCOPE_RECORD_FIELDS: &[&str] = &["kind", "parent", "owner"];
+
+/// Frozen `/13` `ScopeEventKind` names, in declaration order.
+pub const SCOPE_EVENT_KIND_NAMES: &[&str] = &["enter", "exit"];
+
+/// Frozen `/13` `ScopeEventRecord` fields, in declaration order.
+pub const SCOPE_EVENT_RECORD_FIELDS: &[&str] = &["scope", "kind", "at"];
+
+/// Frozen `/14` `ValueCategory` names, in declaration order.
+pub const VALUE_CATEGORY_NAMES: &[&str] = &["lvalue", "non_lvalue", "function_designator", "void"];
+
+/// Frozen `/14` `SemRecord` fields, in declaration order.
+pub const SEM_RECORD_FIELDS: &[&str] = &["node", "ty", "category", "effects"];
+
+/// Frozen `/15` `IrOp` names, in declaration order.
+pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
+
+/// Frozen `/15` `FunctionRecord` fields, in declaration order.
+pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+
+/// Frozen `/15` `BlockRecord` fields, in declaration order.
+pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];
+
+/// Frozen `/15` `ValueRecord` fields, in declaration order.
+pub const VALUE_RECORD_FIELDS: &[&str] = &["ty"];
+
+/// Frozen `/16` `SpanRecord` fields, in declaration order.
+pub const SPAN_RECORD_FIELDS: &[&str] = &["source", "start", "end", "expansion"];
+
+/// Frozen `/15` `InstructionRecord` fields, in declaration order.
+pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &["op", "block", "operands", "immediate", "result"];
+
+/// Frozen `/12` `NodeRecord` fields, in declaration order.
+pub const NODE_RECORD_FIELDS: &[&str] = &[
+    "kind",
+    "parent",
+    "children",
+    "first_token",
+    "last_token",
+    "name",
+    "literal",
+];
+
+/// Frozen `/11` `TokenRecord` fields, in declaration order.
+pub const TOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "name", "pp_token"];
+
+/// Frozen `/10` total 8-variant `ArtifactKind` names, in declaration order.
+pub const ARTIFACT_KIND_NAMES: &[&str] = &[
+    "normalized",
+    "spliced",
+    "comment_free",
+    "preprocessed",
+    "assembly",
+    "object",
+    "snapshot",
+    "trace",
+];
 
 /// The static, hashable shape of the compiler contract.
 #[derive(Clone, Debug)]
@@ -312,6 +465,33 @@ impl FrozenSchema {
         push_str_list(&mut w, CHIP_PHASE_NAMES);
         push_str_list(&mut w, HOST_REQUEST_NAMES);
         push_str_list(&mut w, DIAG_GROUP_NAMES);
+        push_str_list(&mut w, ARTIFACT_KIND_NAMES);
+        push_str_list(&mut w, PPTOKEN_KIND_NAMES);
+        push_str_list(&mut w, TOKEN_KIND_NAMES);
+        push_str_list(&mut w, PPTOKEN_RECORD_FIELDS);
+        push_str_list(&mut w, TOKEN_RECORD_FIELDS);
+        push_str_list(&mut w, NODE_KIND_NAMES);
+        push_str_list(&mut w, NODE_RECORD_FIELDS);
+        push_str_list(&mut w, TYPE_KIND_NAMES);
+        push_str_list(&mut w, INT_RANK_NAMES);
+        push_str_list(&mut w, CHAR_KIND_NAMES);
+        push_str_list(&mut w, TYPE_RECORD_FIELDS);
+        push_str_list(&mut w, SYMBOL_KIND_NAMES);
+        push_str_list(&mut w, LINKAGE_NAMES);
+        push_str_list(&mut w, STORAGE_DURATION_NAMES);
+        push_str_list(&mut w, SYMBOL_RECORD_FIELDS);
+        push_str_list(&mut w, SCOPE_KIND_NAMES);
+        push_str_list(&mut w, SCOPE_RECORD_FIELDS);
+        push_str_list(&mut w, SCOPE_EVENT_KIND_NAMES);
+        push_str_list(&mut w, SCOPE_EVENT_RECORD_FIELDS);
+        push_str_list(&mut w, VALUE_CATEGORY_NAMES);
+        push_str_list(&mut w, SEM_RECORD_FIELDS);
+        push_str_list(&mut w, IR_OP_NAMES);
+        push_str_list(&mut w, FUNCTION_RECORD_FIELDS);
+        push_str_list(&mut w, BLOCK_RECORD_FIELDS);
+        push_str_list(&mut w, VALUE_RECORD_FIELDS);
+        push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
+        push_str_list(&mut w, SPAN_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -519,7 +699,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + /9 pre-chip readiness).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PP slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

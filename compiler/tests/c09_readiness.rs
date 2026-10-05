@@ -502,7 +502,22 @@ fn pcr09_wrong_layer_is_rejected_on_the_driver_path() {
     let mut bus = bus_with(Limits::fixture());
     install_fold(&mut bus, 9);
     let limits = bus.limits();
-    let node = bus.arenas.nodes.alloc(&limits).unwrap();
+    let node = bus
+        .arenas
+        .nodes
+        .alloc(
+            cc_silicon_compiler::bus::NodeRecord {
+                kind: cc_silicon_compiler::bus::NodeKind::BinaryAdd,
+                parent: None,
+                children: vec![],
+                first_token: cc_silicon_compiler::ids::TokenId::from_index(0),
+                last_token: cc_silicon_compiler::ids::TokenId::from_index(0),
+                name: None,
+                literal: None,
+            },
+            &limits,
+        )
+        .unwrap();
     let left = bus.arenas.literals.alloc(literal(2), &limits).unwrap();
     let right = bus.arenas.literals.alloc(literal(3), &limits).unwrap();
     let payload = Payload::from_refs(vec![

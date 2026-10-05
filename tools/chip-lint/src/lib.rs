@@ -180,13 +180,14 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
             Item::Use(item_use) => {
                 let path = item_use.tree.to_token_stream().to_string().replace(' ', "");
                 let root = path.split(&[':', '{'][..]).next().unwrap_or_default();
-                // `/9` PCR-10: deterministic BTreeMap/BTreeSet and sibling
-                // chip-module re-exports are mechanical, not Host I/O.
+                // Deterministic `BTreeMap`/`BTreeSet` imports are mechanical,
+                // not Host I/O. Sibling re-exports must use `self::`, `super::`,
+                // or `crate::` roots (group `mod.rs` files do); a bare module
+                // root is rejected so cross-chip imports stay visible.
                 let allowed_std_collections = path.starts_with("std::collections::")
                     && (path.contains("BTreeMap") || path.contains("BTreeSet"));
-                let allowed_root =
-                    matches!(root, "crate" | "self" | "super" | "core" | "alloc" | "fold")
-                        || allowed_std_collections;
+                let allowed_root = matches!(root, "crate" | "self" | "super" | "core" | "alloc")
+                    || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(
                         file,
@@ -290,11 +291,12 @@ struct ChipBodyVisitor<'a> {
 
 impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
-        // `/9` PCR-10: `vec!`/`format!` are transparent deterministic
-        // constructors, not opaque DSLs. All other macros stay opaque.
+        // Transparent deterministic macros (`vec!`/`format!` construct
+        // values; `matches!` is a pure pattern test), not opaque DSLs. All
+        // other macros stay opaque.
         if let Some(segment) = node.mac.path.segments.last() {
             let name = segment.ident.to_string();
-            if name == "vec" || name == "format" {
+            if name == "vec" || name == "format" || name == "matches" {
                 visit::visit_expr_macro(self, node);
                 return;
             }
@@ -312,7 +314,12 @@ impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
             Expr::Path(path) => match path.path.get_ident() {
                 Some(ident) => {
                     let name = ident.to_string();
-                    self.known_functions.contains(&name)
+                    // UpperCamelCase single-ident calls are tuple-struct or
+                    // enum-variant constructors (`DraftRef(0)`, `Some(x)`),
+                    // deterministic by construction. Lowercase calls are
+                    // function calls and must resolve to a same-file helper.
+                    name.starts_with(|ch: char| ch.is_uppercase())
+                        || self.known_functions.contains(&name)
                         || matches!(name.as_str(), "Some" | "Ok" | "Err")
                 }
                 None => true,
@@ -379,7 +386,7 @@ impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     fn visit_item_macro(&mut self, node: &'ast syn::ItemMacro) {
         if let Some(segment) = node.mac.path.segments.last() {
             let name = segment.ident.to_string();
-            if name == "vec" || name == "format" {
+            if name == "vec" || name == "format" || name == "matches" {
                 visit::visit_item_macro(self, node);
                 return;
             }

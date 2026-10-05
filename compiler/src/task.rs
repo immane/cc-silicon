@@ -181,7 +181,128 @@ impl TaskKind {
     /// `ConstRecord`).
     pub const CONSTANT_CONST_FOLD: Self =
         Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 16);
-
+    /// Wave 2 (`/10`) PP01 slice kind: T03 source-normalize task (payload:
+    /// exactly one `RecordRef::Source`; completes with
+    /// `Record(RecordRef::Artifact)` carrying the single-source `Normalized`
+    /// artifact, or `Fail` with a typed diagnostic).
+    pub const PREPROCESS_NORMALIZE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/11`) LX-slice kind: T04 name-intern task (payload: PP-token
+    /// refs in source order; appends one `Name` body per first-seen
+    /// identifier spelling; completes `Ack`).
+    pub const LEX_INTERN: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/11`) LX-slice kind: T04 token-classify task (payload: PP-token
+    /// refs in source order; appends one `Token` per ref in order; completes
+    /// `Records` of the appended token refs).
+    pub const LEX_CLASSIFY: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/11`) LX-slice kind: T04 literal-decode task (payload:
+    /// exactly `[Token, PpToken]`; appends one `Literal` with
+    /// `token: Some(committed TokenId)`; completes `Record`).
+    pub const LEX_DECODE_LITERAL: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/12`) PA-slice kind: T05 TU-parse task (payload: the 13 M1
+    /// token refs in source order; appends the nine-node M1 tree in
+    /// pre-order; completes `Record` of the TU root).
+    pub const PARSE_TU: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/13`) TY-slice kind: canonical `int` producer (payload:
+    /// empty; reuses the committed canonical id when present, else appends
+    /// one `TypeRecord`; completes `Record`).
+    pub const SYMBOL_INT_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/13`) TY-slice kind: `int(void)` producer (payload: exactly
+    /// one `RecordRef::Type` result type; reuses or appends; completes
+    /// `Record`).
+    pub const SYMBOL_FUNC_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/13`) TY-slice kind: scope enter (payload: exactly one
+    /// `RecordRef::Node`, the TU root for file scope or the `Block` node
+    /// for a body scope; appends one `Scope` plus one `ScopeEvent(Enter)`;
+    /// completes `Record`).
+    pub const SYMBOL_SCOPE_ENTER: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/13`) TY-slice kind: scope exit (payload: exactly one
+    /// `RecordRef::Scope`; appends one `ScopeEvent(Exit)`; completes `Ack`).
+    pub const SYMBOL_SCOPE_EXIT: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/13`) TY-slice kind: function declaration (payload: exactly
+    /// `[Declarator Node, FuncType, FileScope]`; appends one `SymbolRecord`;
+    /// completes `Record`).
+    pub const SYMBOL_DECLARE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/13`) TY-slice kind: ordinary-name lookup (payload: exactly
+    /// `[Scope, Name]`; completes `Record` on hit, typed `Fail` on miss).
+    pub const SYMBOL_LOOKUP: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 2 (`/13`) TY-slice kind: integer promotion, M1 identity-only
+    /// (payload: exactly one `RecordRef::Type`, must be `Int`; completes
+    /// `Record` of the same id; non-`Int` is explicit `Unsupported`).
+    pub const SYMBOL_PROMOTE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 2 (`/13`) TY-slice kind: usual arithmetic conversion, M1
+    /// identity-only (payload: exactly two `RecordRef::Type`, both `Int`;
+    /// completes `Record`).
+    pub const SYMBOL_COMMON_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 2 (`/13`) TY-slice kind: return conversion, M1 identity-only
+    /// (payload: exactly `[source Type, destination Type]`, both `Int`;
+    /// completes `Record`).
+    pub const SYMBOL_RETURN_CONVERT: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 2 (`/14`) SE-slice kind: literal-expression check (payload:
+    /// exactly one `IntLiteral` node; appends one `SemRecord`; completes
+    /// `Record`).
+    pub const SEMANTIC_LITERAL_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/14`) SE-slice kind: binary-expression check (payload:
+    /// exactly one `BinaryAdd` node; appends one `SemRecord`, enqueues one
+    /// `const_fold` child with forwarded refs, and awaits it; on resume
+    /// completes `Record` of the committed `SemRecord`).
+    pub const SEMANTIC_BINARY_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/14`) SE-slice kind: return-statement check (payload:
+    /// exactly one `Return` node; appends one `SemRecord`; completes
+    /// `Record`).
+    pub const SEMANTIC_RETURN_STMT: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
+    /// exactly one TU node; checks the M1 checked set; completes `Ack`).
+    pub const VERIFICATION_TYPED_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/15`) IR-slice kind: whole-function lowering (payload:
+    /// exactly one `FunctionDefinition` node; appends one `Function`, one
+    /// `Block`, one `Value`, and two `Instruction`s in order; completes
+    /// `Record` of the function).
+    pub const IR_FUNCTION: Self = Self(((TaskGroup::IR_LOWER.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/16`) PP-slice kind: line-splice task (payload: exactly
+    /// one `Normalized` or `Spliced` artifact; appends one `Spliced`
+    /// artifact with the composed map; completes `Record`).
+    pub const PREPROCESS_SPLICE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/16`) PP-slice kind: comment-replace task (payload: exactly
+    /// one `Spliced` artifact; appends one `CommentFree` artifact; inputs
+    /// containing string/character literals are explicit `Unsupported`;
+    /// completes `Record`).
+    pub const PREPROCESS_COMMENT: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/16`) PP-slice kind: token-scan task (payload: exactly one
+    /// `CommentFree` artifact; appends spans plus PP tokens in order;
+    /// completes `Records`).
+    pub const PREPROCESS_SCAN: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
+    /// exactly one committed `Function`; walks the M1 covered subset
+    /// without executing target code; completes `Record` of the modeled
+    /// `Const`; non-covered shapes fail, never pass).
+    pub const VERIFICATION_IR_INTERPRET: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/18`) VF05-slice kind: token-AST invariant task (payload:
+    /// exactly one TU node; checks M1 ranges/order/parent-kind and required
+    /// fields; completes `Ack`).
+    pub const VERIFICATION_TOKEN_AST_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/19`) VF01-slice kind: store-invariant task (payload must
+    /// be empty; checks the global M1 store contract; completes `Ack`).
+    pub const VERIFICATION_STORE_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 19);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -300,6 +421,174 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/19`) VF01-slice registry: the VF05 slice plus the
+    /// frozen store-invariant kind (all `Frozen`; `VERIFICATION` owners
+    /// start new codes at local 20).
+    pub fn vf01_slice() -> Self {
+        let mut registry = Self::vf05_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_STORE_INVARIANT,
+            "verification.store_invariant",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/18`) VF05-slice registry: the VF12 slice plus the
+    /// frozen token-AST invariant kind (all `Frozen`; `VERIFICATION`
+    /// owners start new codes at local 19).
+    pub fn vf05_slice() -> Self {
+        let mut registry = Self::vf12_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_TOKEN_AST_INVARIANT,
+            "verification.token_ast_invariant",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/17`) VF12-slice registry: the PP slice plus the frozen
+    /// symbolic-interpret kind (all `Frozen`; `VERIFICATION` owners start
+    /// new codes at local 18).
+    pub fn vf12_slice() -> Self {
+        let mut registry = Self::pp_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_IR_INTERPRET,
+            "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/16`) PP-slice registry: the IR slice plus the three
+    /// frozen PP kinds (all `Frozen`; `PREPROCESS` owners start new codes
+    /// at local 20).
+    pub fn pp_slice() -> Self {
+        let mut registry = Self::ir_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_SPLICE, "preprocess.splice"),
+            (TaskKind::PREPROCESS_COMMENT, "preprocess.comment"),
+            (TaskKind::PREPROCESS_SCAN, "preprocess.scan"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/15`) IR-slice registry: the SE slice plus the frozen
+    /// function kind (all `Frozen`; `IR_LOWER` owners start new codes at
+    /// local 17).
+    pub fn ir_slice() -> Self {
+        let mut registry = Self::se_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::IR_FUNCTION, "ir.function")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/14`) SE-slice registry: the TY slice plus the three
+    /// frozen SE kinds and the VF06 verifier kind (all `Frozen`;
+    /// `SEMANTIC`/`VERIFICATION` owners start new codes at local 19/17).
+    pub fn se_slice() -> Self {
+        let mut registry = Self::ty_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::SEMANTIC_LITERAL_EXPR, "semantic.literal_expr"),
+            (TaskKind::SEMANTIC_BINARY_EXPR, "semantic.binary_expr"),
+            (TaskKind::SEMANTIC_RETURN_STMT, "semantic.return_stmt"),
+            (
+                TaskKind::VERIFICATION_TYPED_INVARIANT,
+                "verification.typed_invariant",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/13`) TY-slice registry: the PA slice plus the nine
+    /// frozen TY kinds (all `Frozen`; `SYMBOL_TYPE` owners start new codes
+    /// at local 25).
+    pub fn ty_slice() -> Self {
+        let mut registry = Self::pa_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::SYMBOL_INT_TYPE, "symbol_type.int_type"),
+            (TaskKind::SYMBOL_FUNC_TYPE, "symbol_type.func_type"),
+            (TaskKind::SYMBOL_SCOPE_ENTER, "symbol_type.scope_enter"),
+            (TaskKind::SYMBOL_SCOPE_EXIT, "symbol_type.scope_exit"),
+            (TaskKind::SYMBOL_DECLARE, "symbol_type.declare"),
+            (TaskKind::SYMBOL_LOOKUP, "symbol_type.lookup"),
+            (TaskKind::SYMBOL_PROMOTE, "symbol_type.promote"),
+            (TaskKind::SYMBOL_COMMON_TYPE, "symbol_type.common_type"),
+            (
+                TaskKind::SYMBOL_RETURN_CONVERT,
+                "symbol_type.return_convert",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/12`) PA-slice registry: the LX slice plus the frozen
+    /// TU kind (all `Frozen`; `PARSE` owners start new codes at local 17).
+    pub fn pa_slice() -> Self {
+        let mut registry = Self::lx_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::PARSE_TU, "parse.translation_unit")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/11`) LX-slice registry: the PP01 slice plus the three
+    /// frozen LX kinds (all `Frozen`; `LEX` owners start new codes at
+    /// local 19).
+    pub fn lx_slice() -> Self {
+        let mut registry = Self::pp01_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_INTERN, "lex.intern"),
+            (TaskKind::LEX_CLASSIFY, "lex.classify"),
+            (TaskKind::LEX_DECODE_LITERAL, "lex.decode_literal"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/10`) PP01 slice registry: the Gate 1 M1 slice plus
+    /// the frozen PP01 kind (all `Frozen`; `PREPROCESS` owners start new
+    /// codes at local 17).
+    pub fn pp01_slice() -> Self {
+        let mut registry = Self::m1_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_NORMALIZE, "preprocess.normalize")];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

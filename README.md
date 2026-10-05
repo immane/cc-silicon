@@ -10,7 +10,7 @@ software architecture, not a C-specific compilation technique. The root
 application being built on top of them.
 
 Today the repository contains the generic framework, the frozen compiler
-contract foundation (`t01-c01-c06/9`), and an initial, limited constant-fold
+contract foundation (`t01-c01-c06/19`), and the closed M1 frontend loop from source bytes (PP01–04 + LX + PA + TY + SE + IR + VF05/VF12 checks)
 worker. **There is no source-to-executable C compiler yet.** The task catalog and
 acceptance plans describe work to be built, not completed language support.
 See [Project status](#project-status).
@@ -139,7 +139,7 @@ flowchart TB
         IR -. "target-dependent; probe-gated" .-> TARGET["AArch64 target emission"]
     end
 
-    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas + readiness fixes · frozen /9<br/>initial FoldChip on seeded records"]
+    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas + readiness fixes + PP/LX/PA/TY/SE/IR slices · frozen /16<br/>closed M1 frontend loop from source bytes (M1-CL-05 handoff complete)"]
     PIPE -. "would use the compiler bus, IDs, tasks,<br/>commit protocol and snapshots" .-> FOUNDATION
 
     subgraph RUNTIME["Root cc-silicon framework — implemented mechanism"]
@@ -335,7 +335,7 @@ implemented, tested pipeline.
 | Area | State |
 |---|---|
 | Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. Evidence: [`tests/paradigm.rs`](tests/paradigm.rs), doctests in [`src/chip.rs`](src/chip.rs), [`examples/counter.rs`](examples/counter.rs) |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/9`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/19`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization, plus the M1 frontend slices through the VF05 syntax check and the VF12 symbolic model. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
 | Initial constant-fold worker | **Implemented subset**: [`FoldChip`](compiler/src/chips/fold.rs) reads seeded committed literals and emits a constant append + completion; the fixture folds `2 + 3` to `5` through `drive_task` and commit. Evidence: [`compiler/tests/c08_gate1.rs`](compiler/tests/c08_gate1.rs). No parsing of source text, target-width semantics, IR, or executable generation |
 | Complete C language pipeline (T02–T13) | **Not implemented.** Apart from the initial fold subset, language work remains planned; a frozen task kind is not an installed handler — see [`docs/tasks/README.md`](docs/tasks/README.md) |
 | AArch64 target values | **UNVERIFIED.** The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); codegen readiness fails closed until a probe attests concrete values |

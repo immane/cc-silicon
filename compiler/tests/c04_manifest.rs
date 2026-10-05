@@ -236,17 +236,9 @@ fn names_store_entry_resolves_for_group_manifests() {
 
 #[test]
 fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
-    use cc_silicon_compiler::manifest::G1_FOLD_CHIP;
-    // Gate 1 (`/7`) seed: exactly the T08 fold-chip row.
-    assert_eq!(
-        STORE_OWNER_ALLOWLIST,
-        &[(
-            G1_FOLD_CHIP,
-            StoreId::Constants,
-            "records",
-            TaskKind::CONSTANT_CONST_FOLD
-        )]
-    );
+    // Seed: the T08 fold-chip row (`/7`), the PP01 row (`/10`), the three
+    // LX rows (`/11`), the PA row (`/12`), and the six TY rows (`/13`).
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 23);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(

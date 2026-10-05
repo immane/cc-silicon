@@ -17,7 +17,11 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, SpanRecord,
+    ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, ConstRecord, EffectMask,
+    FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord, NodeKind, NodeRecord,
+    PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord,
+    SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord,
+    TypeKind, TypeRecord, ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -613,12 +617,23 @@ impl Snapshot {
             w.bool(request.satisfied);
         }
 
-        // Artifacts.
+        // Artifacts (`/10` rev-44 shape with source and map).
         w.u64(bus.arenas.artifacts.allocated() as u64);
         for (id, artifact) in bus.arenas.artifacts.iter() {
             w.u32(id.index());
             w.str(artifact_kind_name(artifact.kind));
+            match artifact.source {
+                Some(source) => {
+                    w.u8(1);
+                    w.u32(source.index());
+                }
+                None => w.u8(0),
+            }
             w.bytes(&artifact.bytes);
+            w.u64(artifact.raw_offsets.len() as u64);
+            for offset in &artifact.raw_offsets {
+                w.u64(*offset);
+            }
         }
 
         // Sources: full bytes plus a hash recomputed from the bytes.
@@ -664,40 +679,53 @@ impl Snapshot {
             w.raw(&encode_continuation(continuation));
         }
 
+        // Wave 2 (`/11`) typed pp-tokens and C tokens: allocated count plus
+        // per-record bodies in ascending ID order (same convention as the
+        // typed literals/consts below).
+        w.u64(bus.arenas.pp_tokens.allocated() as u64);
+        for (id, token) in bus.arenas.pp_tokens.iter() {
+            w.u32(id.index());
+            w.raw(&encode_pp_token(token));
+        }
+        w.u64(bus.arenas.tokens.allocated() as u64);
+        for (id, token) in bus.arenas.tokens.iter() {
+            w.u32(id.index());
+            w.raw(&encode_token(token));
+        }
+        // Wave 2 (`/13`) typed scopes, events, symbols, and canonical
+        // types: allocated count plus per-record bodies in ascending ID
+        // order (same convention as the typed nodes above).
+        w.u64(bus.arenas.scopes.allocated() as u64);
+        for (id, scope) in bus.arenas.scopes.iter() {
+            w.u32(id.index());
+            w.raw(&encode_scope(scope));
+        }
+        w.u64(bus.arenas.scope_events.allocated() as u64);
+        for (id, event) in bus.arenas.scope_events.iter() {
+            w.u32(id.index());
+            w.raw(&encode_scope_event(event));
+        }
+        w.u64(bus.arenas.symbols.allocated() as u64);
+        for (id, symbol) in bus.arenas.symbols.iter() {
+            w.u32(id.index());
+            w.raw(&encode_symbol(symbol));
+        }
+        w.u64(bus.arenas.types.allocated() as u64);
+        for (id, ty) in bus.arenas.types.iter() {
+            w.u32(id.index());
+            w.raw(&encode_type(ty));
+        }
         // Reserved language stores: allocated count plus live IDs. Tombstone
         // positions are visible because removed IDs are absent from the live
         // list while `allocated` keeps counting, so trailing tombstones still
         // distinguish states. Record *bodies* remain reserved.
-        push_reserved(
-            &mut w,
-            bus.arenas.pp_tokens.allocated(),
-            bus.arenas.pp_tokens.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.tokens.allocated(),
-            bus.arenas.tokens.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.scopes.allocated(),
-            bus.arenas.scopes.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.symbols.allocated(),
-            bus.arenas.symbols.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.types.allocated(),
-            bus.arenas.types.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.nodes.allocated(),
-            bus.arenas.nodes.live_ids(),
-        );
+        // Wave 2 (`/12`) typed AST nodes: allocated count plus per-record
+        // bodies in ascending ID order (same convention as tokens above).
+        w.u64(bus.arenas.nodes.allocated() as u64);
+        for (id, node) in bus.arenas.nodes.iter() {
+            w.u32(id.index());
+            w.raw(&encode_node(node));
+        }
         // Gate 1 (`/7`) typed constants: allocated count plus per-record
         // bodies in ascending ID order (tombstones stay visible as gaps,
         // same convention as the typed continuations above).
@@ -716,26 +744,28 @@ impl Snapshot {
             bus.arenas.inits.allocated(),
             bus.arenas.inits.live_ids(),
         );
-        push_reserved(
-            &mut w,
-            bus.arenas.functions.allocated(),
-            bus.arenas.functions.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.blocks.allocated(),
-            bus.arenas.blocks.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.values.allocated(),
-            bus.arenas.values.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.instructions.allocated(),
-            bus.arenas.instructions.live_ids(),
-        );
+        // Wave 2 (`/15`) typed IR: allocated count plus per-record bodies
+        // in ascending ID order.
+        w.u64(bus.arenas.functions.allocated() as u64);
+        for (id, function) in bus.arenas.functions.iter() {
+            w.u32(id.index());
+            w.raw(&encode_function(function));
+        }
+        w.u64(bus.arenas.blocks.allocated() as u64);
+        for (id, block) in bus.arenas.blocks.iter() {
+            w.u32(id.index());
+            w.raw(&encode_block(block));
+        }
+        w.u64(bus.arenas.values.allocated() as u64);
+        for (id, value) in bus.arenas.values.iter() {
+            w.u32(id.index());
+            w.raw(&encode_value(value));
+        }
+        w.u64(bus.arenas.instructions.allocated() as u64);
+        for (id, instruction) in bus.arenas.instructions.iter() {
+            w.u32(id.index());
+            w.raw(&encode_instruction(instruction));
+        }
         push_reserved(
             &mut w,
             bus.arenas.vregs.allocated(),
@@ -748,16 +778,15 @@ impl Snapshot {
             w.u32(id.index());
             w.raw(&encode_literal_record(literal));
         }
-        push_reserved(
-            &mut w,
-            bus.arenas.sem.allocated(),
-            bus.arenas.sem.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.scope_events.allocated(),
-            bus.arenas.scope_events.live_ids(),
-        );
+        // Wave 2 (`/14`) typed semantic facts: allocated count plus
+        // per-record bodies in ascending ID order. (The stale duplicate
+        // reserved encoding of `scope_events` that `/13` left behind is
+        // removed here: bodies are encoded once, above.)
+        w.u64(bus.arenas.sem.allocated() as u64);
+        for (id, fact) in bus.arenas.sem.iter() {
+            w.u32(id.index());
+            w.raw(&encode_sem(fact));
+        }
 
         // In-flight dispatch set (ephemeral per-tick batch; empty at latch).
         w.u64(bus.tasks.in_flight.len() as u64);
@@ -894,6 +923,9 @@ fn host_request_kind_name(kind: HostRequestKind) -> &'static str {
 
 fn artifact_kind_name(kind: ArtifactKind) -> &'static str {
     match kind {
+        ArtifactKind::Normalized => "normalized",
+        ArtifactKind::Spliced => "spliced",
+        ArtifactKind::CommentFree => "comment_free",
         ArtifactKind::Preprocessed => "preprocessed",
         ArtifactKind::Assembly => "assembly",
         ArtifactKind::Object => "object",
@@ -1441,6 +1473,116 @@ pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
     Ok(ConstRecord { value, negative })
 }
 
+/// Name of a [`PpTokenKind`], in declaration order.
+pub fn pp_token_kind_name(kind: PpTokenKind) -> &'static str {
+    match kind {
+        PpTokenKind::Identifier => "identifier",
+        PpTokenKind::PpNumber => "pp_number",
+        PpTokenKind::Punctuator => "punctuator",
+        PpTokenKind::Eof => "eof",
+    }
+}
+
+fn parse_pp_token_kind(name: &str) -> Option<PpTokenKind> {
+    match name {
+        "identifier" => Some(PpTokenKind::Identifier),
+        "pp_number" => Some(PpTokenKind::PpNumber),
+        "punctuator" => Some(PpTokenKind::Punctuator),
+        "eof" => Some(PpTokenKind::Eof),
+        _ => None,
+    }
+}
+
+/// Name of a [`TokenKind`], in declaration order.
+pub fn token_kind_name(kind: TokenKind) -> &'static str {
+    match kind {
+        TokenKind::Keyword => "keyword",
+        TokenKind::Identifier => "identifier",
+        TokenKind::Punctuator => "punctuator",
+        TokenKind::Integer => "integer",
+        TokenKind::Eof => "eof",
+    }
+}
+
+fn parse_token_kind(name: &str) -> Option<TokenKind> {
+    match name {
+        "keyword" => Some(TokenKind::Keyword),
+        "identifier" => Some(TokenKind::Identifier),
+        "punctuator" => Some(TokenKind::Punctuator),
+        "integer" => Some(TokenKind::Integer),
+        "eof" => Some(TokenKind::Eof),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`PpTokenRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | span `u32` LE |
+/// spelling bytes.
+pub fn encode_pp_token(record: &PpTokenRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(pp_token_kind_name(record.kind));
+    w.u32(record.span.index());
+    w.bytes(&record.spelling);
+    w.finish()
+}
+
+/// Decode one committed [`PpTokenRecord`]; consumes the whole input.
+pub fn decode_pp_token(bytes: &[u8]) -> Result<PpTokenRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind =
+        parse_pp_token_kind(&name).ok_or(CodecError::Unsupported("unknown pp-token kind"))?;
+    let span = SpanId::from_index(r.u32()?);
+    let spelling = r.bytes()?;
+    r.finish()?;
+    Ok(PpTokenRecord {
+        kind,
+        span,
+        spelling,
+    })
+}
+
+/// Canonical encoding of one committed [`TokenRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | span `u32` LE |
+/// name-present `u8` + optional name `u32` LE | pp-token `u32` LE.
+pub fn encode_token(record: &TokenRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(token_kind_name(record.kind));
+    w.u32(record.span.index());
+    match record.name {
+        Some(name) => {
+            w.u8(1);
+            w.u32(name.index());
+        }
+        None => w.u8(0),
+    }
+    w.u32(record.pp_token.index());
+    w.finish()
+}
+
+/// Decode one committed [`TokenRecord`]; consumes the whole input.
+pub fn decode_token(bytes: &[u8]) -> Result<TokenRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_token_kind(&name).ok_or(CodecError::Unsupported("unknown token kind"))?;
+    let span = SpanId::from_index(r.u32()?);
+    let token_name = match r.u8()? {
+        0 => None,
+        1 => Some(NameId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let pp_token = PpTokenId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(TokenRecord {
+        kind,
+        span,
+        name: token_name,
+        pp_token,
+    })
+}
+
 /// Hash-relevant symbolic projection of a literal.
 ///
 /// Encodes (kind name, suffix name, candidate-type name) only. Magnitudes
@@ -1456,94 +1598,693 @@ pub fn literal_identity_key(record: &LiteralRecordView) -> Vec<u8> {
     w.finish()
 }
 
-/// Scope lifecycle event kind.
-///
-/// Encoded by canonical name (`enter`/`exit`), never by discriminant.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ScopeEventKind {
-    /// Scope entry.
-    Enter,
-    /// Scope exit.
-    Exit,
-}
-
-impl ScopeEventKind {
-    /// Canonical encoding name.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Enter => "enter",
-            Self::Exit => "exit",
-        }
-    }
-
-    /// Parse a canonical name. Unknown names are
-    /// [`CodecError::Unsupported`].
-    pub fn parse(name: &str) -> Result<Self, CodecError> {
-        match name {
-            "enter" => Ok(Self::Enter),
-            "exit" => Ok(Self::Exit),
-            _ => Err(CodecError::Unsupported("unknown scope event kind name")),
-        }
-    }
-}
-
-/// Snapshot-local view of the candidate `ScopeEventRecord`
-/// (`{ scope, kind, at }`; append-only, no stored ordinal — order is the
-/// `ScopeEventId` allocation order).
-///
-/// There is no bus arena for scope events yet, so this view is the encoder
-/// input until the T06 `/6` co-freeze lands the committed record.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ScopeEventRecordView {
-    /// Scope arena index.
-    pub scope: u32,
-    /// Event kind.
-    pub kind: ScopeEventKind,
-    /// Owner lexical node arena index (the committed TU node for file scope).
-    pub at: u32,
-}
-
-/// Canonical encoding of one candidate scope-event record.
-///
-/// Byte layout (fixed): scope `u32` LE | kind-name str | `at` `u32` LE.
-pub fn encode_scope_event(record: &ScopeEventRecordView) -> Vec<u8> {
-    let mut w = Writer::new();
-    w.u32(record.scope);
-    w.str(record.kind.name());
-    w.u32(record.at);
-    w.finish()
-}
-
-/// Decode one candidate scope-event record; consumes the whole input.
-pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecordView, CodecError> {
-    let mut r = Reader::new(bytes);
-    let scope = r.u32()?;
-    let kind_name = r.string()?;
-    let kind = ScopeEventKind::parse(&kind_name)?;
-    let at = r.u32()?;
-    r.finish()?;
-    Ok(ScopeEventRecordView { scope, kind, at })
-}
-
 /// Canonical encoding of one artifact record: kind-name str + fragment bytes.
 ///
-/// Mirrors `Snapshot::capture`. `/6`-open and NOT encoded here: the candidate
-/// `ArtifactRecord { kind, source, bytes, raw_offsets }` adds `source` and
-/// `raw_offsets`; those fields land here at co-freeze.
-pub fn encode_artifact(kind: ArtifactKind, bytes: &[u8]) -> Vec<u8> {
+/// Name of a [`NodeKind`], in declaration order.
+pub fn node_kind_name(kind: NodeKind) -> &'static str {
+    match kind {
+        NodeKind::TranslationUnit => "translation_unit",
+        NodeKind::FunctionDefinition => "function_definition",
+        NodeKind::Specifiers => "specifiers",
+        NodeKind::Declarator => "declarator",
+        NodeKind::Compound => "compound",
+        NodeKind::Return => "return",
+        NodeKind::BinaryAdd => "binary_add",
+        NodeKind::IntLiteral => "int_literal",
+    }
+}
+
+fn parse_node_kind(name: &str) -> Option<NodeKind> {
+    match name {
+        "translation_unit" => Some(NodeKind::TranslationUnit),
+        "function_definition" => Some(NodeKind::FunctionDefinition),
+        "specifiers" => Some(NodeKind::Specifiers),
+        "declarator" => Some(NodeKind::Declarator),
+        "compound" => Some(NodeKind::Compound),
+        "return" => Some(NodeKind::Return),
+        "binary_add" => Some(NodeKind::BinaryAdd),
+        "int_literal" => Some(NodeKind::IntLiteral),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`NodeRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | parent-present `u8` +
+/// optional parent `u32` LE | children-count `u64` LE + child `u32` LE each |
+/// first-token `u32` LE | last-token `u32` LE | name-present `u8` + optional
+/// name `u32` LE | literal-present `u8` + optional literal `u32` LE.
+pub fn encode_node(record: &NodeRecord) -> Vec<u8> {
     let mut w = Writer::new();
-    w.str(artifact_kind_name(kind));
-    w.bytes(bytes);
+    w.str(node_kind_name(record.kind));
+    match record.parent {
+        Some(parent) => {
+            w.u8(1);
+            w.u32(parent.index());
+        }
+        None => w.u8(0),
+    }
+    w.u64(record.children.len() as u64);
+    for child in &record.children {
+        w.u32(child.index());
+    }
+    w.u32(record.first_token.index());
+    w.u32(record.last_token.index());
+    match record.name {
+        Some(name) => {
+            w.u8(1);
+            w.u32(name.index());
+        }
+        None => w.u8(0),
+    }
+    match record.literal {
+        Some(literal) => {
+            w.u8(1);
+            w.u32(literal.index());
+        }
+        None => w.u8(0),
+    }
     w.finish()
 }
 
-/// Canonical encoding of a bus artifact record.
+/// Decode one committed [`NodeRecord`]; consumes the whole input.
+pub fn decode_node(bytes: &[u8]) -> Result<NodeRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_node_kind(&name).ok_or(CodecError::Unsupported("unknown node kind"))?;
+    let parent = match r.u8()? {
+        0 => None,
+        1 => Some(NodeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let child_count = r.u64()? as usize;
+    let mut children = Vec::with_capacity(child_count);
+    for _ in 0..child_count {
+        children.push(NodeId::from_index(r.u32()?));
+    }
+    let first_token = TokenId::from_index(r.u32()?);
+    let last_token = TokenId::from_index(r.u32()?);
+    let node_name = match r.u8()? {
+        0 => None,
+        1 => Some(NameId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let literal = match r.u8()? {
+        0 => None,
+        1 => Some(LiteralId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(NodeRecord {
+        kind,
+        parent,
+        children,
+        first_token,
+        last_token,
+        name: node_name,
+        literal,
+    })
+}
+
+/// Name of an [`IntRank`].
+pub fn int_rank_name(rank: IntRank) -> &'static str {
+    match rank {
+        IntRank::Short => "short",
+        IntRank::Int => "int",
+        IntRank::Long => "long",
+        IntRank::LongLong => "long_long",
+    }
+}
+
+fn parse_int_rank(name: &str) -> Option<IntRank> {
+    match name {
+        "short" => Some(IntRank::Short),
+        "int" => Some(IntRank::Int),
+        "long" => Some(IntRank::Long),
+        "long_long" => Some(IntRank::LongLong),
+        _ => None,
+    }
+}
+
+/// Name of a [`CharKind`].
+pub fn char_kind_name(kind: CharKind) -> &'static str {
+    match kind {
+        CharKind::Plain => "plain",
+        CharKind::Signed => "signed",
+        CharKind::Unsigned => "unsigned",
+    }
+}
+
+fn parse_char_kind(name: &str) -> Option<CharKind> {
+    match name {
+        "plain" => Some(CharKind::Plain),
+        "signed" => Some(CharKind::Signed),
+        "unsigned" => Some(CharKind::Unsigned),
+        _ => None,
+    }
+}
+
+/// Name of a [`TypeKind`] variant (payload kinds encoded inline).
+pub fn type_kind_name(kind: &TypeKind) -> &'static str {
+    match kind {
+        TypeKind::Void => "void",
+        TypeKind::Bool => "bool",
+        TypeKind::Char(_) => "char",
+        TypeKind::Int { .. } => "int",
+        TypeKind::Function { .. } => "function",
+    }
+}
+
+/// Canonical encoding of one committed [`TypeRecord`].
+///
+/// Byte layout: kind-name str, then kind payload: `Char` → char-kind-name
+/// str; `Int` → rank-name str + signed bool; `Function` → result-present
+/// `u8` + optional result `u32` LE + param-count `u64` LE + param `u32` LE
+/// each + prototype bool + variadic bool; `Void`/`Bool` → nothing.
+pub fn encode_type(record: &TypeRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(type_kind_name(&record.kind));
+    match &record.kind {
+        TypeKind::Void | TypeKind::Bool => {}
+        TypeKind::Char(char_kind) => {
+            w.str(char_kind_name(*char_kind));
+        }
+        TypeKind::Int { rank, signed } => {
+            w.str(int_rank_name(*rank));
+            w.bool(*signed);
+        }
+        TypeKind::Function {
+            result,
+            params,
+            prototype,
+            variadic,
+        } => {
+            w.u32(result.index());
+            w.u64(params.len() as u64);
+            for param in params {
+                w.u32(param.index());
+            }
+            w.bool(*prototype);
+            w.bool(*variadic);
+        }
+    }
+    w.finish()
+}
+
+/// Decode one committed [`TypeRecord`]; consumes the whole input.
+pub fn decode_type(bytes: &[u8]) -> Result<TypeRecord, CodecError> {
+    use crate::ids::TypeId;
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = match name.as_str() {
+        "void" => TypeKind::Void,
+        "bool" => TypeKind::Bool,
+        "char" => TypeKind::Char(
+            parse_char_kind(&r.string()?).ok_or(CodecError::Unsupported("unknown char kind"))?,
+        ),
+        "int" => {
+            let rank_name = r.string()?;
+            let rank =
+                parse_int_rank(&rank_name).ok_or(CodecError::Unsupported("unknown int rank"))?;
+            TypeKind::Int {
+                rank,
+                signed: r.bool()?,
+            }
+        }
+        "function" => {
+            let result = TypeId::from_index(r.u32()?);
+            let param_count = r.u64()? as usize;
+            let mut params = Vec::with_capacity(param_count);
+            for _ in 0..param_count {
+                params.push(TypeId::from_index(r.u32()?));
+            }
+            TypeKind::Function {
+                result,
+                params,
+                prototype: r.bool()?,
+                variadic: r.bool()?,
+            }
+        }
+        _ => return Err(CodecError::Unsupported("unknown type kind")),
+    };
+    r.finish()?;
+    Ok(TypeRecord { kind })
+}
+
+/// Name of a [`SymbolKind`].
+pub fn symbol_kind_name(kind: SymbolKind) -> &'static str {
+    match kind {
+        SymbolKind::Function => "function",
+        SymbolKind::Object => "object",
+    }
+}
+
+fn parse_symbol_kind(name: &str) -> Option<SymbolKind> {
+    match name {
+        "function" => Some(SymbolKind::Function),
+        "object" => Some(SymbolKind::Object),
+        _ => None,
+    }
+}
+
+/// Name of a [`Linkage`].
+pub fn linkage_name(linkage: Linkage) -> &'static str {
+    match linkage {
+        Linkage::None => "none",
+        Linkage::Internal => "internal",
+        Linkage::External => "external",
+    }
+}
+
+fn parse_linkage(name: &str) -> Option<Linkage> {
+    match name {
+        "none" => Some(Linkage::None),
+        "internal" => Some(Linkage::Internal),
+        "external" => Some(Linkage::External),
+        _ => None,
+    }
+}
+
+/// Name of a [`StorageDuration`].
+pub fn storage_duration_name(storage: StorageDuration) -> &'static str {
+    match storage {
+        StorageDuration::None => "none",
+        StorageDuration::Static => "static",
+        StorageDuration::Automatic => "automatic",
+        StorageDuration::Thread => "thread",
+        StorageDuration::Allocated => "allocated",
+    }
+}
+
+fn parse_storage_duration(name: &str) -> Option<StorageDuration> {
+    match name {
+        "none" => Some(StorageDuration::None),
+        "static" => Some(StorageDuration::Static),
+        "automatic" => Some(StorageDuration::Automatic),
+        "thread" => Some(StorageDuration::Thread),
+        "allocated" => Some(StorageDuration::Allocated),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`SymbolRecord`].
+///
+/// Byte layout: name `u32` LE | scope `u32` LE | kind-name str | ty-present
+/// `u8` + optional ty `u32` LE | linkage-name str | storage-name str |
+/// decl `u32` LE.
+pub fn encode_symbol(record: &SymbolRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.name.index());
+    w.u32(record.scope.index());
+    w.str(symbol_kind_name(record.kind));
+    match record.ty {
+        Some(ty) => {
+            w.u8(1);
+            w.u32(ty.index());
+        }
+        None => w.u8(0),
+    }
+    w.str(linkage_name(record.linkage));
+    w.str(storage_duration_name(record.storage));
+    w.u32(record.decl.index());
+    w.finish()
+}
+
+/// Decode one committed [`SymbolRecord`]; consumes the whole input.
+pub fn decode_symbol(bytes: &[u8]) -> Result<SymbolRecord, CodecError> {
+    use crate::ids::{NameId, NodeId, ScopeId, TypeId};
+    let mut r = Reader::new(bytes);
+    let name = NameId::from_index(r.u32()?);
+    let scope = ScopeId::from_index(r.u32()?);
+    let kind_name = r.string()?;
+    let kind =
+        parse_symbol_kind(&kind_name).ok_or(CodecError::Unsupported("unknown symbol kind"))?;
+    let ty = match r.u8()? {
+        0 => None,
+        1 => Some(TypeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let linkage_name = r.string()?;
+    let linkage = parse_linkage(&linkage_name).ok_or(CodecError::Unsupported("unknown linkage"))?;
+    let storage_name = r.string()?;
+    let storage = parse_storage_duration(&storage_name)
+        .ok_or(CodecError::Unsupported("unknown storage duration"))?;
+    let decl = NodeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(SymbolRecord {
+        name,
+        scope,
+        kind,
+        ty,
+        linkage,
+        storage,
+        decl,
+    })
+}
+
+/// Name of a [`ScopeKind`].
+pub fn scope_kind_name(kind: ScopeKind) -> &'static str {
+    match kind {
+        ScopeKind::File => "file",
+        ScopeKind::Block => "block",
+    }
+}
+
+fn parse_scope_kind(name: &str) -> Option<ScopeKind> {
+    match name {
+        "file" => Some(ScopeKind::File),
+        "block" => Some(ScopeKind::Block),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`ScopeRecord`].
+///
+/// Byte layout: kind-name str | parent-present `u8` + optional parent `u32`
+/// LE | owner-present `u8` + optional owner `u32` LE.
+pub fn encode_scope(record: &ScopeRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(scope_kind_name(record.kind));
+    match record.parent {
+        Some(parent) => {
+            w.u8(1);
+            w.u32(parent.index());
+        }
+        None => w.u8(0),
+    }
+    match record.owner {
+        Some(owner) => {
+            w.u8(1);
+            w.u32(owner.index());
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+/// Decode one committed [`ScopeRecord`]; consumes the whole input.
+pub fn decode_scope(bytes: &[u8]) -> Result<ScopeRecord, CodecError> {
+    use crate::ids::{NodeId, ScopeId};
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_scope_kind(&name).ok_or(CodecError::Unsupported("unknown scope kind"))?;
+    let parent = match r.u8()? {
+        0 => None,
+        1 => Some(ScopeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let owner = match r.u8()? {
+        0 => None,
+        1 => Some(NodeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(ScopeRecord {
+        kind,
+        parent,
+        owner,
+    })
+}
+
+/// Name of a [`ScopeEventKind`].
+pub fn scope_event_kind_name(kind: ScopeEventKind) -> &'static str {
+    match kind {
+        ScopeEventKind::Enter => "enter",
+        ScopeEventKind::Exit => "exit",
+    }
+}
+
+fn parse_scope_event_kind(name: &str) -> Option<ScopeEventKind> {
+    match name {
+        "enter" => Some(ScopeEventKind::Enter),
+        "exit" => Some(ScopeEventKind::Exit),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`ScopeEventRecord`].
+///
+/// Byte layout: scope `u32` LE | kind-name str | at `u32` LE.
+pub fn encode_scope_event(record: &ScopeEventRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.scope.index());
+    w.str(scope_event_kind_name(record.kind));
+    w.u32(record.at.index());
+    w.finish()
+}
+
+/// Decode one committed [`ScopeEventRecord`]; consumes the whole input.
+pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecord, CodecError> {
+    use crate::ids::{NodeId, ScopeId};
+    let mut r = Reader::new(bytes);
+    let scope = ScopeId::from_index(r.u32()?);
+    let name = r.string()?;
+    let kind =
+        parse_scope_event_kind(&name).ok_or(CodecError::Unsupported("unknown scope event kind"))?;
+    let at = NodeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(ScopeEventRecord { scope, kind, at })
+}
+
+/// Name of a [`ValueCategory`], in declaration order.
+pub fn value_category_name(category: ValueCategory) -> &'static str {
+    match category {
+        ValueCategory::Lvalue => "lvalue",
+        ValueCategory::NonLvalue => "non_lvalue",
+        ValueCategory::FunctionDesignator => "function_designator",
+        ValueCategory::Void => "void",
+    }
+}
+
+fn parse_value_category(name: &str) -> Option<ValueCategory> {
+    match name {
+        "lvalue" => Some(ValueCategory::Lvalue),
+        "non_lvalue" => Some(ValueCategory::NonLvalue),
+        "function_designator" => Some(ValueCategory::FunctionDesignator),
+        "void" => Some(ValueCategory::Void),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`SemRecord`].
+///
+/// Byte layout (fixed field order): node `u32` LE | ty `u32` LE |
+/// category-name str | effects `u32` LE.
+pub fn encode_sem(record: &SemRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.node.index());
+    w.u32(record.ty.index());
+    w.str(value_category_name(record.category));
+    w.u32(record.effects.0);
+    w.finish()
+}
+
+/// Decode one committed [`SemRecord`]; consumes the whole input.
+pub fn decode_sem(bytes: &[u8]) -> Result<SemRecord, CodecError> {
+    use crate::ids::{NodeId, TypeId};
+    let mut r = Reader::new(bytes);
+    let node = NodeId::from_index(r.u32()?);
+    let ty = TypeId::from_index(r.u32()?);
+    let name = r.string()?;
+    let category =
+        parse_value_category(&name).ok_or(CodecError::Unsupported("unknown value category"))?;
+    let effects = EffectMask(r.u32()?);
+    r.finish()?;
+    Ok(SemRecord {
+        node,
+        ty,
+        category,
+        effects,
+    })
+}
+
+/// Name of an [`IrOp`], in declaration order.
+pub fn ir_op_name(op: IrOp) -> &'static str {
+    match op {
+        IrOp::Constant => "constant",
+        IrOp::Return => "return",
+    }
+}
+
+fn parse_ir_op(name: &str) -> Option<IrOp> {
+    match name {
+        "constant" => Some(IrOp::Constant),
+        "return" => Some(IrOp::Return),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`FunctionRecord`].
+///
+/// Byte layout: symbol `u32` LE | signature `u32` LE | entry `u32` LE |
+/// linkage-name str.
+pub fn encode_function(record: &FunctionRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.symbol.index());
+    w.u32(record.signature.index());
+    w.u32(record.entry.index());
+    w.str(linkage_name(record.linkage));
+    w.finish()
+}
+
+/// Decode one committed [`FunctionRecord`]; consumes the whole input.
+pub fn decode_function(bytes: &[u8]) -> Result<FunctionRecord, CodecError> {
+    use crate::ids::{BlockId, SymbolId, TypeId};
+    let mut r = Reader::new(bytes);
+    let symbol = SymbolId::from_index(r.u32()?);
+    let signature = TypeId::from_index(r.u32()?);
+    let entry = BlockId::from_index(r.u32()?);
+    let name = r.string()?;
+    let linkage = parse_linkage(&name).ok_or(CodecError::Unsupported("unknown linkage"))?;
+    r.finish()?;
+    Ok(FunctionRecord {
+        symbol,
+        signature,
+        entry,
+        linkage,
+    })
+}
+
+/// Canonical encoding of one committed [`BlockRecord`].
+///
+/// Byte layout: function `u32` LE | ordinal `u32` LE.
+pub fn encode_block(record: &BlockRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.function.index());
+    w.u32(record.ordinal);
+    w.finish()
+}
+
+/// Decode one committed [`BlockRecord`]; consumes the whole input.
+pub fn decode_block(bytes: &[u8]) -> Result<BlockRecord, CodecError> {
+    use crate::ids::FunctionId;
+    let mut r = Reader::new(bytes);
+    let function = FunctionId::from_index(r.u32()?);
+    let ordinal = r.u32()?;
+    r.finish()?;
+    Ok(BlockRecord { function, ordinal })
+}
+
+/// Canonical encoding of one committed [`ValueRecord`].
+///
+/// Byte layout: ty `u32` LE.
+pub fn encode_value(record: &ValueRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.ty.index());
+    w.finish()
+}
+
+/// Decode one committed [`ValueRecord`]; consumes the whole input.
+pub fn decode_value(bytes: &[u8]) -> Result<ValueRecord, CodecError> {
+    use crate::ids::TypeId;
+    let mut r = Reader::new(bytes);
+    let ty = TypeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(ValueRecord { ty })
+}
+
+/// Canonical encoding of one committed [`InstructionRecord`].
+///
+/// Byte layout: op-name str | block `u32` LE | operand-count `u64` LE +
+/// operand `u32` LE each | immediate-present `u8` + optional immediate
+/// `u32` LE | result-present `u8` + optional result `u32` LE.
+pub fn encode_instruction(record: &InstructionRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(ir_op_name(record.op));
+    w.u32(record.block.index());
+    w.u64(record.operands.len() as u64);
+    for operand in &record.operands {
+        w.u32(operand.index());
+    }
+    match record.immediate {
+        Some(immediate) => {
+            w.u8(1);
+            w.u32(immediate.index());
+        }
+        None => w.u8(0),
+    }
+    match record.result {
+        Some(result) => {
+            w.u8(1);
+            w.u32(result.index());
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+/// Decode one committed [`InstructionRecord`]; consumes the whole input.
+pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError> {
+    use crate::ids::{BlockId, ConstId, ValueId};
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let op = parse_ir_op(&name).ok_or(CodecError::Unsupported("unknown IR op"))?;
+    let block = BlockId::from_index(r.u32()?);
+    let operand_count = r.u64()? as usize;
+    let mut operands = Vec::with_capacity(operand_count);
+    for _ in 0..operand_count {
+        operands.push(ValueId::from_index(r.u32()?));
+    }
+    let immediate = match r.u8()? {
+        0 => None,
+        1 => Some(ConstId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let result = match r.u8()? {
+        0 => None,
+        1 => Some(ValueId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(InstructionRecord {
+        op,
+        block,
+        operands,
+        immediate,
+        result,
+    })
+}
+
+/// Canonical encoding of a `/10` artifact: kind name, optional source index,
+/// bytes, then the `raw_offsets` map.
+pub fn encode_artifact(
+    kind: ArtifactKind,
+    source: Option<SourceId>,
+    bytes: &[u8],
+    raw_offsets: &[u64],
+) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(artifact_kind_name(kind));
+    match source {
+        Some(id) => {
+            w.u8(1);
+            w.u32(id.index());
+        }
+        None => w.u8(0),
+    }
+    w.bytes(bytes);
+    w.u64(raw_offsets.len() as u64);
+    for offset in raw_offsets {
+        w.u64(*offset);
+    }
+    w.finish()
+}
+
+/// Canonical encoding of a bus artifact record. Mirrors `Snapshot::capture`.
 pub fn encode_artifact_record(record: &ArtifactRecord) -> Vec<u8> {
-    encode_artifact(record.kind, &record.bytes)
+    encode_artifact(
+        record.kind,
+        record.source,
+        &record.bytes,
+        &record.raw_offsets,
+    )
 }
 
 fn parse_artifact_kind(name: &str) -> Option<ArtifactKind> {
     match name {
+        "normalized" => Some(ArtifactKind::Normalized),
+        "spliced" => Some(ArtifactKind::Spliced),
+        "comment_free" => Some(ArtifactKind::CommentFree),
         "preprocessed" => Some(ArtifactKind::Preprocessed),
         "assembly" => Some(ArtifactKind::Assembly),
         "object" => Some(ArtifactKind::Object),
@@ -1557,14 +2298,29 @@ fn parse_artifact_kind(name: &str) -> Option<ArtifactKind> {
 ///
 /// Unknown kind names are [`CodecError::Unsupported`]: a future `ArtifactKind`
 /// addition, never silent corruption.
-pub fn decode_artifact(bytes: &[u8]) -> Result<(ArtifactKind, Vec<u8>), CodecError> {
+pub fn decode_artifact(bytes: &[u8]) -> Result<ArtifactRecord, CodecError> {
     let mut r = Reader::new(bytes);
     let name = r.string()?;
     let kind =
         parse_artifact_kind(&name).ok_or(CodecError::Unsupported("unknown artifact kind name"))?;
+    let source = match r.u8()? {
+        0 => None,
+        1 => Some(SourceId::from_index(r.u32()?)),
+        _ => return Err(CodecError::Unsupported("unknown artifact source tag")),
+    };
     let data = r.bytes()?;
+    let map_len = r.u64()? as usize;
+    let mut raw_offsets = Vec::with_capacity(map_len);
+    for _ in 0..map_len {
+        raw_offsets.push(r.u64()?);
+    }
     r.finish()?;
-    Ok((kind, data))
+    Ok(ArtifactRecord {
+        kind,
+        source,
+        bytes: data,
+        raw_offsets,
+    })
 }
 
 /// Canonical encoding of one continuation record (frozen `/6` nine-field shape).

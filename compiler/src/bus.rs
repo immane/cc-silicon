@@ -74,9 +74,15 @@ pub struct ExpansionRecord {
     pub ordinal: u32,
 }
 
-/// Kind of output artifact.
+/// Kind of output artifact (`/10` total 8-variant set, rev-44).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArtifactKind {
+    /// Newline-normalized single-source bytes (M1 PP01 exercised).
+    Normalized,
+    /// Line-spliced bytes (declared, unexercised in M1).
+    Spliced,
+    /// Comment-free bytes (declared, unexercised in M1).
+    CommentFree,
     /// Preprocessed source.
     Preprocessed,
     /// Generated assembly.
@@ -89,13 +95,438 @@ pub enum ArtifactKind {
     Trace,
 }
 
-/// An output artifact fragment.
+impl ArtifactKind {
+    /// Whether this kind requires a location map (`/10` rev-44 total rule).
+    pub const fn requires_map(self) -> bool {
+        match self {
+            Self::Normalized | Self::Spliced | Self::CommentFree | Self::Preprocessed => true,
+            Self::Assembly | Self::Object | Self::Snapshot | Self::Trace => false,
+        }
+    }
+}
+
+/// An output artifact fragment (`/10` rev-44 shape).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactRecord {
     /// Artifact kind.
     pub kind: ArtifactKind,
+    /// Owning source (`Some` required for map-mandatory kinds).
+    pub source: Option<SourceId>,
     /// Fragment bytes.
     pub bytes: Vec<u8>,
+    /// Output-boundary to raw-source-boundary map.
+    pub raw_offsets: Vec<u64>,
+}
+
+impl ArtifactRecord {
+    /// Validate the rev-45 mandatory-map invariants plus the rev-47
+    /// optional-kind rule: map-mandatory kinds need `raw_offsets.len() ==
+    /// bytes.len()+1`, first `== 0`, monotonic nondecreasing, last `<=`
+    /// source length, and a valid `source`; map-optional kinds need empty
+    /// `raw_offsets` with an optional valid `source`.
+    pub fn check_map(&self, source_len: u64) -> Result<(), &'static str> {
+        if self.kind.requires_map() {
+            if self.source.is_none() {
+                return Err("map-mandatory artifact requires a source");
+            }
+            if self.raw_offsets.len() as u64 != self.bytes.len() as u64 + 1 {
+                return Err("raw_offsets length must equal bytes length plus one");
+            }
+            if self.raw_offsets.first() != Some(&0) {
+                return Err("raw_offsets must start at zero");
+            }
+            let mut prev = 0u64;
+            for offset in &self.raw_offsets {
+                if *offset < prev {
+                    return Err("raw_offsets must be monotonic nondecreasing");
+                }
+                prev = *offset;
+            }
+            if self
+                .raw_offsets
+                .last()
+                .is_some_and(|last| *last > source_len)
+            {
+                return Err("raw_offsets end must not exceed source length");
+            }
+            // Note: the inserted-LF zero-width case ends at raw EOF, which
+            // equals `source_len`; the CRLF collapse ends after the raw LF,
+            // also `<= source_len`. Both satisfy the bound above.
+            Ok(())
+        } else {
+            if !self.raw_offsets.is_empty() {
+                return Err("map-optional artifact requires empty raw_offsets");
+            }
+            Ok(())
+        }
+    }
+}
+
+/// A T03-owned preprocessing token (`/11` LX-slice freeze).
+///
+/// M1 produces only `Identifier`, `PpNumber`, `Punctuator`, and `Eof`;
+/// string/character literals and header names are deferred as explicit
+/// unsupported. `Eof` carries empty spelling and a zero-width span at the
+/// source end.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PpTokenRecord {
+    /// Preprocessing-token kind.
+    pub kind: PpTokenKind,
+    /// Committed T03-owned span (byte offsets into the owning source).
+    pub span: SpanId,
+    /// Raw spelling bytes.
+    pub spelling: Vec<u8>,
+}
+
+/// Preprocessing-token kinds (`/11` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PpTokenKind {
+    /// `int`, `main`, `void`, `return` at PP level (keywords not yet distinguished).
+    Identifier,
+    /// `2`, `3` (M1 decimal only; other numeric forms are explicit unsupported).
+    PpNumber,
+    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    Punctuator,
+    /// End of input (zero-width span at the source end).
+    Eof,
+}
+
+/// A T04-owned C token (`/11` LX-slice freeze).
+///
+/// `span` reuses the committed T03 PP span; T04 writes no spans. `name` is
+/// the interned spelling for `Identifier`/`Keyword` tokens. There is no
+/// forward `literal` link in this slice: literals point back at their token
+/// (`LiteralRecord.token`), and the reciprocal link stays deferred.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TokenRecord {
+    /// C-token kind.
+    pub kind: TokenKind,
+    /// Committed T03-owned PP span reused verbatim.
+    pub span: SpanId,
+    /// Interned spelling for `Identifier`/`Keyword` tokens.
+    pub name: Option<NameId>,
+    /// Originating committed PP token (committed before classification).
+    pub pp_token: PpTokenId,
+}
+
+/// C-token kinds (`/11` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenKind {
+    /// `int`, `void`, `return` (full C11 keyword table, membership-tested).
+    Keyword,
+    /// `main`.
+    Identifier,
+    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    Punctuator,
+    /// `2`, `3` (M1 decimal no-suffix only).
+    Integer,
+    /// End of input.
+    Eof,
+}
+
+/// Integer rank for `TypeKind::Int` (`/13`; symbolic, no target width).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntRank {
+    /// `short`.
+    Short,
+    /// `int`.
+    Int,
+    /// `long`.
+    Long,
+    /// `long long`.
+    LongLong,
+}
+
+/// Character kind (`/13`; plain signedness stays probe-gated).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CharKind {
+    /// Plain `char` (signedness target-defined).
+    Plain,
+    /// `signed char`.
+    Signed,
+    /// `unsigned char`.
+    Unsigned,
+}
+
+/// A T06-owned canonical type record (`/13` slice freeze).
+///
+/// M1 produces only `Int { rank: Int, signed: true }` (TY13, single
+/// producer with reuse scan) and `Function { result: int, params: [],
+/// prototype: true, variadic: false }` (TY17). All other type forms are
+/// explicit unsupported.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeRecord {
+    /// Type kind.
+    pub kind: TypeKind,
+}
+
+/// Canonical type kinds (`/13` M1-closed set in doc; only `Int` and the
+/// M1 `Function` shape are produced).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypeKind {
+    /// `void`.
+    Void,
+    /// `_Bool`.
+    Bool,
+    /// Character type with explicit kind.
+    Char(CharKind),
+    /// Signed or unsigned integer with rank.
+    Int {
+        /// Integer rank.
+        rank: IntRank,
+        /// Signedness.
+        signed: bool,
+    },
+    /// Function type.
+    Function {
+        /// Result type.
+        result: crate::ids::TypeId,
+        /// Parameter types (empty with `prototype: true` means `(void)`).
+        params: Vec<crate::ids::TypeId>,
+        /// Whether the parameter list is a prototype.
+        prototype: bool,
+        /// Whether the function is variadic.
+        variadic: bool,
+    },
+}
+
+/// Symbol kinds (`/13`; only `Function` is produced in M1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// A declared function (`main`).
+    Function,
+    /// A declared object (deferred past M1).
+    Object,
+}
+
+/// Linkage (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Linkage {
+    /// No linkage.
+    None,
+    /// Internal linkage (`static`).
+    Internal,
+    /// External linkage (M1 `main` default).
+    External,
+}
+
+/// Storage duration (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageDuration {
+    /// No storage (type names, enumerators).
+    None,
+    /// Static storage duration (M1 file-scope `main`).
+    Static,
+    /// Automatic storage duration.
+    Automatic,
+    /// Thread-local storage duration.
+    Thread,
+    /// Allocated storage duration.
+    Allocated,
+}
+
+/// A T06-owned declared-symbol record (`/13` slice freeze).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SymbolRecord {
+    /// Declared name.
+    pub name: crate::ids::NameId,
+    /// Scope of declaration.
+    pub scope: crate::ids::ScopeId,
+    /// Symbol kind.
+    pub kind: SymbolKind,
+    /// Declared type (`None` only for labels; M1 always `Some`).
+    pub ty: Option<crate::ids::TypeId>,
+    /// Linkage.
+    pub linkage: Linkage,
+    /// Storage duration.
+    pub storage: StorageDuration,
+    /// Declaring node (M1: the `Declarator` node).
+    pub decl: crate::ids::NodeId,
+}
+
+/// Scope kinds (`/13` M1-closed: file + block).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeKind {
+    /// File scope (one per TU in M1, never exits).
+    File,
+    /// Block scope (M1 function body).
+    Block,
+}
+
+/// A T06-owned scope record (`/13` slice freeze; identified by its owner
+/// lexical node, never by `(parent, kind)`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeRecord {
+    /// Scope kind.
+    pub kind: ScopeKind,
+    /// Parent scope (`None` for the file scope).
+    pub parent: Option<crate::ids::ScopeId>,
+    /// Owner lexical node (`None` for the file scope; the `Block` node for
+    /// a body scope).
+    pub owner: Option<crate::ids::NodeId>,
+}
+
+/// Scope event kinds (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeEventKind {
+    /// Scope entered.
+    Enter,
+    /// Scope exited.
+    Exit,
+}
+
+/// A T06-owned scope-lifecycle event (`/13` slice freeze; append-only,
+/// order = `ScopeEventId`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeEventRecord {
+    /// Entered/exited scope.
+    pub scope: crate::ids::ScopeId,
+    /// Event kind.
+    pub kind: ScopeEventKind,
+    /// Lexical node the event is anchored at (committed).
+    pub at: crate::ids::NodeId,
+}
+
+/// Value category (`/14` SE-slice freeze; M1 produces `NonLvalue` only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueCategory {
+    /// An lvalue.
+    Lvalue,
+    /// A non-lvalue (M1 integer constants and `2+3`).
+    NonLvalue,
+    /// A function designator.
+    FunctionDesignator,
+    /// A void expression.
+    Void,
+}
+
+/// Effect mask (`/14`; M1 allows only `0` — a nonzero mask is a typed chip
+/// failure, never a pass).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EffectMask(pub u32);
+
+/// IR opcode (`/15` M1-closed: constant materialization + function return).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IrOp {
+    /// Materialize a committed `ConstRecord` as a value (never refolds).
+    Constant,
+    /// Return a value (the unique terminator in M1).
+    Return,
+}
+
+/// A T09-owned IR function (`/15` slice freeze; one per M1 `main`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionRecord {
+    /// Checked `main` symbol.
+    pub symbol: crate::ids::SymbolId,
+    /// ABI-neutral signature (`int(void)`).
+    pub signature: crate::ids::TypeId,
+    /// Single entry block.
+    pub entry: crate::ids::BlockId,
+    /// Linkage (from the symbol).
+    pub linkage: Linkage,
+}
+
+/// A T09-owned IR basic block (`/15`; instructions derived by ascending
+/// `InstructionId`, never stored on the block).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockRecord {
+    /// Owning function.
+    pub function: crate::ids::FunctionId,
+    /// Ordinal within the function (M1: 0).
+    pub ordinal: u32,
+}
+
+/// A T09-owned IR value (`/15`; the producer is the unique producing
+/// `Instruction.result`, never a stored back-link).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValueRecord {
+    /// Value type (M1: `int`).
+    pub ty: crate::ids::TypeId,
+}
+
+/// A T09-owned IR instruction (`/15`; M1 emits exactly `Constant` then
+/// `Return`, so the terminator is the greatest `InstructionId`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstructionRecord {
+    /// Operation.
+    pub op: IrOp,
+    /// Parent block.
+    pub block: crate::ids::BlockId,
+    /// Operand values (`Return` carries exactly one in M1).
+    pub operands: Vec<crate::ids::ValueId>,
+    /// Folded constant (`Some` only for `Constant`).
+    pub immediate: Option<crate::ids::ConstId>,
+    /// Result value (`None` for `Return`).
+    pub result: Option<crate::ids::ValueId>,
+}
+
+/// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per
+/// checked `NodeId`).
+///
+/// M1 checks `{IntLiteral, BinaryAdd, Return}` with `ty = int`,
+/// `category = NonLvalue`, `effects = 0`. There is no `conversions` field
+/// at this slice: M1 identity is the absence of a plan (TC-02 answered),
+/// and the shared plan type freezes later with non-identity conversions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemRecord {
+    /// Checked node.
+    pub node: NodeId,
+    /// Committed canonical type.
+    pub ty: TypeId,
+    /// Value category.
+    pub category: ValueCategory,
+    /// Effects.
+    pub effects: EffectMask,
+}
+
+/// A T05-owned AST node (`/12` PA-slice freeze).
+///
+/// M1 produces only the nine-node `int main(void){return 2+3;}` tree; all
+/// other syntactic forms are explicit unsupported. `parent`/`children` are
+/// committed-or-predicted node IDs (single-batch pre-order allocation, TU
+/// first); `first_token`/`last_token` are committed tokens; `name` carries
+/// the declarator name; `literal` carries the committed literal for
+/// `IntLiteral` leaves. Coherence (reciprocal parent/children, token ranges)
+/// is worker-enforced and test-pinned; commit-side link validation stays a
+/// T01/T13 open item.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeRecord {
+    /// AST node kind.
+    pub kind: NodeKind,
+    /// Parent node (`None` for the TU root).
+    pub parent: Option<NodeId>,
+    /// Ordered child nodes.
+    pub children: Vec<NodeId>,
+    /// First covered token (committed).
+    pub first_token: TokenId,
+    /// Last covered token (committed, inclusive).
+    pub last_token: TokenId,
+    /// Declarator name (`Some` only for `Declarator`).
+    pub name: Option<NameId>,
+    /// Committed literal (`Some` only for `IntLiteral`).
+    pub literal: Option<LiteralId>,
+}
+
+/// AST node kinds (`/12` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeKind {
+    /// The whole translation unit.
+    TranslationUnit,
+    /// `int main(void){...}`.
+    FunctionDefinition,
+    /// The `int` specifier bundle.
+    Specifiers,
+    /// `main(void)` (prototype, zero parameters).
+    Declarator,
+    /// `{ return 2+3; }`.
+    Compound,
+    /// `return 2+3;`.
+    Return,
+    /// `2+3` (M1-fixed `Add`; other operators deferred).
+    BinaryAdd,
+    /// A committed integer literal leaf.
+    IntLiteral,
 }
 
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
@@ -151,28 +582,23 @@ pub struct Arenas {
     pub spans: TypedArena<SpanId, SpanRecord>,
     /// Macro expansion provenance.
     pub expansions: TypedArena<ExpansionId, ExpansionRecord>,
-    /// Preprocessing tokens (schema owned by T03).
-    pub pp_tokens: ReservedArena<PpTokenId>,
-    /// C tokens (schema owned by T04).
-    pub tokens: ReservedArena<TokenId>,
-    /// Scopes (schema owned by T06).
-    pub scopes: ReservedArena<ScopeId>,
-    /// Scope lifecycle events (schema owned by T06).
-    ///
-    /// A [`ReservedArena`] (stable IDs only): the T06 owner replaces this
-    /// with a real typed arena when it freezes the `ScopeEventRecord` schema.
-    pub scope_events: ReservedArena<ScopeEventId>,
-    /// Symbols (schema owned by T06).
-    pub symbols: ReservedArena<SymbolId>,
-    /// Canonical types (schema owned by T06).
-    pub types: ReservedArena<TypeId>,
-    /// Semantic facts, one per checked node (schema owned by T07).
-    ///
-    /// A [`ReservedArena`] (stable IDs only): the T07 owner replaces this
-    /// with a real typed arena when it freezes the `SemRecord` schema.
-    pub sem: ReservedArena<SemId>,
-    /// AST nodes (schema owned by T05).
-    pub nodes: ReservedArena<NodeId>,
+    /// Preprocessing tokens (`/11` T03/T04 co-freeze: typed on freeze).
+    pub pp_tokens: TypedArena<PpTokenId, PpTokenRecord>,
+    /// C tokens (`/11` LX-slice freeze: typed on freeze).
+    pub tokens: TypedArena<TokenId, TokenRecord>,
+    /// Scopes (`/13` slice freeze: typed on freeze).
+    pub scopes: TypedArena<ScopeId, ScopeRecord>,
+    /// Scope lifecycle events (`/13` slice freeze: typed on freeze).
+    pub scope_events: TypedArena<ScopeEventId, ScopeEventRecord>,
+    /// Symbols (`/13` slice freeze: typed on freeze).
+    pub symbols: TypedArena<SymbolId, SymbolRecord>,
+    /// Canonical types (`/13` slice freeze: typed on freeze).
+    pub types: TypedArena<TypeId, TypeRecord>,
+    /// Semantic facts, one per checked node (`/14` slice freeze: typed on
+    /// freeze).
+    pub sem: TypedArena<SemId, SemRecord>,
+    /// AST nodes (`/12` PA-slice freeze: typed on freeze).
+    pub nodes: TypedArena<NodeId, NodeRecord>,
     /// T04-owned decoded literals (Gate 1 `/7` typed schema; rev-45 exact
     /// ordered fields). The T04 production chips land in slice 2; Gate 1
     /// seeds `G1-CL-01` fixtures directly.
@@ -185,14 +611,14 @@ pub struct Arenas {
     pub layouts: ReservedArena<LayoutId>,
     /// Initialization plans (schema owned by T08).
     pub inits: ReservedArena<InitId>,
-    /// IR functions (schema owned by T09).
-    pub functions: ReservedArena<FunctionId>,
-    /// IR basic blocks (schema owned by T09).
-    pub blocks: ReservedArena<BlockId>,
-    /// IR values (schema owned by T09).
-    pub values: ReservedArena<ValueId>,
-    /// IR instructions (schema owned by T09).
-    pub instructions: ReservedArena<InstructionId>,
+    /// IR functions (`/15` slice freeze: typed on freeze).
+    pub functions: TypedArena<FunctionId, FunctionRecord>,
+    /// IR basic blocks (`/15` slice freeze: typed on freeze).
+    pub blocks: TypedArena<BlockId, BlockRecord>,
+    /// IR values (`/15` slice freeze: typed on freeze).
+    pub values: TypedArena<ValueId, ValueRecord>,
+    /// IR instructions (`/15` slice freeze: typed on freeze).
+    pub instructions: TypedArena<InstructionId, InstructionRecord>,
     /// Virtual registers (schema owned by T11).
     pub vregs: ReservedArena<VRegId>,
     /// Continuations (mechanical resume state).

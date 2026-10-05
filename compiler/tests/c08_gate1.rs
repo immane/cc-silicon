@@ -121,7 +121,24 @@ fn seed_g1_fixtures(bus: &mut CompilerBus) -> (LiteralId, LiteralId, NodeId) {
         .literals
         .alloc(fixture_literal(3, b"3"), &limits)
         .unwrap();
-    let node = bus.arenas.nodes.alloc(&limits).unwrap();
+    // Presence-only placeholder: Gate 1 checks node liveness, never the body;
+    // real token linkage is asserted by the PA slice (`c12_parse`).
+    let node = bus
+        .arenas
+        .nodes
+        .alloc(
+            cc_silicon_compiler::bus::NodeRecord {
+                kind: cc_silicon_compiler::bus::NodeKind::BinaryAdd,
+                parent: None,
+                children: vec![],
+                first_token: cc_silicon_compiler::ids::TokenId::from_index(0),
+                last_token: cc_silicon_compiler::ids::TokenId::from_index(0),
+                name: None,
+                literal: None,
+            },
+            &limits,
+        )
+        .unwrap();
     (two, three, node)
 }
 
@@ -573,7 +590,7 @@ fn append_enforces_per_arena_capacity() {
 #[test]
 fn stage_assignment_covers_foundation_and_slice() {
     use cc_silicon_compiler::manifest::check_stage_layer_agreement;
-    assert_eq!(STAGE_ASSIGNMENT.len(), 7);
+    assert_eq!(STAGE_ASSIGNMENT.len(), 32);
     for (kind, stage) in STAGE_ASSIGNMENT {
         assert_eq!(stage_of(*kind), Some(*stage));
         assert!((*stage as usize) < Limits::fixture().stage_queue_bound.len());
@@ -583,11 +600,11 @@ fn stage_assignment_covers_foundation_and_slice() {
     assert_eq!(stage_of(TaskKind::SEMANTIC_CONST_EVAL_BINARY), Some(1));
     assert_eq!(stage_of(TaskKind::CONSTANT_CONST_FOLD), Some(2));
     // No silent default: unlisted kinds have no stage.
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 16).unwrap()), None);
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 19).unwrap()), None);
 
     // Registration rejects a manifest whose kind has no stage row.
     let mut kinds = TaskKindRegistry::m1_slice();
-    let custom = TaskKind::new(TaskGroup::LEX, 16).unwrap();
+    let custom = TaskKind::new(TaskGroup::LEX, 19).unwrap();
     kinds
         .register(
             custom,
@@ -650,8 +667,9 @@ fn stage_assignment_covers_foundation_and_slice() {
 
 #[test]
 fn allowlist_authorizes_fold_chip_only() {
-    // The seed holds exactly the fold-chip row; `tasks.ready` stays writer-free.
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 1);
+    // The seed holds the fold-chip row (`/7`) plus the PP01 row (`/10`);
+    // `tasks.ready` stays writer-free.
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 23);
     assert!(!STORE_OWNER_ALLOWLIST
         .iter()
         .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready"));
@@ -793,7 +811,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/9");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/19");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -837,7 +855,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/9",
+        "t01-c01-c06/19",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",

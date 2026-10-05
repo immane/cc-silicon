@@ -226,7 +226,163 @@ allowlists `BTreeMap`/`BTreeSet`/`vec!`/`format!`. New hashed rules
 `append.patch-conflict-rejected`, `const.binary-node-must-be-live`,
 `dispatch.stage-layer-enforced`, `worker.stateless-unit-required`. New artifact
 `t01-c01-c06/9` (`f9539895…eafb`); regression suite `compiler/tests/c09_readiness.rs`
-(13 tests); item list in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §9.
+(14 tests); item list in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §9.
+
+`/10` amendment — Wave 2 slice 1, PP01 source-normalize (R1 auto-bump; `/9`
+preserved as history): `ArtifactRecord { kind, source, bytes, raw_offsets }`
+(rev-44) + total 8 `ArtifactKind` with `requires_map`; mandatory-map
+invariants + optional-kind empty-offset rule (rev-45/47); M1 boundary
+convention frozen for the exercised scope (identity / inserted-LF zero-width /
+CRLF collapse); `preprocess.normalize` kind (`group 2`, local `16`) with
+`pp01_slice()` registry; stage row (`normalize → 1`) + allowlist row (`PP01`,
+`Artifacts/fragments`); `AppendRecords` materialization for the `Artifact`
+family (`Normalized`-only, map validation, capacity, predicted refs);
+snapshot bodies + `ARTIFACT_KIND_NAMES` hash participation;
+`PpNormalizeChip` worker (`PpInput`, pure `compute`, ZST, stage/layer, lint).
+New hashed rules `artifact.normalized-single-source`,
+`artifact.map-mandatory-invariants`, `artifact.total-eight-kinds`,
+`pp.normalize-single-source-convention`, `commit.artifact-materialized`.
+New artifact `t01-c01-c06/10` (`9d2479e7…81a5e9`); acceptance
+`compiler/tests/c10_pp01.rs` (7 tests); item list in
+[PP01_NORMALIZE_SLICE.md](PP01_NORMALIZE_SLICE.md).
+
+`/11` amendment — Wave 2 slice 2, LX tokenize/classify/decode (R1 auto-bump; `/10` preserved as history): `PpTokenRecord`/`PpTokenKind` and
+`TokenRecord`/`TokenKind` (M1-closed) with `pp.tokens`/`tokens` arenas
+becoming typed on freeze; full C11 keyword table (membership); identifier +
+keyword interning with four-name M1 order (NI-02 resolved); integer-only
+decode with the commit-side token back-link (DOC-10); `lex.intern(16)` /
+`lex.classify(17)` / `lex.decode_literal(18)` with stage-2 rows and three
+allowlist rows (chips 4/5/6); `Name`/`Token` append materialization
+(lookup-first interning with read-only capacity simulation, `Intern`
+protocol-18 error, future-`Name` refs rejected); snapshot bodies +
+`PPTOKEN/TOKEN_KIND_NAMES` and record-field lists in the hash. New hashed
+rules `lex.intern-first-seen-order`, `lex.keyword-table-membership`,
+`lex.integer-decimal-only`, `lex.token-back-link-committed`,
+`commit.name-interned-lookup-first`, `commit.token-materialized`. New
+artifact `t01-c01-c06/11` (`4484ae13…ce69`); acceptance
+`compiler/tests/c11_lex.rs` (8 tests); item list in
+[LX_SLICE.md](LX_SLICE.md).
+
+`/12` amendment — Wave 2 slice 3, PA translation-unit (R1 auto-bump; `/11`
+preserved as history): `NodeRecord` (7 fields) + M1-closed `NodeKind` (8
+variants) with the `nodes` arena becoming typed on freeze; the fixed
+nine-node M1 tree (pre-order prediction, reciprocal coherence test-pinned);
+`parse.translation_unit` (`group 4`, local `16`) with `pa_slice()`
+registry; stage row (`translation_unit → 2`) + allowlist row (`PA_TU_CHIP =
+7`, `Parse/nodes`); `AppendRecords` materialization for the `Node` family;
+snapshot bodies + `NODE_KIND_NAMES`/`NODE_RECORD_FIELDS` in the hash;
+`PaTuChip` worker (`PaTuInput`, pure `compute`, ZST, stage/layer, lint).
+The File-Enter edge stays deferred to T06. New hashed rules
+`parse.tu-fixed-nine-node-tree`, `parse.token-range-committed`,
+`commit.node-materialized`. New artifact `t01-c01-c06/12`
+(`246d37cc…f12b3d`); acceptance `compiler/tests/c12_parse.rs` (5 tests);
+item list in [PA_SLICE.md](PA_SLICE.md).
+
+`/13` amendment — Wave 2 slice 4, TY scope/symbol/type (R1 auto-bump; `/12`
+preserved as history): `TypeRecord`/`TypeKind` (M1-closed) + `IntRank` +
+`CharKind`; `SymbolRecord` (7 fields) + `SymbolKind{Function,Object}` +
+`Linkage` + `StorageDuration`; `ScopeRecord`/`ScopeEventRecord` with
+owner-node identity; `Semantic` diagnostic group (conflict = 1, undeclared
+= 2); nine TY kinds (locals 16–24, stage 3, chips 8–11, six allowlist rows,
+`ty_slice()` registry); `Type`/`Symbol`/`Scope`/`ScopeEvent` append
+materialization (`Intern` protocol-18, future `Name`/`ScopeEvent` refs
+rejected); snapshot bodies + twelve `*_NAMES`/field lists in the hash.
+Identity conversions complete plan-free; the File-Enter edge firing stays
+deferred. New hashed rules `ty.canonical-int-reuse-scan`,
+`ty.func-single-producer`, `scope.enter-after-tu-guarded-once`,
+`scope.lifecycle-worker-enforced`, `symbol.declare-no-duplicate`,
+`symbol.lookup-chain-hit-or-typed-miss`, `ty.identity-completes-no-plan`,
+`commit.type-symbol-scope-materialized`. New artifact `t01-c01-c06/13`
+(`0de77f06…5fa6d`); acceptance `compiler/tests/c13_ty.rs` (8 tests); item
+list in [TY_SLICE.md](TY_SLICE.md).
+
+`/14` amendment — Wave 2 slice 5, SE semantic-check + VF06 (R1 auto-bump;
+`/13` preserved as history): `SemRecord` (4 fields, no `conversions` field
+at slice scope) + `ValueCategory` (4 names) + `EffectMask(u32)`; M1 identity
+is plan absence; binary two-phase handoff through a real `const_fold`
+child; `semantic.literal_expr(18)` / `binary_expr(19)` / `return_stmt(20)`
+plus `verification.typed_invariant(16)`, all stage 4, chips 12–15, three
+allowlist rows; `Sem` append materialization; `Semantic` diagnostic group
+(conflict = 1, undeclared = 2); snapshot bodies + `VALUE_CATEGORY_NAMES` /
+`SEM_RECORD_FIELDS` in the hash. New hashed rules
+`se.literal-checked-nonlvalue`, `se.binary-forwards-identical-fold`,
+`se.return-identity-no-plan`, `vf06.checked-set-complete`,
+`commit.sem-materialized`. New artifact `t01-c01-c06/14`
+(`881f9a3f…19d44`); acceptance `compiler/tests/c14_se.rs` (9 tests); item
+list in [SE_SLICE.md](SE_SLICE.md).
+
+`/15` amendment — Wave 2 slice 6, IR function lowering (R1 auto-bump;
+`/14` preserved as history): `FunctionRecord`/`BlockRecord`/`ValueRecord`/
+`InstructionRecord` + M1-closed `IrOp{Constant, Return}` with the four IR
+arenas becoming typed on freeze; the exactly-one-`Const` handoff rule;
+`ir.function` (`group 8`, local `16`) with `ir_slice()` registry; stage
+row (`function → 5`) + four allowlist rows (`IR_FUNCTION_CHIP = 16`);
+`AppendRecords` materialization for the four IR families; snapshot bodies
++ `IR_OP_NAMES` and four record-field lists in the hash; `IrFunctionChip`
+worker (no arithmetic, ZST, stage/layer, lint). FunctionEnd/IR28 stays
+deferred. New hashed rules `ir.constant-no-refold`,
+`ir.return-single-terminator`, `ir.function-single-entry`,
+`commit.ir-materialized`. New artifact `t01-c01-c06/15`
+(`d6c06cc4…2ef05`); acceptance `compiler/tests/c15_ir.rs` (7 tests); item
+list in [IR_SLICE.md](IR_SLICE.md).
+
+`/16` amendment — Wave 2 slice 7, PP splice/comment/scan (R1 auto-bump;
+`/15` preserved as history): real line-splice with composed maps;
+M1-scoped comment replacement (line/block, unterminated failure,
+literal-input unsupported); maximal-munch scan with raw-remapped spans
+and a single zero-width EOF; `preprocess.splice(17)` / `comment(18)` /
+`scan(19)`, all stage 1, chips 17–19, four allowlist rows, `pp_slice()`
+registry (29 entries); `Span`/`PpToken` append materialization (map-only
+`Normalized`/`Spliced`/`CommentFree` kinds); `SPAN_RECORD_FIELDS` in the
+hash. The source-bytes gap is closed: the M1 frontend runs end-to-end
+without seeded PP fixtures. New hashed rules `pp.splice-exact-map`,
+`pp.comment-m1-scope`, `pp.scan-maximal-munch`,
+`commit.span-pptoken-materialized`. New artifact `t01-c01-c06/16`
+(`04d8e4b4…f9f10`); acceptance `compiler/tests/c16_pp.rs` (8 tests);
+item list in [PP_SCAN_SLICE.md](PP_SCAN_SLICE.md).
+
+`/17` amendment — Wave 2 slice 8, VF12 symbolic interpret (R1 auto-bump;
+`/16` preserved as history): read-only `Vf12Chip` modeling the M1 covered
+subset (single ordinal-0 entry block, `Constant` then `Return`, `int`
+value) with no arithmetic and no appends; `verification.ir_interpret`
+(`VERIFICATION` local 17), stage 6, chip 20, `vf12_slice()` registry (30
+entries, cumulative over `pp_slice()`); no schema change (PP-slice schema
+reused); `Complete` carries `Record(Const)` of the already-committed
+folded const. The M1 meaning gap is closed: the lowered IR symbolically
+models return `5` on real tasks. New hashed rules
+`vf12.interpret-symbolic-m1`, `vf12.unsupported-never-pass`. New artifact
+`t01-c01-c06/17` (`c519c5b4…2043`); acceptance
+`compiler/tests/c17_vf12.rs` (6 tests); item list in
+[VF12_INTERPRET_SLICE.md](VF12_INTERPRET_SLICE.md).
+
+`/18` amendment — Wave 2 slice 9, VF05 token-AST invariant (R1 auto-bump;
+`/17` preserved as history): read-only `Vf05Chip` re-verifying the M1
+syntax contract by re-walk (parent/children reciprocity, ranges contained
+with ordered non-overlapping siblings, per-kind child counts over the
+closed 8-kind set, `Declarator` name + `IntLiteral` literal with origin
+token, unique trailing EOF); `verification.token_ast_invariant`
+(`VERIFICATION` local 18), stage 2, chip 21, `vf05_slice()` registry (31
+entries, cumulative over `vf12_slice()`); no schema change (PP-slice
+schema reused); completes `Ack`. The token↔AST link is now checked on
+real tasks. New hashed rules `vf05.syntax-ranges-ordered`,
+`vf05.required-fields-complete`. New artifact `t01-c01-c06/18`
+(`7ceeaee5…8256`); acceptance `compiler/tests/c18_vf05.rs` (6 tests);
+item list in [VF05_SYNTAX_SLICE.md](VF05_SYNTAX_SLICE.md).
+
+`/19` amendment — Wave 2 slice 10, VF01 store invariant (R1 auto-bump;
+`/18` preserved as history): read-only `Vf01Chip` over the whole
+committed snapshot with an empty payload (payload/result/parent/
+continuation references resolve against dispatch-time dense bounds;
+spans name committed sources within byte bounds; reserved
+`layouts`/`inits`/`vregs` hold nothing); `verification.store_invariant`
+(`VERIFICATION` local 19), stage 6, chip 22, `vf01_slice()` registry (32
+entries, cumulative over `vf05_slice()`); no schema change (PP-slice
+schema reused, 29 declared read paths); completes `Ack`. Host-request
+references stay out-of-M1-scope failures; tombstone liveness stays
+deferred. New hashed rules `vf01.refs-resolve`, `vf01.span-bounds`,
+`vf01.reserved-unused-m1`. New artifact `t01-c01-c06/19`
+(`76155ee8…476a4`); acceptance `compiler/tests/c19_vf01.rs` (7 tests);
+item list in [VF01_STORE_SLICE.md](VF01_STORE_SLICE.md).
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
@@ -237,6 +393,6 @@ allowlists `BTreeMap`/`BTreeSet`/`vec!`/`format!`. New hashed rules
 | C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs` |
 | C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; transition-free worker vectors fail per-task (`TaskNotTransitioned`); idle ticks drain await-all joins with closure (`Joined`); stage/layer enforced on the driver path; cancel clears stale selection; defined cancel/budget pin behavior | Wave 1 fold worker installed via `drive_task`/`handler_for`; no broader language pipeline yet |
 
-Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 13, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
+Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 14, `c10_pp01` 7, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
 
 Full test commands and results are in `compiler/README.md`.

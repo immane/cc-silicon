@@ -211,6 +211,109 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/16`) PP-slice field set: the IR slice plus the PP
+    /// scan append field (`sources.spans` for `SpanRecord`; `pp.tokens` and
+    /// `artifacts.fragments` are already declared). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model.
+    pub fn pp_slice() -> Self {
+        let mut schema = Self::ir_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Sources, "spans")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Wave 2 (`/15`) IR-slice field set: the SE slice plus the IR
+    /// append fields (`ir.functions`, `ir.blocks`, `ir.values`,
+    /// `ir.instructions`). Post-seed runtime declarations stay excluded
+    /// from the frozen hash per the two-tier model; the IR inventory is
+    /// pinned by the `IR_*_NAMES` contract lists instead.
+    pub fn ir_slice() -> Self {
+        let mut schema = Self::se_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Ir, "functions"),
+            (StoreId::Ir, "blocks"),
+            (StoreId::Ir, "values"),
+            (StoreId::Ir, "instructions"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Wave 2 (`/14`) SE-slice field set: the TY slice plus the SE
+    /// append field (`sem.records` for `SemRecord`). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model; the SE inventory is pinned by the `SEM_*` contract lists.
+    pub fn se_slice() -> Self {
+        let mut schema = Self::ty_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Sem, "records")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Wave 2 (`/13`) TY-slice field set: the PA slice plus the TY
+    /// append fields (`types.records`, `symbols.symbols`, `symbols.scopes`,
+    /// `symbols.scope_events`). Post-seed runtime declarations stay excluded
+    /// from the frozen hash per the two-tier model; the TY inventory is
+    /// pinned by the `*_NAMES` contract lists instead.
+    pub fn ty_slice() -> Self {
+        let mut schema = Self::pa_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Types, "records"),
+            (StoreId::Symbols, "symbols"),
+            (StoreId::Symbols, "scopes"),
+            (StoreId::Symbols, "scope_events"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Wave 2 (`/12`) PA-slice field set: the LX slice plus the PA
+    /// append field (`parse.nodes` for `NodeRecord`). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model; the PA inventory is pinned by the `NODE_*_NAMES` lists.
+    pub fn pa_slice() -> Self {
+        let mut schema = Self::lx_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Parse, "nodes")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Wave 2 (`/11`) LX-slice field set: the M1 slice plus the LX
+    /// append fields (`names.entries` for interned names, `pp.tokens` for
+    /// `PpTokenRecord`, `lex.tokens` for `TokenRecord`; `lex.literals` is
+    /// already declared). Post-seed runtime declarations stay excluded from
+    /// the frozen hash per the two-tier model; the LX inventory is pinned by
+    /// the `LX_*_NAMES` contract lists instead.
+    pub fn lx_slice() -> Self {
+        let mut schema = Self::m1_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Names, "entries"),
+            (StoreId::Pp, "tokens"),
+            (StoreId::Lex, "tokens"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Gate 1 (`/7`) M1 slice field set: foundation plus the two frozen
     /// language append fields (`lex.literals` for the `LiteralRecord`
     /// schema, `constants.records` for the `ConstRecord` schema).
@@ -664,12 +767,141 @@ pub struct ManifestRegistry {
 /// field) gets zero allowlisted chip writers — it is a derived quota-1
 /// compatibility view over the canonical per-stage queues, never a second
 /// write target.
-pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[(
-    G1_FOLD_CHIP,
-    StoreId::Constants,
-    "records",
-    TaskKind::CONSTANT_CONST_FOLD,
-)];
+pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
+    (
+        G1_FOLD_CHIP,
+        StoreId::Constants,
+        "records",
+        TaskKind::CONSTANT_CONST_FOLD,
+    ),
+    (
+        PP01_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_NORMALIZE,
+    ),
+    (
+        LX_INTERN_CHIP,
+        StoreId::Names,
+        "entries",
+        TaskKind::LEX_INTERN,
+    ),
+    (
+        LX_CLASSIFY_CHIP,
+        StoreId::Lex,
+        "tokens",
+        TaskKind::LEX_CLASSIFY,
+    ),
+    (
+        LX_DECODE_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_DECODE_LITERAL,
+    ),
+    (PA_TU_CHIP, StoreId::Parse, "nodes", TaskKind::PARSE_TU),
+    (
+        TY_TYPE_CHIP,
+        StoreId::Types,
+        "records",
+        TaskKind::SYMBOL_INT_TYPE,
+    ),
+    (
+        TY_TYPE_CHIP,
+        StoreId::Types,
+        "records",
+        TaskKind::SYMBOL_FUNC_TYPE,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scopes",
+        TaskKind::SYMBOL_SCOPE_ENTER,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scope_events",
+        TaskKind::SYMBOL_SCOPE_ENTER,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scope_events",
+        TaskKind::SYMBOL_SCOPE_EXIT,
+    ),
+    (
+        TY_SYMBOL_CHIP,
+        StoreId::Symbols,
+        "symbols",
+        TaskKind::SYMBOL_DECLARE,
+    ),
+    (
+        SE_LIT_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_LITERAL_EXPR,
+    ),
+    (
+        SE_BIN_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_BINARY_EXPR,
+    ),
+    (
+        SE_RET_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_RETURN_STMT,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "functions",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "blocks",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "values",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "instructions",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        PP_SPLICE_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_SPLICE,
+    ),
+    (
+        PP_COMMENT_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_COMMENT,
+    ),
+    (
+        PP_SCAN_CHIP,
+        StoreId::Sources,
+        "spans",
+        TaskKind::PREPROCESS_SCAN,
+    ),
+    (
+        PP_SCAN_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_SCAN,
+    ),
+];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
 ///
@@ -680,11 +912,133 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[(
 /// writes.)
 pub const G1_FOLD_CHIP: ChipId = ChipId(2);
 
+/// Wave 2 (`/10`) PP01 normalize chip reservation.
+///
+/// The PP01 chip registers with this ID and claims
+/// [`TaskKind::PREPROCESS_NORMALIZE`]; the allowlist row above authorizes
+/// its `artifacts.fragments` appends.
+pub const PP01_CHIP: ChipId = ChipId(3);
+
+/// Wave 2 (`/11`) LX name-intern chip reservation.
+pub const LX_INTERN_CHIP: ChipId = ChipId(4);
+/// Wave 2 (`/11`) LX token-classify chip reservation.
+pub const LX_CLASSIFY_CHIP: ChipId = ChipId(5);
+/// Wave 2 (`/11`) LX literal-decode chip reservation.
+pub const LX_DECODE_CHIP: ChipId = ChipId(6);
+
+/// Wave 2 (`/12`) PA TU-parse chip reservation.
+pub const PA_TU_CHIP: ChipId = ChipId(7);
+
+/// Wave 2 (`/13`) TY canonical-type chip reservation (int + func producers).
+pub const TY_TYPE_CHIP: ChipId = ChipId(8);
+/// Wave 2 (`/13`) TY scope chip reservation (enter + exit).
+pub const TY_SCOPE_CHIP: ChipId = ChipId(9);
+/// Wave 2 (`/13`) TY symbol chip reservation (declare + lookup).
+pub const TY_SYMBOL_CHIP: ChipId = ChipId(10);
+/// Wave 2 (`/13`) TY conversion chip reservation (identity-only promote,
+/// common-type, return conversion).
+pub const TY_CONV_CHIP: ChipId = ChipId(11);
+
+/// Wave 2 (`/14`) SE literal-expression chip reservation.
+pub const SE_LIT_CHIP: ChipId = ChipId(12);
+/// Wave 2 (`/14`) SE binary-expression chip reservation (forwards to fold).
+pub const SE_BIN_CHIP: ChipId = ChipId(13);
+/// Wave 2 (`/14`) SE return-statement chip reservation.
+pub const SE_RET_CHIP: ChipId = ChipId(14);
+/// Wave 2 (`/14`) VF06 typed-invariant verifier reservation.
+pub const VF06_CHIP: ChipId = ChipId(15);
+
+/// Wave 2 (`/15`) IR function-lowering chip reservation.
+pub const IR_FUNCTION_CHIP: ChipId = ChipId(16);
+
+/// Wave 2 (`/16`) PP line-splice chip reservation.
+pub const PP_SPLICE_CHIP: ChipId = ChipId(17);
+/// Wave 2 (`/16`) PP comment-replace chip reservation.
+pub const PP_COMMENT_CHIP: ChipId = ChipId(18);
+/// Wave 2 (`/16`) PP token-scan chip reservation.
+pub const PP_SCAN_CHIP: ChipId = ChipId(19);
+
+/// Wave 2 (`/17`) VF12 symbolic-interpret chip reservation.
+pub const VF12_CHIP: ChipId = ChipId(20);
+
+/// Wave 2 (`/18`) VF05 token-AST invariant chip reservation.
+pub const VF05_CHIP: ChipId = ChipId(21);
+
+/// Wave 2 (`/19`) VF01 store-invariant chip reservation.
+pub const VF01_CHIP: ChipId = ChipId(22);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
         || kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_BINARY.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_FOLD.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/10`) PP01 slice.
+pub const fn is_pp01_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_NORMALIZE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/11`) LX slice.
+pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_INTERN.raw()
+        || kind.raw() == TaskKind::LEX_CLASSIFY.raw()
+        || kind.raw() == TaskKind::LEX_DECODE_LITERAL.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
+pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/19`) VF01 slice.
+pub const fn is_vf01_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_STORE_INVARIANT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/18`) VF05 slice.
+pub const fn is_vf05_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_TOKEN_AST_INVARIANT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/17`) VF12 slice.
+pub const fn is_vf12_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_IR_INTERPRET.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/16`) PP slice
+/// (splice/comment/scan; PP01 lives in `is_pp01_slice_kind`).
+pub const fn is_pp_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_SPLICE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_COMMENT.raw()
+        || kind.raw() == TaskKind::PREPROCESS_SCAN.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/15`) IR slice.
+pub const fn is_ir_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::IR_FUNCTION.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/14`) SE slice (including
+/// its VF06 verifier kind).
+pub const fn is_se_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SEMANTIC_LITERAL_EXPR.raw()
+        || kind.raw() == TaskKind::SEMANTIC_BINARY_EXPR.raw()
+        || kind.raw() == TaskKind::SEMANTIC_RETURN_STMT.raw()
+        || kind.raw() == TaskKind::VERIFICATION_TYPED_INVARIANT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/13`) TY slice.
+pub const fn is_ty_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SYMBOL_INT_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_FUNC_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_SCOPE_ENTER.raw()
+        || kind.raw() == TaskKind::SYMBOL_SCOPE_EXIT.raw()
+        || kind.raw() == TaskKind::SYMBOL_DECLARE.raw()
+        || kind.raw() == TaskKind::SYMBOL_LOOKUP.raw()
+        || kind.raw() == TaskKind::SYMBOL_PROMOTE.raw()
+        || kind.raw() == TaskKind::SYMBOL_COMMON_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_RETURN_CONVERT.raw()
 }
 
 /// Enforce the store-owner allowlist for one manifest.
@@ -697,11 +1051,19 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
     if STORE_OWNER_ALLOWLIST.is_empty() {
         return Ok(());
     }
-    if !manifest
-        .task_kinds
-        .iter()
-        .any(|&kind| is_gate1_slice_kind(kind))
-    {
+    if !manifest.task_kinds.iter().any(|&kind| {
+        is_gate1_slice_kind(kind)
+            || is_pp01_slice_kind(kind)
+            || is_lx_slice_kind(kind)
+            || is_pa_slice_kind(kind)
+            || is_ty_slice_kind(kind)
+            || is_se_slice_kind(kind)
+            || is_ir_slice_kind(kind)
+            || is_pp_slice_kind(kind)
+            || is_vf12_slice_kind(kind)
+            || is_vf05_slice_kind(kind)
+            || is_vf01_slice_kind(kind)
+    }) {
         return Ok(());
     }
     let Some(&first_kind) = manifest.task_kinds.first() else {
@@ -744,6 +1106,31 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONTROL_UNSUPPORTED, 0),
     (TaskKind::CONTROL_START_JOB, 0),
     (TaskKind::CONTROL_IMPORT_SOURCE, 0),
+    (TaskKind::PREPROCESS_NORMALIZE, 1),
+    (TaskKind::LEX_INTERN, 2),
+    (TaskKind::LEX_CLASSIFY, 2),
+    (TaskKind::LEX_DECODE_LITERAL, 2),
+    (TaskKind::PARSE_TU, 2),
+    (TaskKind::SYMBOL_INT_TYPE, 3),
+    (TaskKind::SYMBOL_FUNC_TYPE, 3),
+    (TaskKind::SYMBOL_SCOPE_ENTER, 3),
+    (TaskKind::SYMBOL_SCOPE_EXIT, 3),
+    (TaskKind::SYMBOL_DECLARE, 3),
+    (TaskKind::SYMBOL_LOOKUP, 3),
+    (TaskKind::SYMBOL_PROMOTE, 3),
+    (TaskKind::SYMBOL_COMMON_TYPE, 3),
+    (TaskKind::SYMBOL_RETURN_CONVERT, 3),
+    (TaskKind::SEMANTIC_LITERAL_EXPR, 4),
+    (TaskKind::SEMANTIC_BINARY_EXPR, 4),
+    (TaskKind::SEMANTIC_RETURN_STMT, 4),
+    (TaskKind::VERIFICATION_TYPED_INVARIANT, 4),
+    (TaskKind::IR_FUNCTION, 5),
+    (TaskKind::PREPROCESS_SPLICE, 1),
+    (TaskKind::PREPROCESS_COMMENT, 1),
+    (TaskKind::PREPROCESS_SCAN, 1),
+    (TaskKind::VERIFICATION_IR_INTERPRET, 6),
+    (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, 2),
+    (TaskKind::VERIFICATION_STORE_INVARIANT, 6),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),
