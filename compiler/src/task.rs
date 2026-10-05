@@ -203,6 +203,50 @@ impl TaskKind {
     /// token refs in source order; appends the nine-node M1 tree in
     /// pre-order; completes `Record` of the TU root).
     pub const PARSE_TU: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/13`) TY-slice kind: canonical `int` producer (payload:
+    /// empty; reuses the committed canonical id when present, else appends
+    /// one `TypeRecord`; completes `Record`).
+    pub const SYMBOL_INT_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/13`) TY-slice kind: `int(void)` producer (payload: exactly
+    /// one `RecordRef::Type` result type; reuses or appends; completes
+    /// `Record`).
+    pub const SYMBOL_FUNC_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/13`) TY-slice kind: scope enter (payload: exactly one
+    /// `RecordRef::Node`, the TU root for file scope or the `Block` node
+    /// for a body scope; appends one `Scope` plus one `ScopeEvent(Enter)`;
+    /// completes `Record`).
+    pub const SYMBOL_SCOPE_ENTER: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/13`) TY-slice kind: scope exit (payload: exactly one
+    /// `RecordRef::Scope`; appends one `ScopeEvent(Exit)`; completes `Ack`).
+    pub const SYMBOL_SCOPE_EXIT: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/13`) TY-slice kind: function declaration (payload: exactly
+    /// `[Declarator Node, FuncType, FileScope]`; appends one `SymbolRecord`;
+    /// completes `Record`).
+    pub const SYMBOL_DECLARE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/13`) TY-slice kind: ordinary-name lookup (payload: exactly
+    /// `[Scope, Name]`; completes `Record` on hit, typed `Fail` on miss).
+    pub const SYMBOL_LOOKUP: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 2 (`/13`) TY-slice kind: integer promotion, M1 identity-only
+    /// (payload: exactly one `RecordRef::Type`, must be `Int`; completes
+    /// `Record` of the same id; non-`Int` is explicit `Unsupported`).
+    pub const SYMBOL_PROMOTE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 2 (`/13`) TY-slice kind: usual arithmetic conversion, M1
+    /// identity-only (payload: exactly two `RecordRef::Type`, both `Int`;
+    /// completes `Record`).
+    pub const SYMBOL_COMMON_TYPE: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 2 (`/13`) TY-slice kind: return conversion, M1 identity-only
+    /// (payload: exactly `[source Type, destination Type]`, both `Int`;
+    /// completes `Record`).
+    pub const SYMBOL_RETURN_CONVERT: Self =
+        Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 24);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -322,6 +366,32 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/13`) TY-slice registry: the PA slice plus the nine
+    /// frozen TY kinds (all `Frozen`; `SYMBOL_TYPE` owners start new codes
+    /// at local 25).
+    pub fn ty_slice() -> Self {
+        let mut registry = Self::pa_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::SYMBOL_INT_TYPE, "symbol_type.int_type"),
+            (TaskKind::SYMBOL_FUNC_TYPE, "symbol_type.func_type"),
+            (TaskKind::SYMBOL_SCOPE_ENTER, "symbol_type.scope_enter"),
+            (TaskKind::SYMBOL_SCOPE_EXIT, "symbol_type.scope_exit"),
+            (TaskKind::SYMBOL_DECLARE, "symbol_type.declare"),
+            (TaskKind::SYMBOL_LOOKUP, "symbol_type.lookup"),
+            (TaskKind::SYMBOL_PROMOTE, "symbol_type.promote"),
+            (TaskKind::SYMBOL_COMMON_TYPE, "symbol_type.common_type"),
+            (
+                TaskKind::SYMBOL_RETURN_CONVERT,
+                "symbol_type.return_convert",
+            ),
+        ];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

@@ -197,6 +197,10 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
                         | "lx_classify"
                         | "lx_decode"
                         | "pa_tu"
+                        | "ty_conv"
+                        | "ty_scope"
+                        | "ty_symbol"
+                        | "ty_types"
                 ) || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(

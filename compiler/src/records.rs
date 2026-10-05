@@ -14,7 +14,10 @@
 // protocol order or hash-relevant wire tags.
 // ============================================================================
 
-use crate::bus::{ArtifactRecord, ConstRecord, LiteralRecord, NodeRecord, TokenRecord};
+use crate::bus::{
+    ArtifactRecord, ConstRecord, LiteralRecord, NodeRecord, ScopeEventRecord, ScopeRecord,
+    SymbolRecord, TokenRecord, TypeRecord,
+};
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
 
@@ -34,7 +37,8 @@ pub struct RecordDraft {
 /// Closed typed draft bodies: the only families the commit
 /// materialization path accepts (`Literal`/`Const` frozen at Gate 1 `/7`;
 /// `Artifact` added at Wave 2 `/10` for the PP01 slice; `Token`/`Name`
-/// added at `/11` for the LX slice; `Node` added at `/12` for the PA slice).
+/// added at `/11` for the LX slice; `Node` added at `/12` for the PA slice;
+/// `Type`/`Symbol`/`Scope`/`ScopeEvent` added at `/13` for the TY slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
 /// draft body and the committed record share their fields exactly. Bodies
@@ -59,6 +63,14 @@ pub enum G1DraftBody {
     },
     /// An AST node to append to the `nodes` arena (`/12` PA slice).
     Node(NodeRecord),
+    /// A canonical type to append to the `types` arena (`/13` TY slice).
+    Type(TypeRecord),
+    /// A declared symbol to append to the `symbols` arena (`/13`).
+    Symbol(SymbolRecord),
+    /// A scope to append to the `scopes` arena (`/13`).
+    Scope(ScopeRecord),
+    /// A scope event to append to the `scope_events` arena (`/13`).
+    ScopeEvent(ScopeEventRecord),
 }
 
 impl G1DraftBody {
@@ -71,6 +83,10 @@ impl G1DraftBody {
             Self::Token(_) => RecordFamily::Token,
             Self::Name { .. } => RecordFamily::Name,
             Self::Node(_) => RecordFamily::Node,
+            Self::Type(_) => RecordFamily::Type,
+            Self::Symbol(_) => RecordFamily::Symbol,
+            Self::Scope(_) => RecordFamily::Scope,
+            Self::ScopeEvent(_) => RecordFamily::ScopeEvent,
         }
     }
 }

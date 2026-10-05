@@ -599,6 +599,10 @@ pub fn commit_proposals(
     let mut new_artifacts: u32 = 0;
     let mut new_tokens: u32 = 0;
     let mut new_nodes: u32 = 0;
+    let mut new_types: u32 = 0;
+    let mut new_symbols: u32 = 0;
+    let mut new_scopes: u32 = 0;
+    let mut new_scope_events: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -615,6 +619,9 @@ pub fn commit_proposals(
     let artifacts_base = bus.arenas.artifacts.allocated();
     let tokens_base = bus.arenas.tokens.allocated();
     let nodes_base = bus.arenas.nodes.allocated();
+    let types_base = bus.arenas.types.allocated();
+    let symbols_base = bus.arenas.symbols.allocated();
+    let scopes_base = bus.arenas.scopes.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -623,6 +630,9 @@ pub fn commit_proposals(
         let mut next_artifact = artifacts_base;
         let mut next_token = tokens_base;
         let mut next_node = nodes_base;
+        let mut next_type = types_base;
+        let mut next_symbol = symbols_base;
+        let mut next_scope = scopes_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -666,6 +676,35 @@ pub fn commit_proposals(
                                 next_node,
                             ));
                             next_node = next_node.saturating_add(1);
+                        }
+                        G1DraftBody::Type(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Type,
+                                next_type,
+                            ));
+                            next_type = next_type.saturating_add(1);
+                        }
+                        G1DraftBody::Symbol(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Symbol,
+                                next_symbol,
+                            ));
+                            next_symbol = next_symbol.saturating_add(1);
+                        }
+                        G1DraftBody::Scope(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Scope,
+                                next_scope,
+                            ));
+                            next_scope = next_scope.saturating_add(1);
+                        }
+                        G1DraftBody::ScopeEvent { .. } => {
+                            // Scope events are observed via arena scan, never
+                            // referenced by a `Complete` carrier (same rule as
+                            // `Name` bodies above).
                         }
                         G1DraftBody::Name { .. } => {
                             // Names intern lookup-first: no predicted ID is
@@ -781,6 +820,21 @@ pub fn commit_proposals(
                             }
                             RecordRef::Node(id) if id.index() >= nodes_base => {
                                 Some((tagged.task, RecordFamily::Node, id.index()))
+                            }
+                            RecordRef::Type(id) if id.index() >= types_base => {
+                                Some((tagged.task, RecordFamily::Type, id.index()))
+                            }
+                            RecordRef::Symbol(id) if id.index() >= symbols_base => {
+                                Some((tagged.task, RecordFamily::Symbol, id.index()))
+                            }
+                            RecordRef::Scope(id) if id.index() >= scopes_base => {
+                                Some((tagged.task, RecordFamily::Scope, id.index()))
+                            }
+                            RecordRef::ScopeEvent(id) => {
+                                // Scope events are never completion carriers:
+                                // reject rather than guess (same rule as `Name`).
+                                let _ = id;
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
                             }
                             RecordRef::Name(id) if id.index() >= intern_base => {
                                 // Names must be committed before use: same-batch
@@ -901,6 +955,18 @@ pub fn commit_proposals(
                         G1DraftBody::Node(_) => {
                             new_nodes = new_nodes.saturating_add(1);
                         }
+                        G1DraftBody::Type(_) => {
+                            new_types = new_types.saturating_add(1);
+                        }
+                        G1DraftBody::Symbol(_) => {
+                            new_symbols = new_symbols.saturating_add(1);
+                        }
+                        G1DraftBody::Scope(_) => {
+                            new_scopes = new_scopes.saturating_add(1);
+                        }
+                        G1DraftBody::ScopeEvent(_) => {
+                            new_scope_events = new_scope_events.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -961,6 +1027,10 @@ pub fn commit_proposals(
                         G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
                         G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
                         G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
+                        G1DraftBody::Type(_) => (StoreId::Types, "records"),
+                        G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
+                        G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
+                        G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1178,6 +1248,10 @@ pub fn commit_proposals(
             new_artifacts,
             new_tokens,
             new_nodes,
+            new_types,
+            new_symbols,
+            new_scopes,
+            new_scope_events,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1299,6 +1373,37 @@ pub fn commit_proposals(
                                 id.index()
                             )));
                             report.appended.push((*task, RecordRef::Node(id)));
+                        }
+                        G1DraftBody::Type(record) => {
+                            let id = bus.arenas.types.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Type,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Type(id)));
+                        }
+                        G1DraftBody::Symbol(record) => {
+                            let id = bus.arenas.symbols.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Symbol,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Symbol(id)));
+                        }
+                        G1DraftBody::Scope(record) => {
+                            let id = bus.arenas.scopes.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Scope,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Scope(id)));
+                        }
+                        G1DraftBody::ScopeEvent(record) => {
+                            let id = bus.arenas.scope_events.push(record.clone());
+                            report.appended.push((*task, RecordRef::ScopeEvent(id)));
                         }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
@@ -1472,6 +1577,10 @@ fn validate_append_authorization(
             G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
             G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
             G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
+            G1DraftBody::Type(_) => (StoreId::Types, "records"),
+            G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
+            G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
+            G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1593,6 +1702,14 @@ struct CapacityPlan {
     new_tokens: u32,
     /// New AST node records (Wave 2 `/12` PA-slice materialization).
     new_nodes: u32,
+    /// New canonical type records (Wave 2 `/13` TY-slice materialization).
+    new_types: u32,
+    /// New symbol records (Wave 2 `/13`).
+    new_symbols: u32,
+    /// New scope records (Wave 2 `/13`).
+    new_scopes: u32,
+    /// New scope-event records (Wave 2 `/13`).
+    new_scope_events: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1607,7 +1724,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 9] = [
+    let checks: [(u32, u32, &'static str); 13] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1633,6 +1750,14 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         ),
         (bus.arenas.tokens.allocated(), plan.new_tokens, "tokens"),
         (bus.arenas.nodes.allocated(), plan.new_nodes, "nodes"),
+        (bus.arenas.types.allocated(), plan.new_types, "types"),
+        (bus.arenas.symbols.allocated(), plan.new_symbols, "symbols"),
+        (bus.arenas.scopes.allocated(), plan.new_scopes, "scopes"),
+        (
+            bus.arenas.scope_events.allocated(),
+            plan.new_scope_events,
+            "scope_events",
+        ),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1665,7 +1790,11 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_consts
         + plan.new_artifacts
         + plan.new_tokens
-        + plan.new_nodes) as u64
+        + plan.new_nodes
+        + plan.new_types
+        + plan.new_symbols
+        + plan.new_scopes
+        + plan.new_scope_events) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

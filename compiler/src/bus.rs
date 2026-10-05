@@ -224,6 +224,169 @@ pub enum TokenKind {
     Eof,
 }
 
+/// Integer rank for `TypeKind::Int` (`/13`; symbolic, no target width).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntRank {
+    /// `short`.
+    Short,
+    /// `int`.
+    Int,
+    /// `long`.
+    Long,
+    /// `long long`.
+    LongLong,
+}
+
+/// Character kind (`/13`; plain signedness stays probe-gated).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CharKind {
+    /// Plain `char` (signedness target-defined).
+    Plain,
+    /// `signed char`.
+    Signed,
+    /// `unsigned char`.
+    Unsigned,
+}
+
+/// A T06-owned canonical type record (`/13` slice freeze).
+///
+/// M1 produces only `Int { rank: Int, signed: true }` (TY13, single
+/// producer with reuse scan) and `Function { result: int, params: [],
+/// prototype: true, variadic: false }` (TY17). All other type forms are
+/// explicit unsupported.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeRecord {
+    /// Type kind.
+    pub kind: TypeKind,
+}
+
+/// Canonical type kinds (`/13` M1-closed set in doc; only `Int` and the
+/// M1 `Function` shape are produced).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypeKind {
+    /// `void`.
+    Void,
+    /// `_Bool`.
+    Bool,
+    /// Character type with explicit kind.
+    Char(CharKind),
+    /// Signed or unsigned integer with rank.
+    Int {
+        /// Integer rank.
+        rank: IntRank,
+        /// Signedness.
+        signed: bool,
+    },
+    /// Function type.
+    Function {
+        /// Result type.
+        result: crate::ids::TypeId,
+        /// Parameter types (empty with `prototype: true` means `(void)`).
+        params: Vec<crate::ids::TypeId>,
+        /// Whether the parameter list is a prototype.
+        prototype: bool,
+        /// Whether the function is variadic.
+        variadic: bool,
+    },
+}
+
+/// Symbol kinds (`/13`; only `Function` is produced in M1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// A declared function (`main`).
+    Function,
+    /// A declared object (deferred past M1).
+    Object,
+}
+
+/// Linkage (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Linkage {
+    /// No linkage.
+    None,
+    /// Internal linkage (`static`).
+    Internal,
+    /// External linkage (M1 `main` default).
+    External,
+}
+
+/// Storage duration (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageDuration {
+    /// No storage (type names, enumerators).
+    None,
+    /// Static storage duration (M1 file-scope `main`).
+    Static,
+    /// Automatic storage duration.
+    Automatic,
+    /// Thread-local storage duration.
+    Thread,
+    /// Allocated storage duration.
+    Allocated,
+}
+
+/// A T06-owned declared-symbol record (`/13` slice freeze).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SymbolRecord {
+    /// Declared name.
+    pub name: crate::ids::NameId,
+    /// Scope of declaration.
+    pub scope: crate::ids::ScopeId,
+    /// Symbol kind.
+    pub kind: SymbolKind,
+    /// Declared type (`None` only for labels; M1 always `Some`).
+    pub ty: Option<crate::ids::TypeId>,
+    /// Linkage.
+    pub linkage: Linkage,
+    /// Storage duration.
+    pub storage: StorageDuration,
+    /// Declaring node (M1: the `Declarator` node).
+    pub decl: crate::ids::NodeId,
+}
+
+/// Scope kinds (`/13` M1-closed: file + block).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeKind {
+    /// File scope (one per TU in M1, never exits).
+    File,
+    /// Block scope (M1 function body).
+    Block,
+}
+
+/// A T06-owned scope record (`/13` slice freeze; identified by its owner
+/// lexical node, never by `(parent, kind)`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeRecord {
+    /// Scope kind.
+    pub kind: ScopeKind,
+    /// Parent scope (`None` for the file scope).
+    pub parent: Option<crate::ids::ScopeId>,
+    /// Owner lexical node (`None` for the file scope; the `Block` node for
+    /// a body scope).
+    pub owner: Option<crate::ids::NodeId>,
+}
+
+/// Scope event kinds (`/13`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeEventKind {
+    /// Scope entered.
+    Enter,
+    /// Scope exited.
+    Exit,
+}
+
+/// A T06-owned scope-lifecycle event (`/13` slice freeze; append-only,
+/// order = `ScopeEventId`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeEventRecord {
+    /// Entered/exited scope.
+    pub scope: crate::ids::ScopeId,
+    /// Event kind.
+    pub kind: ScopeEventKind,
+    /// Lexical node the event is anchored at (committed).
+    pub at: crate::ids::NodeId,
+}
+
 /// A T05-owned AST node (`/12` PA-slice freeze).
 ///
 /// M1 produces only the nine-node `int main(void){return 2+3;}` tree; all
@@ -330,17 +493,14 @@ pub struct Arenas {
     pub pp_tokens: TypedArena<PpTokenId, PpTokenRecord>,
     /// C tokens (`/11` LX-slice freeze: typed on freeze).
     pub tokens: TypedArena<TokenId, TokenRecord>,
-    /// Scopes (schema owned by T06).
-    pub scopes: ReservedArena<ScopeId>,
-    /// Scope lifecycle events (schema owned by T06).
-    ///
-    /// A [`ReservedArena`] (stable IDs only): the T06 owner replaces this
-    /// with a real typed arena when it freezes the `ScopeEventRecord` schema.
-    pub scope_events: ReservedArena<ScopeEventId>,
-    /// Symbols (schema owned by T06).
-    pub symbols: ReservedArena<SymbolId>,
-    /// Canonical types (schema owned by T06).
-    pub types: ReservedArena<TypeId>,
+    /// Scopes (`/13` slice freeze: typed on freeze).
+    pub scopes: TypedArena<ScopeId, ScopeRecord>,
+    /// Scope lifecycle events (`/13` slice freeze: typed on freeze).
+    pub scope_events: TypedArena<ScopeEventId, ScopeEventRecord>,
+    /// Symbols (`/13` slice freeze: typed on freeze).
+    pub symbols: TypedArena<SymbolId, SymbolRecord>,
+    /// Canonical types (`/13` slice freeze: typed on freeze).
+    pub types: TypedArena<TypeId, TypeRecord>,
     /// Semantic facts, one per checked node (schema owned by T07).
     ///
     /// A [`ReservedArena`] (stable IDs only): the T07 owner replaces this

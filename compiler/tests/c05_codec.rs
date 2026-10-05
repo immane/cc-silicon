@@ -326,14 +326,18 @@ fn consuming_a_result_changes_the_snapshot() {
 fn reserved_store_tombstones_are_visible() {
     let limits = Limits::fixture();
     let mut allocated_then_removed = CompilerBus::default();
-    let id = allocated_then_removed.arenas.scopes.alloc(&limits).unwrap();
-    allocated_then_removed.arenas.scopes.remove(id).unwrap();
+    let id = allocated_then_removed
+        .arenas
+        .layouts
+        .alloc(&limits)
+        .unwrap();
+    allocated_then_removed.arenas.layouts.remove(id).unwrap();
 
     let untouched = CompilerBus::default();
-    assert_eq!(allocated_then_removed.arenas.scopes.live(), 0);
-    assert_eq!(untouched.arenas.scopes.live(), 0);
-    assert_eq!(allocated_then_removed.arenas.scopes.allocated(), 1);
-    assert_eq!(untouched.arenas.scopes.allocated(), 0);
+    assert_eq!(allocated_then_removed.arenas.layouts.live(), 0);
+    assert_eq!(untouched.arenas.layouts.live(), 0);
+    assert_eq!(allocated_then_removed.arenas.layouts.allocated(), 1);
+    assert_eq!(untouched.arenas.layouts.allocated(), 0);
     assert_ne!(
         Snapshot::capture(&allocated_then_removed).hash(),
         Snapshot::capture(&untouched).hash()
@@ -508,11 +512,12 @@ fn proposal_wire_tags_5_6_7_follow_declaration_order() {
 #[test]
 fn per_encoder_round_trip_identity() {
     use cc_silicon_compiler::bus::ArtifactKind;
+    use cc_silicon_compiler::bus::{ScopeEventKind, ScopeEventRecord};
     use cc_silicon_compiler::snapshot::{
         decode_artifact, decode_continuation, decode_literal, decode_scope_event, decode_span,
         encode_artifact, encode_artifact_record, encode_continuation, encode_literal,
         encode_scope_event, encode_span, LiteralKind, LiteralRecordView, LiteralSuffix,
-        Lx08CandidateType, ScopeEventKind, ScopeEventRecordView,
+        Lx08CandidateType,
     };
     // Span.
     let span = encode_span(2, 100, 200, None);
@@ -536,11 +541,11 @@ fn per_encoder_round_trip_identity() {
     let decoded = decode_literal(&encoded).unwrap();
     assert_eq!(decoded, literal);
     assert_eq!(encode_literal(&decoded), encoded);
-    // Scope event.
-    let event = ScopeEventRecordView {
-        scope: 1,
+    // Scope event (committed record since the `/13` freeze).
+    let event = ScopeEventRecord {
+        scope: cc_silicon_compiler::ids::ScopeId::from_index(1),
         kind: ScopeEventKind::Enter,
-        at: 5,
+        at: cc_silicon_compiler::ids::NodeId::from_index(5),
     };
     let encoded = encode_scope_event(&event);
     let decoded = decode_scope_event(&encoded).unwrap();
@@ -689,7 +694,7 @@ fn snapshot_covers_new_reserved_arenas_in_flight_and_report() {
         .alloc(fixture_literal(2, b"2"), &limits)
         .unwrap();
     touched.arenas.sem.alloc(&limits).unwrap();
-    touched.arenas.scope_events.alloc(&limits).unwrap();
+    touched.arenas.layouts.alloc(&limits).unwrap();
     touched.tasks.in_flight.push(TaskId::from_index(3));
     touched
         .push_tick_record(TickRecord {

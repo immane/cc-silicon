@@ -27,14 +27,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
 /// const-fold slice, the `/8` worker-integration amendment, the `/9`
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
-/// slice (`/11`), and the Wave 2 PA slice (`/12`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/12";
+/// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
+/// (`/13`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/13";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "246d37ccc774a755f27185a6bdbd9f6d4d8c84c9df3d9756a8576f12b5462b3d";
+pub const CONTRACT_HASH: &str = "0de77f06bfe54919d182af66a2beb2e904f90f9c2347a6cdbd3b2ec55b5fa6d6";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -142,6 +143,14 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "parse.tu-fixed-nine-node-tree",
     "parse.token-range-committed",
     "commit.node-materialized",
+    "ty.canonical-int-reuse-scan",
+    "ty.func-single-producer",
+    "scope.enter-after-tu-guarded-once",
+    "scope.lifecycle-worker-enforced",
+    "symbol.declare-no-duplicate",
+    "symbol.lookup-chain-hit-or-typed-miss",
+    "ty.identity-completes-no-plan",
+    "commit.type-symbol-scope-materialized",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -232,6 +241,7 @@ pub const DIAG_GROUP_NAMES: &[&str] = &[
     "target",
     "manifest",
     "task",
+    "semantic",
     "unsupported",
     "internal",
 ];
@@ -281,6 +291,43 @@ pub const NODE_KIND_NAMES: &[&str] = &[
     "binary_add",
     "int_literal",
 ];
+
+/// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).
+pub const TYPE_KIND_NAMES: &[&str] = &["void", "bool", "char", "int", "function"];
+
+/// Frozen `/13` `IntRank` names, in declaration order.
+pub const INT_RANK_NAMES: &[&str] = &["short", "int", "long", "long_long"];
+
+/// Frozen `/13` `CharKind` names, in declaration order.
+pub const CHAR_KIND_NAMES: &[&str] = &["plain", "signed", "unsigned"];
+
+/// Frozen `/13` `TypeRecord` fields, in declaration order.
+pub const TYPE_RECORD_FIELDS: &[&str] = &["kind"];
+
+/// Frozen `/13` `SymbolKind` names, in declaration order.
+pub const SYMBOL_KIND_NAMES: &[&str] = &["function", "variable"];
+
+/// Frozen `/13` `Linkage` names, in declaration order.
+pub const LINKAGE_NAMES: &[&str] = &["none", "internal", "external"];
+
+/// Frozen `/13` `StorageDuration` names, in declaration order.
+pub const STORAGE_DURATION_NAMES: &[&str] = &["none", "static", "automatic", "thread", "allocated"];
+
+/// Frozen `/13` `SymbolRecord` fields, in declaration order.
+pub const SYMBOL_RECORD_FIELDS: &[&str] =
+    &["name", "scope", "kind", "ty", "linkage", "storage", "decl"];
+
+/// Frozen `/13` `ScopeKind` names, in declaration order.
+pub const SCOPE_KIND_NAMES: &[&str] = &["file", "block"];
+
+/// Frozen `/13` `ScopeRecord` fields, in declaration order.
+pub const SCOPE_RECORD_FIELDS: &[&str] = &["kind", "parent", "owner"];
+
+/// Frozen `/13` `ScopeEventKind` names, in declaration order.
+pub const SCOPE_EVENT_KIND_NAMES: &[&str] = &["enter", "exit"];
+
+/// Frozen `/13` `ScopeEventRecord` fields, in declaration order.
+pub const SCOPE_EVENT_RECORD_FIELDS: &[&str] = &["scope", "kind", "at"];
 
 /// Frozen `/12` `NodeRecord` fields, in declaration order.
 pub const NODE_RECORD_FIELDS: &[&str] = &[
@@ -381,6 +428,18 @@ impl FrozenSchema {
         push_str_list(&mut w, TOKEN_RECORD_FIELDS);
         push_str_list(&mut w, NODE_KIND_NAMES);
         push_str_list(&mut w, NODE_RECORD_FIELDS);
+        push_str_list(&mut w, TYPE_KIND_NAMES);
+        push_str_list(&mut w, INT_RANK_NAMES);
+        push_str_list(&mut w, CHAR_KIND_NAMES);
+        push_str_list(&mut w, TYPE_RECORD_FIELDS);
+        push_str_list(&mut w, SYMBOL_KIND_NAMES);
+        push_str_list(&mut w, LINKAGE_NAMES);
+        push_str_list(&mut w, STORAGE_DURATION_NAMES);
+        push_str_list(&mut w, SYMBOL_RECORD_FIELDS);
+        push_str_list(&mut w, SCOPE_KIND_NAMES);
+        push_str_list(&mut w, SCOPE_RECORD_FIELDS);
+        push_str_list(&mut w, SCOPE_EVENT_KIND_NAMES);
+        push_str_list(&mut w, SCOPE_EVENT_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -588,7 +647,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PA slice).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 TY slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

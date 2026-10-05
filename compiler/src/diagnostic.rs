@@ -47,6 +47,9 @@ pub enum DiagGroup {
     Manifest,
     /// Task lifecycle failures.
     Task,
+    /// Semantic (name/type/scope) failures (`/13` TY slice: undeclared
+    /// identifiers, redeclaration conflicts).
+    Semantic,
     /// Explicitly unsupported capability.
     Unsupported,
     /// An internal invariant was violated (a bug, reported not panicked).
@@ -63,6 +66,7 @@ impl DiagGroup {
             Self::Target => "target",
             Self::Manifest => "manifest",
             Self::Task => "task",
+            Self::Semantic => "semantic",
             Self::Unsupported => "unsupported",
             Self::Internal => "internal",
         }

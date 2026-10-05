@@ -211,6 +211,26 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/13`) TY-slice field set: the PA slice plus the TY
+    /// append fields (`types.records`, `symbols.symbols`, `symbols.scopes`,
+    /// `symbols.scope_events`). Post-seed runtime declarations stay excluded
+    /// from the frozen hash per the two-tier model; the TY inventory is
+    /// pinned by the `*_NAMES` contract lists instead.
+    pub fn ty_slice() -> Self {
+        let mut schema = Self::pa_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Types, "records"),
+            (StoreId::Symbols, "symbols"),
+            (StoreId::Symbols, "scopes"),
+            (StoreId::Symbols, "scope_events"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/12`) PA-slice field set: the LX slice plus the PA
     /// append field (`parse.nodes` for `NodeRecord`). Post-seed runtime
     /// declarations stay excluded from the frozen hash per the two-tier
@@ -730,6 +750,42 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         TaskKind::LEX_DECODE_LITERAL,
     ),
     (PA_TU_CHIP, StoreId::Parse, "nodes", TaskKind::PARSE_TU),
+    (
+        TY_TYPE_CHIP,
+        StoreId::Types,
+        "records",
+        TaskKind::SYMBOL_INT_TYPE,
+    ),
+    (
+        TY_TYPE_CHIP,
+        StoreId::Types,
+        "records",
+        TaskKind::SYMBOL_FUNC_TYPE,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scopes",
+        TaskKind::SYMBOL_SCOPE_ENTER,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scope_events",
+        TaskKind::SYMBOL_SCOPE_ENTER,
+    ),
+    (
+        TY_SCOPE_CHIP,
+        StoreId::Symbols,
+        "scope_events",
+        TaskKind::SYMBOL_SCOPE_EXIT,
+    ),
+    (
+        TY_SYMBOL_CHIP,
+        StoreId::Symbols,
+        "symbols",
+        TaskKind::SYMBOL_DECLARE,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -758,6 +814,16 @@ pub const LX_DECODE_CHIP: ChipId = ChipId(6);
 /// Wave 2 (`/12`) PA TU-parse chip reservation.
 pub const PA_TU_CHIP: ChipId = ChipId(7);
 
+/// Wave 2 (`/13`) TY canonical-type chip reservation (int + func producers).
+pub const TY_TYPE_CHIP: ChipId = ChipId(8);
+/// Wave 2 (`/13`) TY scope chip reservation (enter + exit).
+pub const TY_SCOPE_CHIP: ChipId = ChipId(9);
+/// Wave 2 (`/13`) TY symbol chip reservation (declare + lookup).
+pub const TY_SYMBOL_CHIP: ChipId = ChipId(10);
+/// Wave 2 (`/13`) TY conversion chip reservation (identity-only promote,
+/// common-type, return conversion).
+pub const TY_CONV_CHIP: ChipId = ChipId(11);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -782,6 +848,19 @@ pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
 }
 
+/// Whether a task kind belongs to the Wave 2 (`/13`) TY slice.
+pub const fn is_ty_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SYMBOL_INT_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_FUNC_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_SCOPE_ENTER.raw()
+        || kind.raw() == TaskKind::SYMBOL_SCOPE_EXIT.raw()
+        || kind.raw() == TaskKind::SYMBOL_DECLARE.raw()
+        || kind.raw() == TaskKind::SYMBOL_LOOKUP.raw()
+        || kind.raw() == TaskKind::SYMBOL_PROMOTE.raw()
+        || kind.raw() == TaskKind::SYMBOL_COMMON_TYPE.raw()
+        || kind.raw() == TaskKind::SYMBOL_RETURN_CONVERT.raw()
+}
+
 /// Enforce the store-owner allowlist for one manifest.
 ///
 /// Wave-gated: manifests that claim no Gate 1 slice kind pass untouched
@@ -797,6 +876,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp01_slice_kind(kind)
             || is_lx_slice_kind(kind)
             || is_pa_slice_kind(kind)
+            || is_ty_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -845,6 +925,15 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::LEX_CLASSIFY, 2),
     (TaskKind::LEX_DECODE_LITERAL, 2),
     (TaskKind::PARSE_TU, 2),
+    (TaskKind::SYMBOL_INT_TYPE, 3),
+    (TaskKind::SYMBOL_FUNC_TYPE, 3),
+    (TaskKind::SYMBOL_SCOPE_ENTER, 3),
+    (TaskKind::SYMBOL_SCOPE_EXIT, 3),
+    (TaskKind::SYMBOL_DECLARE, 3),
+    (TaskKind::SYMBOL_LOOKUP, 3),
+    (TaskKind::SYMBOL_PROMOTE, 3),
+    (TaskKind::SYMBOL_COMMON_TYPE, 3),
+    (TaskKind::SYMBOL_RETURN_CONVERT, 3),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

@@ -38,6 +38,10 @@ mod lx_decode;
 mod lx_intern;
 mod pa_tu;
 mod pp_normalize;
+mod ty_conv;
+mod ty_scope;
+mod ty_symbol;
+mod ty_types;
 
 pub use fold::{const_bits_required, project_fold_input, FoldChip, FoldInput};
 pub use lx_classify::{
@@ -49,6 +53,15 @@ pub use lx_decode::{
 pub use lx_intern::{project_lx_intern_input, LxInternChip, LxInternInput};
 pub use pa_tu::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use pp_normalize::{normalize, project_pp_input, PpInput, PpNormalizeChip};
+pub use ty_conv::{is_m1_int, project_ty_conv_input, TyConvChip, TyConvInput};
+pub use ty_scope::{
+    project_ty_scope_enter_input, project_ty_scope_exit_input, TyScopeChip, TyScopeEnterInput,
+    TyScopeExitInput,
+};
+pub use ty_symbol::{
+    in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input, TySymbolChip,
+};
+pub use ty_types::{canonical_scan, m1_int, project_ty_type_input, TyTypeChip, TyTypeInput};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};

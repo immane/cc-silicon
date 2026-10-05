@@ -17,8 +17,10 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, NodeKind, NodeRecord,
-    PpTokenKind, PpTokenRecord, SpanRecord, TokenKind, TokenRecord,
+    ArtifactKind, ArtifactRecord, CharKind, CompilerBus, ConstRecord, IntRank, Linkage,
+    LiteralRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
+    ScopeEventRecord, ScopeKind, ScopeRecord, SpanRecord, StorageDuration, SymbolKind,
+    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -689,25 +691,33 @@ impl Snapshot {
             w.u32(id.index());
             w.raw(&encode_token(token));
         }
+        // Wave 2 (`/13`) typed scopes, events, symbols, and canonical
+        // types: allocated count plus per-record bodies in ascending ID
+        // order (same convention as the typed nodes above).
+        w.u64(bus.arenas.scopes.allocated() as u64);
+        for (id, scope) in bus.arenas.scopes.iter() {
+            w.u32(id.index());
+            w.raw(&encode_scope(scope));
+        }
+        w.u64(bus.arenas.scope_events.allocated() as u64);
+        for (id, event) in bus.arenas.scope_events.iter() {
+            w.u32(id.index());
+            w.raw(&encode_scope_event(event));
+        }
+        w.u64(bus.arenas.symbols.allocated() as u64);
+        for (id, symbol) in bus.arenas.symbols.iter() {
+            w.u32(id.index());
+            w.raw(&encode_symbol(symbol));
+        }
+        w.u64(bus.arenas.types.allocated() as u64);
+        for (id, ty) in bus.arenas.types.iter() {
+            w.u32(id.index());
+            w.raw(&encode_type(ty));
+        }
         // Reserved language stores: allocated count plus live IDs. Tombstone
         // positions are visible because removed IDs are absent from the live
         // list while `allocated` keeps counting, so trailing tombstones still
         // distinguish states. Record *bodies* remain reserved.
-        push_reserved(
-            &mut w,
-            bus.arenas.scopes.allocated(),
-            bus.arenas.scopes.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.symbols.allocated(),
-            bus.arenas.symbols.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.types.allocated(),
-            bus.arenas.types.live_ids(),
-        );
         // Wave 2 (`/12`) typed AST nodes: allocated count plus per-record
         // bodies in ascending ID order (same convention as tokens above).
         w.u64(bus.arenas.nodes.allocated() as u64);
@@ -1586,75 +1596,6 @@ pub fn literal_identity_key(record: &LiteralRecordView) -> Vec<u8> {
     w.finish()
 }
 
-/// Scope lifecycle event kind.
-///
-/// Encoded by canonical name (`enter`/`exit`), never by discriminant.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ScopeEventKind {
-    /// Scope entry.
-    Enter,
-    /// Scope exit.
-    Exit,
-}
-
-impl ScopeEventKind {
-    /// Canonical encoding name.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Enter => "enter",
-            Self::Exit => "exit",
-        }
-    }
-
-    /// Parse a canonical name. Unknown names are
-    /// [`CodecError::Unsupported`].
-    pub fn parse(name: &str) -> Result<Self, CodecError> {
-        match name {
-            "enter" => Ok(Self::Enter),
-            "exit" => Ok(Self::Exit),
-            _ => Err(CodecError::Unsupported("unknown scope event kind name")),
-        }
-    }
-}
-
-/// Snapshot-local view of the candidate `ScopeEventRecord`
-/// (`{ scope, kind, at }`; append-only, no stored ordinal — order is the
-/// `ScopeEventId` allocation order).
-///
-/// There is no bus arena for scope events yet, so this view is the encoder
-/// input until the T06 `/6` co-freeze lands the committed record.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ScopeEventRecordView {
-    /// Scope arena index.
-    pub scope: u32,
-    /// Event kind.
-    pub kind: ScopeEventKind,
-    /// Owner lexical node arena index (the committed TU node for file scope).
-    pub at: u32,
-}
-
-/// Canonical encoding of one candidate scope-event record.
-///
-/// Byte layout (fixed): scope `u32` LE | kind-name str | `at` `u32` LE.
-pub fn encode_scope_event(record: &ScopeEventRecordView) -> Vec<u8> {
-    let mut w = Writer::new();
-    w.u32(record.scope);
-    w.str(record.kind.name());
-    w.u32(record.at);
-    w.finish()
-}
-
-/// Decode one candidate scope-event record; consumes the whole input.
-pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecordView, CodecError> {
-    let mut r = Reader::new(bytes);
-    let scope = r.u32()?;
-    let kind_name = r.string()?;
-    let kind = ScopeEventKind::parse(&kind_name)?;
-    let at = r.u32()?;
-    r.finish()?;
-    Ok(ScopeEventRecordView { scope, kind, at })
-}
-
 /// Canonical encoding of one artifact record: kind-name str + fragment bytes.
 ///
 /// Name of a [`NodeKind`], in declaration order.
@@ -1761,6 +1702,346 @@ pub fn decode_node(bytes: &[u8]) -> Result<NodeRecord, CodecError> {
         name: node_name,
         literal,
     })
+}
+
+/// Name of an [`IntRank`].
+pub fn int_rank_name(rank: IntRank) -> &'static str {
+    match rank {
+        IntRank::Short => "short",
+        IntRank::Int => "int",
+        IntRank::Long => "long",
+        IntRank::LongLong => "long_long",
+    }
+}
+
+fn parse_int_rank(name: &str) -> Option<IntRank> {
+    match name {
+        "short" => Some(IntRank::Short),
+        "int" => Some(IntRank::Int),
+        "long" => Some(IntRank::Long),
+        "long_long" => Some(IntRank::LongLong),
+        _ => None,
+    }
+}
+
+/// Name of a [`CharKind`].
+pub fn char_kind_name(kind: CharKind) -> &'static str {
+    match kind {
+        CharKind::Plain => "plain",
+        CharKind::Signed => "signed",
+        CharKind::Unsigned => "unsigned",
+    }
+}
+
+fn parse_char_kind(name: &str) -> Option<CharKind> {
+    match name {
+        "plain" => Some(CharKind::Plain),
+        "signed" => Some(CharKind::Signed),
+        "unsigned" => Some(CharKind::Unsigned),
+        _ => None,
+    }
+}
+
+/// Name of a [`TypeKind`] variant (payload kinds encoded inline).
+pub fn type_kind_name(kind: &TypeKind) -> &'static str {
+    match kind {
+        TypeKind::Void => "void",
+        TypeKind::Bool => "bool",
+        TypeKind::Char(_) => "char",
+        TypeKind::Int { .. } => "int",
+        TypeKind::Function { .. } => "function",
+    }
+}
+
+/// Canonical encoding of one committed [`TypeRecord`].
+///
+/// Byte layout: kind-name str, then kind payload: `Char` → char-kind-name
+/// str; `Int` → rank-name str + signed bool; `Function` → result-present
+/// `u8` + optional result `u32` LE + param-count `u64` LE + param `u32` LE
+/// each + prototype bool + variadic bool; `Void`/`Bool` → nothing.
+pub fn encode_type(record: &TypeRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(type_kind_name(&record.kind));
+    match &record.kind {
+        TypeKind::Void | TypeKind::Bool => {}
+        TypeKind::Char(char_kind) => {
+            w.str(char_kind_name(*char_kind));
+        }
+        TypeKind::Int { rank, signed } => {
+            w.str(int_rank_name(*rank));
+            w.bool(*signed);
+        }
+        TypeKind::Function {
+            result,
+            params,
+            prototype,
+            variadic,
+        } => {
+            w.u32(result.index());
+            w.u64(params.len() as u64);
+            for param in params {
+                w.u32(param.index());
+            }
+            w.bool(*prototype);
+            w.bool(*variadic);
+        }
+    }
+    w.finish()
+}
+
+/// Decode one committed [`TypeRecord`]; consumes the whole input.
+pub fn decode_type(bytes: &[u8]) -> Result<TypeRecord, CodecError> {
+    use crate::ids::TypeId;
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = match name.as_str() {
+        "void" => TypeKind::Void,
+        "bool" => TypeKind::Bool,
+        "char" => TypeKind::Char(
+            parse_char_kind(&r.string()?).ok_or(CodecError::Unsupported("unknown char kind"))?,
+        ),
+        "int" => {
+            let rank_name = r.string()?;
+            let rank =
+                parse_int_rank(&rank_name).ok_or(CodecError::Unsupported("unknown int rank"))?;
+            TypeKind::Int {
+                rank,
+                signed: r.bool()?,
+            }
+        }
+        "function" => {
+            let result = TypeId::from_index(r.u32()?);
+            let param_count = r.u64()? as usize;
+            let mut params = Vec::with_capacity(param_count);
+            for _ in 0..param_count {
+                params.push(TypeId::from_index(r.u32()?));
+            }
+            TypeKind::Function {
+                result,
+                params,
+                prototype: r.bool()?,
+                variadic: r.bool()?,
+            }
+        }
+        _ => return Err(CodecError::Unsupported("unknown type kind")),
+    };
+    r.finish()?;
+    Ok(TypeRecord { kind })
+}
+
+/// Name of a [`SymbolKind`].
+pub fn symbol_kind_name(kind: SymbolKind) -> &'static str {
+    match kind {
+        SymbolKind::Function => "function",
+        SymbolKind::Object => "object",
+    }
+}
+
+fn parse_symbol_kind(name: &str) -> Option<SymbolKind> {
+    match name {
+        "function" => Some(SymbolKind::Function),
+        "object" => Some(SymbolKind::Object),
+        _ => None,
+    }
+}
+
+/// Name of a [`Linkage`].
+pub fn linkage_name(linkage: Linkage) -> &'static str {
+    match linkage {
+        Linkage::None => "none",
+        Linkage::Internal => "internal",
+        Linkage::External => "external",
+    }
+}
+
+fn parse_linkage(name: &str) -> Option<Linkage> {
+    match name {
+        "none" => Some(Linkage::None),
+        "internal" => Some(Linkage::Internal),
+        "external" => Some(Linkage::External),
+        _ => None,
+    }
+}
+
+/// Name of a [`StorageDuration`].
+pub fn storage_duration_name(storage: StorageDuration) -> &'static str {
+    match storage {
+        StorageDuration::None => "none",
+        StorageDuration::Static => "static",
+        StorageDuration::Automatic => "automatic",
+        StorageDuration::Thread => "thread",
+        StorageDuration::Allocated => "allocated",
+    }
+}
+
+fn parse_storage_duration(name: &str) -> Option<StorageDuration> {
+    match name {
+        "none" => Some(StorageDuration::None),
+        "static" => Some(StorageDuration::Static),
+        "automatic" => Some(StorageDuration::Automatic),
+        "thread" => Some(StorageDuration::Thread),
+        "allocated" => Some(StorageDuration::Allocated),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`SymbolRecord`].
+///
+/// Byte layout: name `u32` LE | scope `u32` LE | kind-name str | ty-present
+/// `u8` + optional ty `u32` LE | linkage-name str | storage-name str |
+/// decl `u32` LE.
+pub fn encode_symbol(record: &SymbolRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.name.index());
+    w.u32(record.scope.index());
+    w.str(symbol_kind_name(record.kind));
+    match record.ty {
+        Some(ty) => {
+            w.u8(1);
+            w.u32(ty.index());
+        }
+        None => w.u8(0),
+    }
+    w.str(linkage_name(record.linkage));
+    w.str(storage_duration_name(record.storage));
+    w.u32(record.decl.index());
+    w.finish()
+}
+
+/// Decode one committed [`SymbolRecord`]; consumes the whole input.
+pub fn decode_symbol(bytes: &[u8]) -> Result<SymbolRecord, CodecError> {
+    use crate::ids::{NameId, NodeId, ScopeId, TypeId};
+    let mut r = Reader::new(bytes);
+    let name = NameId::from_index(r.u32()?);
+    let scope = ScopeId::from_index(r.u32()?);
+    let kind_name = r.string()?;
+    let kind =
+        parse_symbol_kind(&kind_name).ok_or(CodecError::Unsupported("unknown symbol kind"))?;
+    let ty = match r.u8()? {
+        0 => None,
+        1 => Some(TypeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let linkage_name = r.string()?;
+    let linkage = parse_linkage(&linkage_name).ok_or(CodecError::Unsupported("unknown linkage"))?;
+    let storage_name = r.string()?;
+    let storage = parse_storage_duration(&storage_name)
+        .ok_or(CodecError::Unsupported("unknown storage duration"))?;
+    let decl = NodeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(SymbolRecord {
+        name,
+        scope,
+        kind,
+        ty,
+        linkage,
+        storage,
+        decl,
+    })
+}
+
+/// Name of a [`ScopeKind`].
+pub fn scope_kind_name(kind: ScopeKind) -> &'static str {
+    match kind {
+        ScopeKind::File => "file",
+        ScopeKind::Block => "block",
+    }
+}
+
+fn parse_scope_kind(name: &str) -> Option<ScopeKind> {
+    match name {
+        "file" => Some(ScopeKind::File),
+        "block" => Some(ScopeKind::Block),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`ScopeRecord`].
+///
+/// Byte layout: kind-name str | parent-present `u8` + optional parent `u32`
+/// LE | owner-present `u8` + optional owner `u32` LE.
+pub fn encode_scope(record: &ScopeRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(scope_kind_name(record.kind));
+    match record.parent {
+        Some(parent) => {
+            w.u8(1);
+            w.u32(parent.index());
+        }
+        None => w.u8(0),
+    }
+    match record.owner {
+        Some(owner) => {
+            w.u8(1);
+            w.u32(owner.index());
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+/// Decode one committed [`ScopeRecord`]; consumes the whole input.
+pub fn decode_scope(bytes: &[u8]) -> Result<ScopeRecord, CodecError> {
+    use crate::ids::{NodeId, ScopeId};
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_scope_kind(&name).ok_or(CodecError::Unsupported("unknown scope kind"))?;
+    let parent = match r.u8()? {
+        0 => None,
+        1 => Some(ScopeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let owner = match r.u8()? {
+        0 => None,
+        1 => Some(NodeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(ScopeRecord {
+        kind,
+        parent,
+        owner,
+    })
+}
+
+/// Name of a [`ScopeEventKind`].
+pub fn scope_event_kind_name(kind: ScopeEventKind) -> &'static str {
+    match kind {
+        ScopeEventKind::Enter => "enter",
+        ScopeEventKind::Exit => "exit",
+    }
+}
+
+fn parse_scope_event_kind(name: &str) -> Option<ScopeEventKind> {
+    match name {
+        "enter" => Some(ScopeEventKind::Enter),
+        "exit" => Some(ScopeEventKind::Exit),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`ScopeEventRecord`].
+///
+/// Byte layout: scope `u32` LE | kind-name str | at `u32` LE.
+pub fn encode_scope_event(record: &ScopeEventRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.scope.index());
+    w.str(scope_event_kind_name(record.kind));
+    w.u32(record.at.index());
+    w.finish()
+}
+
+/// Decode one committed [`ScopeEventRecord`]; consumes the whole input.
+pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecord, CodecError> {
+    use crate::ids::{NodeId, ScopeId};
+    let mut r = Reader::new(bytes);
+    let scope = ScopeId::from_index(r.u32()?);
+    let name = r.string()?;
+    let kind =
+        parse_scope_event_kind(&name).ok_or(CodecError::Unsupported("unknown scope event kind"))?;
+    let at = NodeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(ScopeEventRecord { scope, kind, at })
 }
 
 /// Canonical encoding of a `/10` artifact: kind name, optional source index,

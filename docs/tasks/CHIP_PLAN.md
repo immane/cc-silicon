@@ -22,7 +22,7 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP01 ✅ (`/10`) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`, `c12_parse` 5 tests) → T06 TY M1 subset → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 2 (M1 frontend) | T03 PP01 ✅ (`/10`) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`, `c13_ty` 8 tests) → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
