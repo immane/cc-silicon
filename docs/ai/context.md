@@ -1,20 +1,22 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/18`)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/19`)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after the Wave 2 slice 9 (`/18`) freeze. The frozen contract
+> 2026-10-06 after the Wave 2 slice 10 (`/19`) freeze. The frozen contract
 > (`compiler/contracts/CONTRACT_VERSION`) plus `docs/tasks/T01_COMPILER_CONTRACT.md`
 > §7.1 remain authoritative; this file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/18`, hash
-  `7ceeaee582948c8b4623b11e64a9ea4ae03531f4d92ca334cd1c5c5a9385d256`.
+- Frozen artifact: `t01-c01-c06/19`, hash
+  `76155ee8b66bd3a8e60c3e812a25301abcfd4ffffbf6e0dfbda3be25f6b476a4`.
 - Branch: `initial-compiler-development` (PR #13 targets `main`).
-- The M1 C frontend is **closed end-to-end, symbolically modeled, and
-  syntax-checked**: seeded source bytes flow
+- The M1 C frontend is **closed end-to-end, symbolically modeled,
+  syntax-checked, and store-checked**: seeded source bytes flow
   PP01→PP02→PP03→PP04→LX(intern→classify→decode)→PA→TY→SE→fold→IR→VF12
   with no hand-built values (`M1-CL-05` handoff complete at `/15`, meaning
-  modeled at `/17`), and VF05 re-verifies the token↔AST contract at `/18`.
+  modeled at `/17`), VF05 re-verifies the token↔AST contract at `/18`,
+  and VF01 re-verifies ID ownership/span bounds/reserved-emptiness at
+  `/19`.
 - Rule: **one serial slice at a time** — each slice freezes
   schemas/kinds/stages/allowlist first, then implements. Never dispatch a
   wave before its freeze lands (rework is guaranteed otherwise).
@@ -35,6 +37,7 @@
 | `/16` | PP splice/comment/scan | `preprocess/{pp_splice,pp_comment,pp_scan}.rs` | `c16_pp` 8 |
 | `/17` | VF12 symbolic interpret | `verify/vf_interpret.rs` | `c17_vf12` 6 |
 | `/18` | VF05 token-AST invariant | `verify/vf_syntax.rs` | `c18_vf05` 6 |
+| `/19` | VF01 store invariant | `verify/vf_store.rs` | `c19_vf01` 7 |
 
 ## 3. Patterns every new slice must follow
 
@@ -94,7 +97,7 @@ git diff --check
 ## 6. Open threads (do not treat as settled)
 
 - T02 control subset + H04 candidate driver (evidence CLI) — biggest gap.
-- T13 VF remainder on real records (VF01–04/VF13–14; VF05/VF06/VF12-M1 exist).
+- T13 VF remainder on real records (VF02–04/VF13–14; VF01/VF05/VF06/VF12-M1 exist).
 - File-Enter edge auto-firing; `TokenRecord.literal` forward link;
   `ConversionPlan`; query-point lookup ordering; FunctionEnd/IR28 hook
   (OB-26); PP diagnostic taxonomy (F4); full scan-state machine;

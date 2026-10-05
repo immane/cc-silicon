@@ -964,6 +964,9 @@ pub const VF12_CHIP: ChipId = ChipId(20);
 /// Wave 2 (`/18`) VF05 token-AST invariant chip reservation.
 pub const VF05_CHIP: ChipId = ChipId(21);
 
+/// Wave 2 (`/19`) VF01 store-invariant chip reservation.
+pub const VF01_CHIP: ChipId = ChipId(22);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -986,6 +989,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/19`) VF01 slice.
+pub const fn is_vf01_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_STORE_INVARIANT.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/18`) VF05 slice.
@@ -1054,6 +1062,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_slice_kind(kind)
             || is_vf12_slice_kind(kind)
             || is_vf05_slice_kind(kind)
+            || is_vf01_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1121,6 +1130,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_SCAN, 1),
     (TaskKind::VERIFICATION_IR_INTERPRET, 6),
     (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, 2),
+    (TaskKind::VERIFICATION_STORE_INVARIANT, 6),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

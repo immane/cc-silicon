@@ -299,6 +299,10 @@ impl TaskKind {
     /// fields; completes `Ack`).
     pub const VERIFICATION_TOKEN_AST_INVARIANT: Self =
         Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/19`) VF01-slice kind: store-invariant task (payload must
+    /// be empty; checks the global M1 store contract; completes `Ack`).
+    pub const VERIFICATION_STORE_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 19);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -417,6 +421,22 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/19`) VF01-slice registry: the VF05 slice plus the
+    /// frozen store-invariant kind (all `Frozen`; `VERIFICATION` owners
+    /// start new codes at local 20).
+    pub fn vf01_slice() -> Self {
+        let mut registry = Self::vf05_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_STORE_INVARIANT,
+            "verification.store_invariant",
+        )];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }
