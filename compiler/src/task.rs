@@ -552,6 +552,14 @@ impl RequestError {
 /// as no bytes: the M1 slice kinds each imply
 /// [`RequiredKind::IntegerConstantExpression`], and the binary form
 /// implies [`ConstExprOp::Add`] (the T07-checked operator).
+///
+/// Both the T07 request kinds (`const_eval_literal`, `const_eval_binary`)
+/// and the T08 fold kind (`const_fold`) decode through this convention:
+/// the T07 requester (Wave 2) validates the request and enqueues a
+/// `const_fold` child carrying the identical payload refs, so the fold
+/// worker sees one shape. Single-literal payloads decode to `Literal`,
+/// node-plus-two-literals to `Binary`, regardless of which of the three
+/// kinds carries them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConstantRequest {
     /// Evaluate one committed literal.
@@ -578,9 +586,10 @@ pub enum ConstantRequest {
 
 impl ConstantRequest {
     /// Decode a `(kind, payload)` pair per the frozen convention:
-    /// `const_eval_literal` carries exactly one `RecordRef::Literal`;
-    /// `const_eval_binary` carries `RecordRef::Node` then two
-    /// `RecordRef::Literal` in source order.
+    /// single-`RecordRef::Literal` payloads decode to `Literal`;
+    /// `RecordRef::Node` plus two `RecordRef::Literal` in source order
+    /// decode to `Binary`. Accepted for the two `const_eval_*` request
+    /// kinds and the `const_fold` worker kind alike.
     pub fn decode(kind: TaskKind, payload: &Payload) -> Result<Self, RequestError> {
         fn literal_at(
             kind: TaskKind,
@@ -592,38 +601,35 @@ impl ConstantRequest {
                 _ => Err(RequestError::Family { kind, position }),
             }
         }
-        if kind == TaskKind::SEMANTIC_CONST_EVAL_LITERAL {
-            if payload.refs.len() != 1 {
-                return Err(RequestError::Arity {
-                    kind,
-                    got: payload.refs.len(),
-                });
-            }
-            Ok(Self::Literal {
+        if kind != TaskKind::SEMANTIC_CONST_EVAL_LITERAL
+            && kind != TaskKind::SEMANTIC_CONST_EVAL_BINARY
+            && kind != TaskKind::CONSTANT_CONST_FOLD
+        {
+            return Err(RequestError::UnexpectedKind { kind });
+        }
+        if payload.refs.len() == 1 {
+            return Ok(Self::Literal {
                 literal: literal_at(kind, payload, 0)?,
                 required_kind: RequiredKind::IntegerConstantExpression,
-            })
-        } else if kind == TaskKind::SEMANTIC_CONST_EVAL_BINARY {
-            if payload.refs.len() != 3 {
-                return Err(RequestError::Arity {
-                    kind,
-                    got: payload.refs.len(),
-                });
-            }
+            });
+        }
+        if payload.refs.len() == 3 {
             let node = match payload.refs[0] {
                 RecordRef::Node(id) => id,
                 _ => return Err(RequestError::Family { kind, position: 0 }),
             };
-            Ok(Self::Binary {
+            return Ok(Self::Binary {
                 node,
                 op: ConstExprOp::Add,
                 lhs: literal_at(kind, payload, 1)?,
                 rhs: literal_at(kind, payload, 2)?,
                 required_kind: RequiredKind::IntegerConstantExpression,
-            })
-        } else {
-            Err(RequestError::UnexpectedKind { kind })
+            });
         }
+        Err(RequestError::Arity {
+            kind,
+            got: payload.refs.len(),
+        })
     }
 }
 

@@ -205,7 +205,18 @@ fn request_decode_accepts_m1_conventions() {
         }
     );
 
-    // Wrong kind, wrong arity, wrong family.
+    // The fold kind decodes the same shapes (the T07 requester forwards
+    // identical payload refs to its const_fold child).
+    let request = ConstantRequest::decode(
+        TaskKind::CONSTANT_CONST_FOLD,
+        &Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(literal),
+            RecordRef::Literal(other),
+        ]),
+    )
+    .unwrap();
+    assert!(matches!(request, ConstantRequest::Binary { .. }));
     assert!(matches!(
         ConstantRequest::decode(TaskKind::CONTROL_NOOP, &Payload::empty()),
         Err(cc_silicon_compiler::task::RequestError::UnexpectedKind { .. })
@@ -764,4 +775,177 @@ fn contract_hash_covers_gate1_section() {
             "frozen bytes miss `{marker}`"
         );
     }
+}
+
+#[test]
+fn fold_chip_manifest_registers_and_routes() {
+    use cc_silicon_compiler::chips::{FoldChip, Worker};
+    use cc_silicon_compiler::manifest::check_stage_layer_agreement;
+
+    let chip = FoldChip;
+    let manifest = chip.manifest();
+    assert_eq!(manifest.id, fold_chip());
+    assert_eq!(manifest.group, TaskGroup::CONSTANT_LAYOUT_INIT);
+    assert_eq!(manifest.task_kinds, vec![TaskKind::CONSTANT_CONST_FOLD]);
+    let kinds = TaskKindRegistry::m1_slice();
+    let schema = StoreSchema::m1_slice();
+    let mut registry = ManifestRegistry::new();
+    registry.register(manifest, &schema, &kinds).unwrap();
+
+    let mut bus = CompilerBus::default();
+    bus.routing
+        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+        .unwrap();
+    assert!(check_stage_layer_agreement(&chip.manifest(), &bus.routing).is_ok());
+}
+
+#[test]
+fn fold_chip_drives_g1_chain_through_driver() {
+    use cc_silicon_compiler::chips::{drive_task, FoldChip, WorkerRegistry};
+
+    let mut bus = CompilerBus::default();
+    bus.kinds = TaskKindRegistry::m1_slice();
+    bus.routing
+        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+        .unwrap();
+    let mut workers = WorkerRegistry::new();
+    workers.register(FoldChip).unwrap();
+
+    let (two, three, node) = seed_g1_fixtures(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let tagged = drive_task(&bus, task, &workers).unwrap();
+    assert_eq!(tagged.len(), 2);
+    let report = commit_proposals(&mut bus, tagged).unwrap();
+
+    // The real chip folded 2 + 3 through the commit path: exactly one
+    // ConstRecord(5), task completed naming it.
+    assert_eq!(report.appended.len(), 1);
+    let committed = bus
+        .arenas
+        .consts
+        .get(cc_silicon_compiler::ids::ConstId::from_index(0))
+        .unwrap();
+    assert_eq!(committed.value, vec![5]);
+    assert!(!committed.negative);
+    assert!(matches!(
+        bus.arenas.tasks.get(task).unwrap().state,
+        TaskState::Completed(_)
+    ));
+    // Deterministic replay of the driven chain.
+    let first = Snapshot::capture(&bus).hash();
+    let mut again = CompilerBus::default();
+    again.kinds = TaskKindRegistry::m1_slice();
+    again
+        .routing
+        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+        .unwrap();
+    let (two, three, node) = seed_g1_fixtures(&mut again);
+    let retry = running_task(
+        &mut again,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let tagged = drive_task(&again, retry, &workers).unwrap();
+    commit_proposals(&mut again, tagged).unwrap();
+    assert_eq!(Snapshot::capture(&again).hash(), first);
+}
+
+#[test]
+fn driver_rejects_unregistered_mismatched_and_duplicate() {
+    use cc_silicon_compiler::chips::{drive_task, DriveError, FoldChip, WorkerRegistry};
+
+    let mut bus = CompilerBus::default();
+    bus.kinds = TaskKindRegistry::m1_slice();
+    let workers = WorkerRegistry::new();
+
+    // Unregistered kind: the driver refuses to fabricate work.
+    let task = running_task(
+        &mut bus,
+        TaskKind::SEMANTIC_CONST_EVAL_BINARY,
+        fold_chip(),
+        Payload::empty(),
+    );
+    assert!(matches!(
+        drive_task(&bus, task, &workers),
+        Err(DriveError::NotRegistered { .. })
+    ));
+
+    // Routed kind with no worker installed.
+    bus.routing
+        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+        .unwrap();
+    let fold = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    assert!(matches!(
+        drive_task(&bus, fold, &workers),
+        Err(DriveError::NoWorker { .. })
+    ));
+
+    // Duplicate worker registration is rejected.
+    let mut workers = WorkerRegistry::new();
+    workers.register(FoldChip).unwrap();
+    assert!(matches!(
+        workers.register(FoldChip),
+        Err(DriveError::DuplicateWorker { .. })
+    ));
+
+    // Unknown task.
+    assert!(matches!(
+        drive_task(&bus, TaskId::from_index(999), &workers),
+        Err(DriveError::UnknownTask { .. })
+    ));
+}
+
+#[test]
+fn fold_chip_fails_loudly_on_bad_inputs() {
+    use cc_silicon_compiler::chips::{FoldChip, Worker};
+
+    let mut bus = CompilerBus::default();
+    bus.kinds = TaskKindRegistry::m1_slice();
+    let chip = FoldChip;
+
+    // Wrong payload shape for the kind.
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let proposals = chip.handle(task, &bus);
+    assert!(proposals.iter().any(|proposal| proposal.wire_tag() == 2));
+
+    // Missing literal reference fails loudly (no panic, no silence).
+    let (two, _, node) = seed_g1_fixtures(&mut bus);
+    let dangling = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(cc_silicon_compiler::ids::LiteralId::from_index(99)),
+        ]),
+    );
+    let proposals = chip.handle(dangling, &bus);
+    assert!(proposals.iter().any(|proposal| proposal.wire_tag() == 2));
+    // Nothing was appended by any failed handling.
+    assert_eq!(bus.arenas.consts.allocated(), 0);
 }

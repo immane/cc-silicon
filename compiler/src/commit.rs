@@ -205,6 +205,19 @@ pub enum CommitError {
         /// Human-readable reason.
         reason: &'static str,
     },
+    /// A `Complete` names a `Literal`/`Const` record that neither exists
+    /// yet nor is predicted for this task's own batch appends.
+    ///
+    /// Workers predict their appended IDs as
+    /// `arena.allocated() + earlier bodies of the same family in apply
+    /// order`; the commit verifies every future-dated reference against
+    /// that prediction. A misprediction rejects loudly here instead of
+    /// completing with a wrong reference. Refs below the preflight base
+    /// are already-committed records (opaque by policy, unchecked).
+    UnpredictedRecord {
+        /// Offending task.
+        task: TaskId,
+    },
     /// The tick's proposal count exceeds the configured bound.
     TooManyProposals {
         /// Configured bound.
@@ -409,6 +422,11 @@ impl std::fmt::Display for CommitError {
                 "task {} progress ordinal {ordinal} did not advance",
                 task.index()
             ),
+            Self::UnpredictedRecord { task } => write!(
+                f,
+                "task {} completes with a record no batch append predicts",
+                task.index()
+            ),
             Self::ProgressLimit { task, limit, count } => write!(
                 f,
                 "task {} progress count {count} exceeds limit {limit}",
@@ -435,7 +453,8 @@ impl CommitError {
     /// `TaskNotTransitioned` → `(Protocol, 14)`,
     /// `NonAdvancingProgress` → `(Protocol, 15)`,
     /// `ProgressLimit` → `(Protocol, 16)`,
-    /// `TerminatorMissing` → `(Task, 10)`.
+    /// `TerminatorMissing` → `(Task, 10)`,
+    /// `UnpredictedRecord` → `(Protocol, 17)`.
     pub fn code(&self) -> DiagnosticCode {
         match self {
             Self::BackpressureCapacity { .. } => DiagnosticCode::new(DiagGroup::Protocol, 10),
@@ -445,6 +464,7 @@ impl CommitError {
             Self::TaskNotTransitioned { .. } => DiagnosticCode::new(DiagGroup::Protocol, 14),
             Self::NonAdvancingProgress { .. } => DiagnosticCode::new(DiagGroup::Protocol, 15),
             Self::ProgressLimit { .. } => DiagnosticCode::new(DiagGroup::Protocol, 16),
+            Self::UnpredictedRecord { .. } => DiagnosticCode::new(DiagGroup::Protocol, 17),
             Self::TerminatorMissing { .. } => DiagnosticCode::new(DiagGroup::Task, 10),
             _ => DiagnosticCode::new(DiagGroup::Protocol, 1),
         }
@@ -560,6 +580,43 @@ pub fn commit_proposals(
     let mut new_literals: u32 = 0;
     let mut new_consts: u32 = 0;
 
+    // Predicted record IDs for this batch's appends, in apply order:
+    // `(owning task, family, predicted index)`. A `Complete` that names a
+    // `Literal`/`Const` record at or past the preflight base must name one
+    // of its own task's predicted IDs; anything else is `UnpredictedRecord`.
+    // Bases are captured before any mutation (failure atomicity holds).
+    let literals_base = bus.arenas.literals.allocated();
+    let consts_base = bus.arenas.consts.allocated();
+    let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
+    {
+        let mut next_literal = literals_base;
+        let mut next_const = consts_base;
+        for &(_, _, index) in &ordered {
+            if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
+                for body in &batch.bodies {
+                    match body {
+                        G1DraftBody::Literal(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Literal,
+                                next_literal,
+                            ));
+                            next_literal = next_literal.saturating_add(1);
+                        }
+                        G1DraftBody::Const(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Const,
+                                next_const,
+                            ));
+                            next_const = next_const.saturating_add(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for &(_, _, index) in &ordered {
         let tagged = &proposals[index];
         let task = bus
@@ -631,6 +688,28 @@ pub fn commit_proposals(
                 }
                 completed_by_batch.insert(tagged.task);
                 new_results += 1;
+                // Future-dated materialized records must be this task's
+                // own predicted appends (see the prediction table above).
+                if let Proposal::Complete {
+                    value: ResultValue::Record(reference),
+                    ..
+                } = &tagged.proposal
+                {
+                    let predicted_ref = match reference {
+                        RecordRef::Literal(id) if id.index() >= literals_base => {
+                            Some((tagged.task, RecordFamily::Literal, id.index()))
+                        }
+                        RecordRef::Const(id) if id.index() >= consts_base => {
+                            Some((tagged.task, RecordFamily::Const, id.index()))
+                        }
+                        _ => None,
+                    };
+                    if let Some(key) = predicted_ref {
+                        if !predicted.contains(&key) {
+                            return Err(CommitError::UnpredictedRecord { task: tagged.task });
+                        }
+                    }
+                }
             }
             Proposal::Fail {
                 task: proposal_task,
@@ -951,15 +1030,26 @@ pub fn commit_proposals(
             Proposal::AppendRecords { task, batch } => {
                 // Preflighted above (1:1 bodies, family match, M1 subset,
                 // per-arena capacity reserved): infallible here. Bodies
-                // append in batch order, so committed IDs are deterministic.
+                // append in batch order, so committed IDs are deterministic
+                // and match the preflight prediction table exactly.
                 for body in &batch.bodies {
                     match body {
                         G1DraftBody::Literal(record) => {
                             let id = bus.arenas.literals.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Literal,
+                                id.index()
+                            )));
                             report.appended.push((*task, RecordRef::Literal(id)));
                         }
                         G1DraftBody::Const(record) => {
                             let id = bus.arenas.consts.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Const,
+                                id.index()
+                            )));
                             report.appended.push((*task, RecordRef::Const(id)));
                         }
                     }

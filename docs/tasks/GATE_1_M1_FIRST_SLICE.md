@@ -125,3 +125,18 @@ schema/hash presence):
 
 Wave 1 (slice chips per `TASK_TEMPLATE`) is unblocked on these types;
 `M1-CL-05` on real upstream artifacts remains the Wave-2 acceptance.
+
+## 7. Phase 0 addenda (Wave 1 template, branch `feat/wave1-fold-chip`)
+
+- `ConstantRequest::decode` accepts all three slice kinds and dispatches
+  on payload shape (single literal → `Literal`, node + two literals →
+  `Binary`): the T07 requester forwards identical payload refs to its
+  `const_fold` child, so the fold worker sees one convention.
+- Predicted-ID rule (frozen): a worker's Nth body of family F gets
+  `arena.allocated() + earlier F-bodies in apply order`; the commit
+  verifies every future-dated `Complete` reference
+  (`CommitError::UnpredictedRecord`, Protocol 17) instead of completing
+  with a wrong reference. Enforcement of existing rules — no hash change.
+- Worker template: `compiler/src/chips/` (`Worker` trait, host
+  `WorkerRegistry` + `drive_task`, `FoldChip` first chip). The routing
+  shell never invokes workers; the host drives, the commit decides.
