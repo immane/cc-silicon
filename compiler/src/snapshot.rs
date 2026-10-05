@@ -97,6 +97,16 @@ fn push_config(w: &mut Writer, config: &CompilerConfig) {
     w.u32(limits.max_diagnostics);
     w.u64(limits.max_ticks);
     w.u32(limits.max_proposals_per_tick);
+    // `/9`: every configured bound participates in the canonical config.
+    // Omitting a bound here would let two jobs share a snapshot but diverge
+    // on the next tick (bit budget, dispatch quota, per-stage bound, or
+    // progress bound). Keep this list in sync with `FrozenSchema::encode`.
+    w.u32(limits.max_inflight_per_tick);
+    for bound in limits.stage_queue_bound {
+        w.u32(bound);
+    }
+    w.u32(limits.max_const_bits);
+    w.u32(limits.max_task_progress);
 }
 
 /// Canonical bytes of a configuration. Stable across runs.
@@ -945,6 +955,13 @@ impl Trace {
                 commit.failed.len() as u32,
             ),
             TickOutcome::CommitFailed { .. } => ("commit_failed", "none", 0, 0, 1),
+            TickOutcome::Joined { readied, failed } => (
+                "joined",
+                "none",
+                0,
+                readied.len() as u32,
+                failed.len() as u32,
+            ),
         };
         self.records.push(TraceRecord {
             tick: report.tick,

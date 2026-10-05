@@ -30,6 +30,9 @@ jobs:
       - name: Check compiler formatting
         run: cargo fmt --manifest-path compiler/Cargo.toml -- --check
 
+      - name: Check torture formatting
+        run: cargo fmt --manifest-path tools/torture/Cargo.toml -- --check
+
       - name: Lint framework
         run: cargo clippy --all-targets -- -D warnings
 
@@ -39,6 +42,9 @@ jobs:
       - name: Lint compiler
         run: cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings
 
+      - name: Lint torture
+        run: cargo clippy --locked --manifest-path tools/torture/Cargo.toml --all-targets -- -D warnings
+
       - name: Test framework
         run: cargo test
 
@@ -47,3 +53,9 @@ jobs:
 
       - name: Test compiler
         run: cargo test --locked --manifest-path compiler/Cargo.toml
+
+      - name: Test torture
+        run: cargo test --locked --manifest-path tools/torture/Cargo.toml
+
+      - name: Scan compiler chips
+        run: cargo run --locked --manifest-path tools/chip-lint/Cargo.toml -- compiler/src/chips

@@ -161,6 +161,15 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
                     &mut diagnostics,
                 );
             }
+            Item::Impl(item_impl) if is_worker_compute_impl(item_impl) => {
+                check_worker_compute_impl(
+                    file,
+                    item_impl,
+                    &known_chip_names,
+                    &known_functions,
+                    &mut diagnostics,
+                );
+            }
             Item::Impl(item_impl) if is_legacy_logic_chip_impl(item_impl) => {
                 diagnostics.push(diagnostic(
                     file,
@@ -171,9 +180,14 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
             Item::Use(item_use) => {
                 let path = item_use.tree.to_token_stream().to_string().replace(' ', "");
                 let root = path.split(&[':', '{'][..]).next().unwrap_or_default();
-                if is_denied_path(&path)
-                    || !matches!(root, "crate" | "self" | "super" | "core" | "alloc")
-                {
+                // `/9` PCR-10: deterministic BTreeMap/BTreeSet and sibling
+                // chip-module re-exports are mechanical, not Host I/O.
+                let allowed_std_collections = path.starts_with("std::collections::")
+                    && (path.contains("BTreeMap") || path.contains("BTreeSet"));
+                let allowed_root =
+                    matches!(root, "crate" | "self" | "super" | "core" | "alloc" | "fold")
+                        || allowed_std_collections;
+                if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(
                         file,
                         item_use,
@@ -276,6 +290,15 @@ struct ChipBodyVisitor<'a> {
 
 impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
+        // `/9` PCR-10: `vec!`/`format!` are transparent deterministic
+        // constructors, not opaque DSLs. All other macros stay opaque.
+        if let Some(segment) = node.mac.path.segments.last() {
+            let name = segment.ident.to_string();
+            if name == "vec" || name == "format" {
+                visit::visit_expr_macro(self, node);
+                return;
+            }
+        }
         self.diagnostics.push(diagnostic(
             self.file,
             node,
@@ -354,6 +377,13 @@ impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     }
 
     fn visit_item_macro(&mut self, node: &'ast syn::ItemMacro) {
+        if let Some(segment) = node.mac.path.segments.last() {
+            let name = segment.ident.to_string();
+            if name == "vec" || name == "format" {
+                visit::visit_item_macro(self, node);
+                return;
+            }
+        }
         self.diagnostics.push(diagnostic(
             self.file,
             node,
@@ -380,6 +410,48 @@ fn is_chip_impl(item_impl: &ItemImpl) -> bool {
             .last()
             .is_some_and(|segment| segment.ident == "RestrictedChip")
     })
+}
+
+/// `/9` PCR-10: an inherent `impl XChip { fn compute(..) }` is the Worker
+/// template's semantic body. It must be linted like `RestrictedChip::compute`,
+/// otherwise Host I/O can hide behind the Worker adapter boundary.
+fn is_worker_compute_impl(item_impl: &ItemImpl) -> bool {
+    if item_impl.trait_.is_some() {
+        return false;
+    }
+    let Some(name) = self_type_name(item_impl) else {
+        return false;
+    };
+    if !name.ends_with("Chip") {
+        return false;
+    }
+    item_impl.items.iter().any(|item| match item {
+        ImplItem::Fn(method) => method.sig.ident == "compute",
+        _ => false,
+    })
+}
+
+fn check_worker_compute_impl(
+    file: &str,
+    item_impl: &ItemImpl,
+    known_chip_names: &HashSet<String>,
+    known_functions: &HashSet<String>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(compute) = item_impl.items.iter().find_map(|item| match item {
+        ImplItem::Fn(method) if method.sig.ident == "compute" => Some(method),
+        _ => None,
+    }) else {
+        return;
+    };
+    let mut visitor = ChipBodyVisitor {
+        file,
+        known_chip_names,
+        known_functions,
+        diagnostics: Vec::new(),
+    };
+    visitor.visit_block(&compute.block);
+    diagnostics.extend(visitor.diagnostics);
 }
 
 fn is_legacy_logic_chip_impl(item_impl: &ItemImpl) -> bool {

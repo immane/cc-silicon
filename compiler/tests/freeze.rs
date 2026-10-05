@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/7");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/9");
 }
 
 #[test]
@@ -78,7 +78,23 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "manifest.store-owner-wave-gated",
         "append.materialize-g1-typed",
         "append.bodies-match-records",
+        "append.authorized-registered-declared",
+        "commit.total-budget-unified",
+        "commit.predicted-records-checked",
         "request.const-evaluate-convention",
+        "request.const-fold-forwards-identical-refs",
+        "request.kind-shape-strict",
+        "const.budget-enforced-chip-overflow",
+        "snapshot.config-encodes-all-bounds",
+        "commit.transition-required-per-task",
+        "join.await-all-requires-all-terminal",
+        "join.idle-drains-with-closure",
+        "commit.ownbatch-requires-parent",
+        "append.draft-index-canonical",
+        "append.patch-conflict-rejected",
+        "const.binary-node-must-be-live",
+        "dispatch.stage-layer-enforced",
+        "worker.stateless-unit-required",
         "probe.wchar-encoding-required",
         "probe.attestation.private-state-not-provenance",
         "config.structurally-immutable",

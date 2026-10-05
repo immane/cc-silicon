@@ -1,20 +1,21 @@
 // ============================================================================
-// c08_gate1.rs — Gate 1 (`/7`) M1 const-fold slice acceptance (G1-CL-01)
+// c08_gate1.rs — Gate 1 (`/7`) M1 const-fold slice plus `/8` worker
+// integration acceptance (G1-CL-01)
 //
-// Covers the frozen Gate 1 closure: slice task kinds, the
-// `ConstantRequest` decode convention, legality routing without a new
-// `ResultValue` variant, typed `AppendRecords` materialization for the
-// `Literal`/`Const` families, per-arena capacity, kind-to-stage assignment,
-// the wave-gated store-owner allowlist, stage/layer agreement, snapshot
-// bodies, and the `/7` hash participation.
+// Covers the frozen closure: slice task kinds, the strict kind→shape
+// `ConstantRequest` decode convention (`/8`), legality routing without a
+// new `ResultValue` variant, authorized typed `AppendRecords`
+// materialization for the `Literal`/`Const` families, unified total-record
+// preflight, per-arena capacity, predicted-reference checks for both
+// `Record` and `Records` carriers, the constant bit-budget overflow,
+// kind-to-stage assignment, the wave-gated store-owner allowlist,
+// stage/layer agreement, snapshot bodies, tick-lifecycle integration via
+// `propagate_with`/`clock_tick_with`, and the `/8` hash participation.
 //
 // The `G1-CL-01` chain seeds frozen committed fixtures (literals, node)
 // and drives one T08-style fold through the real commit path. It is
 // explicitly NOT `M1-CL-05`: that fixture requires real upstream
 // artifacts (T04/T05/T07 production) and stays the Wave-2 acceptance.
-// The fold arithmetic below stands in for the future T08 chip; the
-// frozen contract is the envelope (exactly one `ConstRecord`, checked
-// addition, no refold), not this test's byte routine.
 // ============================================================================
 
 use cc_silicon_compiler::bus::{CompilerBus, ConstRecord, LiteralRecord, TaggedProposal};
@@ -79,6 +80,31 @@ fn tag(task: TaskId, chip: ChipId, proposal: Proposal) -> TaggedProposal {
 
 fn fold_chip() -> ChipId {
     cc_silicon_compiler::manifest::G1_FOLD_CHIP
+}
+
+/// Install the fold chip's manifest and route on a bus (both are required
+/// before any fold append commits: the commit authorizes appends against
+/// the registered manifest, and the driver resolves the route).
+fn install_fold(bus: &mut CompilerBus) {
+    use cc_silicon_compiler::chips::{FoldChip, Worker};
+    bus.kinds = TaskKindRegistry::m1_slice();
+    bus.schema = StoreSchema::m1_slice();
+    let manifest = FoldChip.manifest();
+    // Fresh test buses only; installing twice is a test bug.
+    if bus.registrations.get(fold_chip()).is_none() {
+        bus.registrations
+            .register(
+                manifest,
+                &StoreSchema::m1_slice(),
+                &TaskKindRegistry::m1_slice(),
+            )
+            .unwrap();
+    }
+    if bus.routing.lookup(TaskKind::CONSTANT_CONST_FOLD).is_none() {
+        bus.routing
+            .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+            .unwrap();
+    }
 }
 
 /// Seed the `G1-CL-01` fixtures: committed literals `2` and `3` plus a
@@ -205,8 +231,8 @@ fn request_decode_accepts_m1_conventions() {
         }
     );
 
-    // The fold kind decodes the same shapes (the T07 requester forwards
-    // identical payload refs to its const_fold child).
+    // The fold kind accepts either forwarded shape (the T07 requester
+    // forwards identical payload refs to its const_fold child).
     let request = ConstantRequest::decode(
         TaskKind::CONSTANT_CONST_FOLD,
         &Payload::from_refs(vec![
@@ -217,6 +243,34 @@ fn request_decode_accepts_m1_conventions() {
     )
     .unwrap();
     assert!(matches!(request, ConstantRequest::Binary { .. }));
+    let request = ConstantRequest::decode(
+        TaskKind::CONSTANT_CONST_FOLD,
+        &Payload::from_refs(vec![RecordRef::Literal(literal)]),
+    )
+    .unwrap();
+    assert!(matches!(request, ConstantRequest::Literal { .. }));
+
+    // Strict kind→shape rule (`/8`): the T07 request kinds never
+    // reinterpret the other shape. A binary payload on the literal kind
+    // (and vice versa) is `Arity`, not a silent cross-decode.
+    assert!(matches!(
+        ConstantRequest::decode(
+            TaskKind::SEMANTIC_CONST_EVAL_LITERAL,
+            &Payload::from_refs(vec![
+                RecordRef::Node(node),
+                RecordRef::Literal(literal),
+                RecordRef::Literal(other),
+            ]),
+        ),
+        Err(cc_silicon_compiler::task::RequestError::Arity { .. })
+    ));
+    assert!(matches!(
+        ConstantRequest::decode(
+            TaskKind::SEMANTIC_CONST_EVAL_BINARY,
+            &Payload::from_refs(vec![RecordRef::Literal(literal)]),
+        ),
+        Err(cc_silicon_compiler::task::RequestError::Arity { .. })
+    ));
     assert!(matches!(
         ConstantRequest::decode(TaskKind::CONTROL_NOOP, &Payload::empty()),
         Err(cc_silicon_compiler::task::RequestError::UnexpectedKind { .. })
@@ -283,7 +337,7 @@ fn result_routing_maps_legality_without_new_variant() {
 fn append_materializes_const_record_end_to_end() {
     // G1-CL-01: fixtures in, one fold through the real commit path.
     let mut bus = CompilerBus::default();
-    bus.kinds = TaskKindRegistry::m1_slice();
+    install_fold(&mut bus);
     let (two, three, node) = seed_g1_fixtures(&mut bus);
     let payload = Payload::from_refs(vec![
         RecordRef::Node(node),
@@ -369,7 +423,7 @@ fn append_materializes_const_record_end_to_end() {
 #[test]
 fn append_rejects_mismatched_and_out_of_subset_batches() {
     let mut bus = CompilerBus::default();
-    bus.kinds = TaskKindRegistry::m1_slice();
+    install_fold(&mut bus);
     let task = running_task(
         &mut bus,
         TaskKind::CONSTANT_CONST_FOLD,
@@ -466,7 +520,7 @@ fn append_enforces_per_arena_capacity() {
             ..Limits::fixture()
         },
     ));
-    bus.kinds = TaskKindRegistry::m1_slice();
+    install_fold(&mut bus);
     // Fill the consts arena to its configured per-arena bound.
     let limits = bus.limits();
     for _ in 0..limits.max_records_per_arena {
@@ -500,11 +554,17 @@ fn append_enforces_per_arena_capacity() {
     assert!(matches!(
         commit_proposals(
             &mut bus,
-            vec![tag(
-                task,
-                fold_chip(),
-                Proposal::AppendRecords { task, batch }
-            )]
+            vec![
+                tag(task, fold_chip(), Proposal::AppendRecords { task, batch }),
+                tag(
+                    task,
+                    fold_chip(),
+                    Proposal::Complete {
+                        task,
+                        value: ResultValue::Ack,
+                    }
+                ),
+            ]
         ),
         Err(CommitError::Capacity(_))
     ));
@@ -658,7 +718,7 @@ fn snapshot_carries_literal_and_const_bodies_with_replay() {
     // no records hashes differently.
     fn run_chain() -> Vec<u8> {
         let mut bus = CompilerBus::default();
-        bus.kinds = TaskKindRegistry::m1_slice();
+        install_fold(&mut bus);
         let (two, three, node) = seed_g1_fixtures(&mut bus);
         let task = running_task(
             &mut bus,
@@ -730,9 +790,10 @@ fn contract_hash_covers_gate1_section() {
     use cc_silicon_compiler::contract::{
         compute_contract_hash, FrozenSchema, CONST_EXPR_OP_NAMES, CONST_LEGALITY_NAMES,
         CONST_RECORD_FIELDS, CONTRACT_HASH, CONTRACT_VERSION, LITERAL_KIND_NAMES,
-        LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, REQUIRED_KIND_NAMES,
+        LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
+        REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/7");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/9");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -757,12 +818,26 @@ fn contract_hash_covers_gate1_section() {
         CONST_LEGALITY_NAMES,
         &["legal", "not_constant_expression", "unsupported"]
     );
+    // `/8` worker-integration rules participate in the hash.
+    for rule in [
+        "append.authorized-registered-declared",
+        "commit.total-budget-unified",
+        "commit.predicted-records-checked",
+        "request.kind-shape-strict",
+        "request.const-fold-forwards-identical-refs",
+        "const.budget-enforced-chip-overflow",
+        "snapshot.config-encodes-all-bounds",
+        "commit.transition-required-per-task",
+        "join.await-all-requires-all-terminal",
+    ] {
+        assert!(NORMATIVE_RULES.contains(&rule), "missing rule `{rule}`");
+    }
     // The frozen bytes carry the slice: flipping any of these names or the
     // version changes the hash (presence pins the section, the hash test
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/7",
+        "t01-c01-c06/9",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",
@@ -804,10 +879,7 @@ fn fold_chip_drives_g1_chain_through_driver() {
     use cc_silicon_compiler::chips::{drive_task, FoldChip, WorkerRegistry};
 
     let mut bus = CompilerBus::default();
-    bus.kinds = TaskKindRegistry::m1_slice();
-    bus.routing
-        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
-        .unwrap();
+    install_fold(&mut bus);
     let mut workers = WorkerRegistry::new();
     workers.register(FoldChip).unwrap();
 
@@ -843,11 +915,7 @@ fn fold_chip_drives_g1_chain_through_driver() {
     // Deterministic replay of the driven chain.
     let first = Snapshot::capture(&bus).hash();
     let mut again = CompilerBus::default();
-    again.kinds = TaskKindRegistry::m1_slice();
-    again
-        .routing
-        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
-        .unwrap();
+    install_fold(&mut again);
     let (two, three, node) = seed_g1_fixtures(&mut again);
     let retry = running_task(
         &mut again,
@@ -870,6 +938,7 @@ fn driver_rejects_unregistered_mismatched_and_duplicate() {
 
     let mut bus = CompilerBus::default();
     bus.kinds = TaskKindRegistry::m1_slice();
+    bus.schema = StoreSchema::m1_slice();
     let workers = WorkerRegistry::new();
 
     // Unregistered kind: the driver refuses to fabricate work.
@@ -899,9 +968,16 @@ fn driver_rejects_unregistered_mismatched_and_duplicate() {
         Err(DriveError::NoWorker { .. })
     ));
 
-    // Duplicate worker registration is rejected.
+    // Routed kind with a worker but no registered manifest: the driver
+    // refuses earlier than the commit's `UnregisteredChip`.
     let mut workers = WorkerRegistry::new();
     workers.register(FoldChip).unwrap();
+    assert!(matches!(
+        drive_task(&bus, fold, &workers),
+        Err(DriveError::UnregisteredChip { .. })
+    ));
+
+    // Duplicate worker registration is rejected.
     assert!(matches!(
         workers.register(FoldChip),
         Err(DriveError::DuplicateWorker { .. })
@@ -948,4 +1024,390 @@ fn fold_chip_fails_loudly_on_bad_inputs() {
     assert!(proposals.iter().any(|proposal| proposal.wire_tag() == 2));
     // Nothing was appended by any failed handling.
     assert_eq!(bus.arenas.consts.allocated(), 0);
+}
+
+#[test]
+fn append_requires_registered_manifest_and_declared_write() {
+    use cc_silicon_compiler::ids::ConstId;
+
+    // No manifest registered: the commit rejects the append even though the
+    // tagged chip owns the task.
+    let mut bus = CompilerBus::default();
+    bus.kinds = TaskKindRegistry::m1_slice();
+    bus.schema = StoreSchema::m1_slice();
+    bus.routing
+        .register(TaskKind::CONSTANT_CONST_FOLD, fold_chip(), 2)
+        .unwrap();
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let batch = AppendBatch {
+        records: vec![RecordDraft {
+            family: cc_silicon_compiler::ids::RecordFamily::Const,
+            index: DraftRef(0),
+        }],
+        bodies: vec![G1DraftBody::Const(ConstRecord {
+            value: vec![5],
+            negative: false,
+        })],
+    };
+    assert!(matches!(
+        commit_proposals(
+            &mut bus,
+            vec![tag(
+                task,
+                fold_chip(),
+                Proposal::AppendRecords { task, batch }
+            )]
+        ),
+        Err(CommitError::UnregisteredChip { .. })
+    ));
+
+    // Registered fold chip appending a `Literal` body: the chip declares
+    // only `constants.records`, so the per-body write gate rejects.
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let batch = AppendBatch {
+        records: vec![RecordDraft {
+            family: cc_silicon_compiler::ids::RecordFamily::Literal,
+            index: DraftRef(0),
+        }],
+        bodies: vec![G1DraftBody::Literal(fixture_literal(2, b"2"))],
+    };
+    assert!(matches!(
+        commit_proposals(
+            &mut bus,
+            vec![tag(
+                task,
+                fold_chip(),
+                Proposal::AppendRecords { task, batch }
+            )]
+        ),
+        Err(CommitError::WriteNotDeclared { .. })
+    ));
+
+    // Registered fold chip completing a task of a kind it does not accept:
+    // the kind gate rejects before any mutation.
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let other = running_task(
+        &mut bus,
+        TaskKind::SEMANTIC_CONST_EVAL_BINARY,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let batch = AppendBatch {
+        records: vec![RecordDraft {
+            family: cc_silicon_compiler::ids::RecordFamily::Const,
+            index: DraftRef(0),
+        }],
+        bodies: vec![G1DraftBody::Const(ConstRecord {
+            value: vec![5],
+            negative: false,
+        })],
+    };
+    assert!(matches!(
+        commit_proposals(
+            &mut bus,
+            vec![tag(
+                other,
+                fold_chip(),
+                Proposal::AppendRecords { task: other, batch }
+            )]
+        ),
+        Err(CommitError::TaskKindNotAccepted { .. })
+    ));
+    let _ = ConstId::from_index(0);
+}
+
+#[test]
+fn total_record_budget_covers_appends_and_results_together() {
+    // One slot left, two records attempted (one append + one result): the
+    // unified preflight rejects, and nothing commits.
+    use cc_silicon_compiler::chips::{drive_task, FoldChip, WorkerRegistry};
+
+    // Tight bus: budget is exactly current usage + 1 after seeding.
+    // Probe the usage on a fixture-budget bus first (configs are immutable
+    // after construction, so rebuild under the tight budget next).
+    let mut probe = CompilerBus::default();
+    install_fold(&mut probe);
+    let (two, three, node) = seed_g1_fixtures(&mut probe);
+    let _probe_task = running_task(
+        &mut probe,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let tight_total = probe.total_records().saturating_add(1);
+    // Pin the budget to one slot over current usage: append(1) + result(1)
+    // = 2 must fail together (the old split checks passed each half).
+    // Rebuild an identical bus under the tight budget (configs are
+    // immutable after construction, so rebuild rather than mutate).
+    let mut bus = CompilerBus::new(CompilerConfig::new(
+        TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+        Dialect::C11,
+        OptLevel::O0,
+        Vec::new(),
+        Limits {
+            max_records_total: tight_total,
+            ..Limits::fixture()
+        },
+    ));
+    install_fold(&mut bus);
+    let (two, three, node) = seed_g1_fixtures(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let mut workers = WorkerRegistry::new();
+    workers.register(FoldChip).unwrap();
+    let tagged = drive_task(&bus, task, &workers).unwrap();
+    assert_eq!(tagged.len(), 2);
+    let before_consts = bus.arenas.consts.allocated();
+    let outcome = commit_proposals(&mut bus, tagged);
+    assert!(
+        matches!(
+            outcome,
+            Err(CommitError::Limit(
+                cc_silicon_compiler::limits::LimitError::TotalRecords { .. }
+            ))
+        ),
+        "expected unified total-records reject, got {outcome:?}"
+    );
+    assert_eq!(bus.arenas.consts.allocated(), before_consts);
+    assert!(matches!(
+        bus.arenas.tasks.get(task).unwrap().state,
+        TaskState::Running
+    ));
+}
+
+#[test]
+fn fold_enforces_const_bit_budget_as_chip_overflow() {
+    use cc_silicon_compiler::chips::{const_bits_required, FoldChip, Worker};
+    use cc_silicon_compiler::diagnostic::{DiagGroup, DiagnosticCode};
+
+    assert_eq!(const_bits_required(&[0]), 1);
+    assert_eq!(const_bits_required(&[1]), 1);
+    assert_eq!(const_bits_required(&[2]), 2);
+    assert_eq!(const_bits_required(&[5]), 3);
+    assert_eq!(const_bits_required(&[255]), 8);
+    assert_eq!(const_bits_required(&[1, 0]), 9);
+
+    // Budget 1 cannot represent 2 + 3 = 5 (needs 3 bits): loud overflow
+    // `Fail`, never `Legal`, nothing appended.
+    let mut bus = CompilerBus::new(CompilerConfig::new(
+        TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+        Dialect::C11,
+        OptLevel::O0,
+        Vec::new(),
+        Limits {
+            max_const_bits: 1,
+            ..Limits::fixture()
+        },
+    ));
+    install_fold(&mut bus);
+    let (two, three, node) = seed_g1_fixtures(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let proposals = FoldChip.handle(task, &bus);
+    assert_eq!(proposals.len(), 1);
+    match &proposals[0] {
+        Proposal::Fail { diagnostic, .. } => {
+            assert_eq!(diagnostic.code, DiagnosticCode::CONST_OVERFLOW);
+            assert_eq!(diagnostic.code.group, DiagGroup::Unsupported);
+        }
+        other => panic!("expected overflow Fail, got {other:?}"),
+    }
+    assert_eq!(bus.arenas.consts.allocated(), 0);
+}
+
+#[test]
+fn unpredicted_record_checks_records_carrier() {
+    use cc_silicon_compiler::ids::ConstId;
+
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    // `Records` carrying a future-dated const this batch never appends:
+    // same loud reject as the `Record` carrier.
+    let bad = Proposal::Complete {
+        task,
+        value: ResultValue::Records(vec![RecordRef::Const(ConstId::from_index(7))]),
+    };
+    assert!(matches!(
+        commit_proposals(&mut bus, vec![tag(task, fold_chip(), bad)]),
+        Err(CommitError::UnpredictedRecord { .. })
+    ));
+
+    // `Records` carrying this task's own predicted append commits.
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let report = commit_proposals(
+        &mut bus,
+        vec![
+            tag(
+                task,
+                fold_chip(),
+                Proposal::AppendRecords {
+                    task,
+                    batch: AppendBatch {
+                        records: vec![RecordDraft {
+                            family: cc_silicon_compiler::ids::RecordFamily::Const,
+                            index: DraftRef(0),
+                        }],
+                        bodies: vec![G1DraftBody::Const(ConstRecord {
+                            value: vec![5],
+                            negative: false,
+                        })],
+                    },
+                },
+            ),
+            tag(
+                task,
+                fold_chip(),
+                Proposal::Complete {
+                    task,
+                    value: ResultValue::Records(vec![RecordRef::Const(ConstId::from_index(0))]),
+                },
+            ),
+        ],
+    )
+    .unwrap();
+    assert_eq!(report.appended.len(), 1);
+    assert_eq!(report.completed.len(), 1);
+}
+
+#[test]
+fn fold_runs_through_real_tick_lifecycle() {
+    use cc_silicon_compiler::bus::CompilerPins;
+    use cc_silicon_compiler::chips::{handler_for, FoldChip, WorkerRegistry};
+    use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
+
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let mut workers = WorkerRegistry::new();
+    workers.register(FoldChip).unwrap();
+    let (two, three, node) = seed_g1_fixtures(&mut bus);
+    // Enqueue through the public bootstrap (Ready, next-tick visible) —
+    // no manual `Running` fixup.
+    let task = bus
+        .bootstrap_task(draft(
+            TaskKind::CONSTANT_CONST_FOLD,
+            fold_chip(),
+            Payload::from_refs(vec![
+                RecordRef::Node(node),
+                RecordRef::Literal(two),
+                RecordRef::Literal(three),
+            ]),
+        ))
+        .unwrap();
+    assert!(matches!(
+        bus.arenas.tasks.get(task).unwrap().state,
+        TaskState::Ready
+    ));
+    let shell = RoutingShell::new();
+    // `bootstrap_task` is immediately eligible: the first tick dispatches
+    // it through the real worker and commits; the second tick is idle.
+    let first = shell
+        .clock_tick_with(&CompilerPins::default(), &mut bus, handler_for(&workers))
+        .unwrap();
+    match &first.outcome {
+        TickOutcome::Executed {
+            task: selected,
+            commit,
+            ..
+        } => {
+            assert_eq!(*selected, task);
+            assert_eq!(commit.appended.len(), 1);
+            assert_eq!(commit.completed.len(), 1);
+        }
+        other => panic!("expected Executed, got {other:?}"),
+    }
+    let committed = bus
+        .arenas
+        .consts
+        .get(cc_silicon_compiler::ids::ConstId::from_index(0))
+        .unwrap();
+    assert_eq!(committed.value, vec![5]);
+    assert!(matches!(
+        bus.arenas.tasks.get(task).unwrap().state,
+        TaskState::Completed(_)
+    ));
+    let second = shell
+        .clock_tick_with(&CompilerPins::default(), &mut bus, handler_for(&workers))
+        .unwrap();
+    assert!(matches!(second.outcome, TickOutcome::Idle));
+    assert_eq!(bus.control.tick, 2);
+    assert_eq!(bus.report.len(), 2);
+}
+
+#[test]
+fn fold_compute_needs_no_bus_beyond_its_projection() {
+    use cc_silicon_compiler::chips::{FoldChip, FoldInput};
+    use std::collections::BTreeMap;
+
+    // Hand-built projection, no bus at all: the computation is a pure
+    // function of its input.
+    let chip = FoldChip;
+    let mut literals = BTreeMap::new();
+    literals.insert(LiteralId::from_index(0), fixture_literal(2, b"2"));
+    literals.insert(LiteralId::from_index(1), fixture_literal(3, b"3"));
+    let mut nodes_present = std::collections::BTreeSet::new();
+    nodes_present.insert(NodeId::from_index(0));
+    let input = FoldInput {
+        task: TaskId::from_index(0),
+        kind: TaskKind::CONSTANT_CONST_FOLD,
+        state: TaskState::Running,
+        payload: Payload::from_refs(vec![
+            RecordRef::Node(NodeId::from_index(0)),
+            RecordRef::Literal(LiteralId::from_index(0)),
+            RecordRef::Literal(LiteralId::from_index(1)),
+        ]),
+        literals,
+        nodes_present,
+        consts_allocated: 0,
+        max_const_bits: 128,
+    };
+    let proposals = chip.compute(&input);
+    assert_eq!(proposals.len(), 2);
+    assert!(proposals.iter().any(|p| p.wire_tag() == 5));
+    assert!(proposals.iter().any(|p| p.wire_tag() == 1));
 }

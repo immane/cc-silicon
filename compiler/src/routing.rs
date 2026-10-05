@@ -11,7 +11,8 @@
 //   * an unregistered or explicitly unsupported task fails with a structured
 //     diagnostic (never a silent skip);
 //   * a task routed to a registered chip fails as "handler not installed"
-//     until T02 installs the real handlers.
+//     under `propagate` until the host installs the real handler via
+//     `propagate_with` / `clock_tick_with` (T02 owns the worker set).
 //
 // A commit failure never strands a task in `Running`: the shell transitions the
 // task to `Failed` (with a diagnostic when capacity allows) and reports the
@@ -125,6 +126,10 @@ impl RoutingTable {
     }
 }
 
+/// Host-installed worker handler: given a dispatched task and a read-only
+/// bus, return that task's proposals.
+pub type TickHandler<'a> = dyn Fn(TaskId, &CompilerBus) -> Vec<Proposal> + 'a;
+
 /// How the shell resolved a task kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Resolution {
@@ -171,6 +176,15 @@ pub enum TickOutcome {
         error: CommitError,
         /// Committed failure diagnostic, when capacity allowed one.
         diagnostic: Option<DiagnosticId>,
+    },
+    /// No dispatchable task, but `Waiting` parents were join-drained
+    /// (`/9` PCR-03: idle ticks still make bounded join progress instead of
+    /// stranding parents forever).
+    Joined {
+        /// Parents reinserted to `Ready` by the await-all join.
+        readied: Vec<TaskId>,
+        /// Parents failed once by the await-all join.
+        failed: Vec<(TaskId, DiagnosticId)>,
     },
 }
 
@@ -260,6 +274,35 @@ impl RoutingShell {
     /// once pre-selection with no dispatch and no commit. Quota-1 behavior is
     /// unchanged from `/5` (one ordered atomic commit, single-task recovery).
     pub fn propagate(&self, bus: &mut CompilerBus) -> Result<TickReport, CommitError> {
+        self.propagate_inner(bus, None)
+    }
+
+    /// Run one propagation step with a host-installed worker handler.
+    ///
+    /// Identical to [`Self::propagate`] except tasks routed to a registered
+    /// chip are driven through `handler` (which collects that chip's
+    /// proposals) instead of failing as "handler not installed". Foundation
+    /// no-op/unsupported/unregistered resolutions keep their frozen
+    /// behavior. An empty handler vector still triggers the
+    /// exactly-one-outcome `TaskNotTransitioned` fail below, never a silent
+    /// skip. Quota>1 batching is not accepted here: the commit's prediction
+    /// table rejects colliding future-dated references loudly.
+    pub fn propagate_with<F>(
+        &self,
+        bus: &mut CompilerBus,
+        handler: F,
+    ) -> Result<TickReport, CommitError>
+    where
+        F: Fn(TaskId, &CompilerBus) -> Vec<Proposal>,
+    {
+        self.propagate_inner(bus, Some(&handler))
+    }
+
+    fn propagate_inner(
+        &self,
+        bus: &mut CompilerBus,
+        handler: Option<&TickHandler<'_>>,
+    ) -> Result<TickReport, CommitError> {
         let tick = bus.control.tick;
         bus.control.selected = None;
         bus.tasks.active = None;
@@ -297,11 +340,30 @@ impl RoutingShell {
         let quota = Self::dispatch_quota(bus);
         let batch = self.select_batch(bus, quota);
         if batch.is_empty() {
-            return Ok(TickReport {
-                tick,
-                selected: None,
-                outcome: TickOutcome::Idle,
-            });
+            // `/9` PCR-03: idle ticks still drain await-all joins. Without
+            // this, a `Waiting` parent whose child just `Failed` (normal
+            // failure, commit recovery, or progress-limit failure) would stay
+            // `Waiting` forever once no `Ready` task remains.
+            match crate::commit::poll_await_joins(bus) {
+                Ok(poll) if poll.readied.is_empty() && poll.failed.is_empty() => {
+                    return Ok(TickReport {
+                        tick,
+                        selected: None,
+                        outcome: TickOutcome::Idle,
+                    });
+                }
+                Ok(poll) => {
+                    return Ok(TickReport {
+                        tick,
+                        selected: None,
+                        outcome: TickOutcome::Joined {
+                            readied: poll.readied,
+                            failed: poll.failed,
+                        },
+                    });
+                }
+                Err(error) => return Err(error),
+            }
         }
         // Pre-dispatch guard: the selection batch never exceeds the quota via
         // `select_batch`; a larger batch is a structured pre-dispatch error
@@ -345,51 +407,90 @@ impl RoutingShell {
         for &(id, kind, owner) in &kinds {
             let resolution = self.resolve(bus, kind);
             routed.push((id, kind, resolution));
-            let proposal = match resolution {
-                Resolution::Noop => Proposal::Complete {
-                    task: id,
-                    value: ResultValue::Empty,
-                },
-                Resolution::Unsupported => Proposal::Fail {
-                    task: id,
-                    diagnostic: DiagnosticDraft::unsupported(format!(
-                        "task kind `{}` ({}) is explicitly unsupported",
-                        bus.kind_name(kind),
-                        kind.raw()
-                    )),
-                },
-                Resolution::Registered { chip, layer } => Proposal::Fail {
-                    task: id,
-                    diagnostic: DiagnosticDraft::unsupported(format!(
-                        "task kind `{}` routed to chip {} layer {layer} has no handler installed",
-                        bus.kind_name(kind),
-                        chip.index()
-                    )),
-                },
-                Resolution::Unregistered => Proposal::Fail {
-                    task: id,
-                    diagnostic: DiagnosticDraft::unsupported(format!(
-                        "task kind `{}` ({}) is not registered",
-                        bus.kind_name(kind),
-                        kind.raw()
-                    )),
-                },
-            };
-            // A chip may only act on a task it owns.
-            bus.wires.proposals.push(TaggedProposal {
-                chip: owner,
-                task: id,
-                proposal,
-            });
+            match resolution {
+                Resolution::Noop => {
+                    bus.wires.proposals.push(TaggedProposal {
+                        chip: owner,
+                        task: id,
+                        proposal: Proposal::Complete {
+                            task: id,
+                            value: ResultValue::Empty,
+                        },
+                    });
+                }
+                Resolution::Unsupported => {
+                    bus.wires.proposals.push(TaggedProposal {
+                        chip: owner,
+                        task: id,
+                        proposal: Proposal::Fail {
+                            task: id,
+                            diagnostic: DiagnosticDraft::unsupported(format!(
+                                "task kind `{}` ({}) is explicitly unsupported",
+                                bus.kind_name(kind),
+                                kind.raw()
+                            )),
+                        },
+                    });
+                }
+                Resolution::Registered { chip, layer } => {
+                    if let Some(run) = handler {
+                        // Host-installed worker: collect its proposals tagged
+                        // by the task owner for commit validation.
+                        for proposal in run(id, bus) {
+                            bus.wires.proposals.push(TaggedProposal {
+                                chip: owner,
+                                task: id,
+                                proposal,
+                            });
+                        }
+                    } else {
+                        bus.wires.proposals.push(TaggedProposal {
+                            chip: owner,
+                            task: id,
+                            proposal: Proposal::Fail {
+                                task: id,
+                                diagnostic: DiagnosticDraft::unsupported(format!(
+                                    "task kind `{}` routed to chip {} layer {layer} has no handler installed",
+                                    bus.kind_name(kind),
+                                    chip.index()
+                                )),
+                            },
+                        });
+                    }
+                }
+                Resolution::Unregistered => {
+                    bus.wires.proposals.push(TaggedProposal {
+                        chip: owner,
+                        task: id,
+                        proposal: Proposal::Fail {
+                            task: id,
+                            diagnostic: DiagnosticDraft::unsupported(format!(
+                                "task kind `{}` ({}) is not registered",
+                                bus.kind_name(kind),
+                                kind.raw()
+                            )),
+                        },
+                    });
+                }
+            }
         }
-        // Exactly-one-outcome rule: any dispatched task with an empty proposal
-        // vector fails with the `TaskNotTransitioned` diagnostic (never silent
-        // success, never stranded `Running`). The shell always emits one
-        // proposal per task above, so this covers worker adapters and
-        // prepopulated-wire batches. The failure is attributed to the task's
-        // owner chip so commit attribution holds.
+        // Exactly-one-outcome rule (`/9` PCR-02): any dispatched task without
+        // exactly one transition (`Complete`/`Fail`/`AwaitHost`/
+        // `AwaitChildren`/`Progress`) fails with the `TaskNotTransitioned`
+        // diagnostic (never silent success, never stranded `Running`). A
+        // non-empty but transition-free vector (`AppendRecords`-only,
+        // `Enqueue`-only, `StorePatch`-only) is the same violation as an
+        // empty vector. The shell always emits one proposal per task above,
+        // so this covers worker adapters and prepopulated-wire batches. The
+        // failure is attributed to the task's owner chip so commit
+        // attribution holds. The commit path re-checks the same rule before
+        // any mutation for direct `commit_proposals` callers.
         for &id in &batch {
-            let covered = bus.wires.proposals.iter().any(|tagged| tagged.task == id);
+            let covered = bus
+                .wires
+                .proposals
+                .iter()
+                .any(|tagged| tagged.task == id && tagged.proposal.is_transition());
             if !covered {
                 let owner = kinds
                     .iter()
@@ -524,6 +625,49 @@ impl RoutingShell {
             return Ok(report);
         }
         let report = self.propagate(bus);
+        if let Ok(report) = &report {
+            self.record_tick(bus, report);
+        }
+        bus.latch(pins);
+        bus.advance_tick();
+        report
+    }
+
+    /// Run a full clock cycle with a host-installed worker handler.
+    ///
+    /// Same tick lifecycle as [`Self::clock_tick`] (reset → propagate →
+    /// latch/advance with exactly one tick record); the propagate step uses
+    /// [`Self::propagate_with`].
+    pub fn clock_tick_with<F>(
+        &self,
+        pins: &CompilerPins,
+        bus: &mut CompilerBus,
+        handler: F,
+    ) -> Result<TickReport, CommitError>
+    where
+        F: Fn(TaskId, &CompilerBus) -> Vec<Proposal>,
+    {
+        bus.reset_wires();
+        if pins.tick_budget_reached {
+            bus.control.budget_exhausted = true;
+        }
+        if pins.cancel {
+            bus.control.cancel_requested = true;
+            bus.control.job_state = JobState::Failed;
+            bus.control.selected = None;
+            bus.tasks.active = None;
+            bus.tasks.in_flight.clear();
+            let report = TickReport {
+                tick: bus.control.tick,
+                selected: None,
+                outcome: TickOutcome::Cancelled,
+            };
+            self.record_tick(bus, &report);
+            bus.latch(pins);
+            bus.advance_tick();
+            return Ok(report);
+        }
+        let report = self.propagate_with(bus, handler);
         if let Ok(report) = &report {
             self.record_tick(bus, report);
         }

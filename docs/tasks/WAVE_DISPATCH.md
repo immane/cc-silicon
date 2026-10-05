@@ -41,8 +41,10 @@ Phase 0/1 produce, once:
    work; needing one = file a `DEFECT`.
 3. **Prove it.** Every delivery ends with the work order's verify
    commands and their passing output pasted in the response.
-4. **Unsupported is a delivery.** `Unsupported` diagnostics with tests
-   are complete work, never failure. Faked success is a breach.
+4. **Unsupported is a shell delivery.** `Unsupported` diagnostics with tests
+   are a complete shell delivery (explicit gap recorded, failure retained),
+   never a semantic completion and never an acceptance PASS. Faked success
+   is a breach.
 
 ## 4. Integrator merge loop (Phase 3, no human needed)
 
@@ -51,7 +53,7 @@ Phase 0/1 produce, once:
 3. On failure: bisect to the offending delivery, revert it, re-dispatch
    that chip with a corrected work order. The wave lands when the suite
    is green; stragglers ride the next wave, they never block it.
-4. Report: per-chip pass/defect ledger. Human sees the ledger, not questions.
+4. Report: per-chip pass/defect ledger. Human sees the ledger, not questions. Required-producer stragglers block closed-loop acceptance: a green suite without a required producer is not a pass for its consumers.
 
 ## 5. What stays human (the only three rules)
 

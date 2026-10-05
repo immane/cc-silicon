@@ -544,8 +544,8 @@ impl RequestError {
     }
 }
 
-/// A decoded sem-stage constant-evaluate request (Gate 1 `/7` OPEN-03
-/// co-freeze shape).
+/// A decoded sem-stage constant-evaluate request (`/8` strict kind-shape
+/// rule).
 ///
 /// The wire form is `(TaskKind, Payload)` only — [`Payload`] stays
 /// [`RecordRef`]-only by protocol rule, so `required_kind` and `op` travel
@@ -553,13 +553,13 @@ impl RequestError {
 /// [`RequiredKind::IntegerConstantExpression`], and the binary form
 /// implies [`ConstExprOp::Add`] (the T07-checked operator).
 ///
-/// Both the T07 request kinds (`const_eval_literal`, `const_eval_binary`)
-/// and the T08 fold kind (`const_fold`) decode through this convention:
-/// the T07 requester (Wave 2) validates the request and enqueues a
-/// `const_fold` child carrying the identical payload refs, so the fold
-/// worker sees one shape. Single-literal payloads decode to `Literal`,
-/// node-plus-two-literals to `Binary`, regardless of which of the three
-/// kinds carries them.
+/// Strict kind→shape rule (`/8`, supersedes the `/7`-era shape-only
+/// relaxation): `const_eval_literal` carries exactly one
+/// `RecordRef::Literal`; `const_eval_binary` carries `RecordRef::Node`
+/// then two `RecordRef::Literal` in source order; `const_fold` accepts
+/// either shape because the T07 requester forwards identical payload refs
+/// to its fold child. A literal-shaped payload on the binary kind (or vice
+/// versa) is `Arity`, never a silent reinterpretation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConstantRequest {
     /// Evaluate one committed literal.
@@ -585,11 +585,10 @@ pub enum ConstantRequest {
 }
 
 impl ConstantRequest {
-    /// Decode a `(kind, payload)` pair per the frozen convention:
-    /// single-`RecordRef::Literal` payloads decode to `Literal`;
-    /// `RecordRef::Node` plus two `RecordRef::Literal` in source order
-    /// decode to `Binary`. Accepted for the two `const_eval_*` request
-    /// kinds and the `const_fold` worker kind alike.
+    /// Decode a `(kind, payload)` pair per the frozen `/8` convention:
+    /// `const_eval_literal` decodes only the single-literal shape,
+    /// `const_eval_binary` decodes only the node-plus-two-literals shape,
+    /// and `const_fold` accepts either forwarded shape.
     pub fn decode(kind: TaskKind, payload: &Payload) -> Result<Self, RequestError> {
         fn literal_at(
             kind: TaskKind,
@@ -601,35 +600,60 @@ impl ConstantRequest {
                 _ => Err(RequestError::Family { kind, position }),
             }
         }
-        if kind != TaskKind::SEMANTIC_CONST_EVAL_LITERAL
-            && kind != TaskKind::SEMANTIC_CONST_EVAL_BINARY
-            && kind != TaskKind::CONSTANT_CONST_FOLD
-        {
-            return Err(RequestError::UnexpectedKind { kind });
-        }
-        if payload.refs.len() == 1 {
-            return Ok(Self::Literal {
+        fn decode_literal(
+            kind: TaskKind,
+            payload: &Payload,
+        ) -> Result<ConstantRequest, RequestError> {
+            if payload.refs.len() != 1 {
+                return Err(RequestError::Arity {
+                    kind,
+                    got: payload.refs.len(),
+                });
+            }
+            Ok(ConstantRequest::Literal {
                 literal: literal_at(kind, payload, 0)?,
                 required_kind: RequiredKind::IntegerConstantExpression,
-            });
+            })
         }
-        if payload.refs.len() == 3 {
+        fn decode_binary(
+            kind: TaskKind,
+            payload: &Payload,
+        ) -> Result<ConstantRequest, RequestError> {
+            if payload.refs.len() != 3 {
+                return Err(RequestError::Arity {
+                    kind,
+                    got: payload.refs.len(),
+                });
+            }
             let node = match payload.refs[0] {
                 RecordRef::Node(id) => id,
                 _ => return Err(RequestError::Family { kind, position: 0 }),
             };
-            return Ok(Self::Binary {
+            Ok(ConstantRequest::Binary {
                 node,
                 op: ConstExprOp::Add,
                 lhs: literal_at(kind, payload, 1)?,
                 rhs: literal_at(kind, payload, 2)?,
                 required_kind: RequiredKind::IntegerConstantExpression,
-            });
+            })
         }
-        Err(RequestError::Arity {
-            kind,
-            got: payload.refs.len(),
-        })
+        match kind {
+            TaskKind::SEMANTIC_CONST_EVAL_LITERAL => decode_literal(kind, payload),
+            TaskKind::SEMANTIC_CONST_EVAL_BINARY => decode_binary(kind, payload),
+            TaskKind::CONSTANT_CONST_FOLD => {
+                if payload.refs.len() == 1 {
+                    decode_literal(kind, payload)
+                } else if payload.refs.len() == 3 {
+                    decode_binary(kind, payload)
+                } else {
+                    Err(RequestError::Arity {
+                        kind,
+                        got: payload.refs.len(),
+                    })
+                }
+            }
+            _ => Err(RequestError::UnexpectedKind { kind }),
+        }
     }
 }
 

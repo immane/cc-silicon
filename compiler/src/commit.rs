@@ -556,6 +556,17 @@ pub fn commit_proposals(
     // This batch's predicted `Enqueue` IDs per enclosing task, in validation
     // (== apply) order: phase-2b `OwnBatch` child resolution indexes these.
     let mut own_enqueues: BTreeMap<TaskId, Vec<TaskId>> = BTreeMap::new();
+    // Predicted parent for each predicted enqueue ID (`/9` PCR-05: an
+    // `OwnBatch` child is only a child when the draft names this parent).
+    let mut predicted_parent: BTreeMap<TaskId, Option<TaskId>> = BTreeMap::new();
+    // Distinct enclosing tasks in this batch (`/9` PCR-02: every task needs
+    // exactly one transition).
+    let mut batch_tasks: BTreeSet<TaskId> = BTreeSet::new();
+    // Per-task append-field sets (`/9` PCR-07: typed appends vs `StorePatch`
+    // appends to the same `(store, field)` are rejected).
+    let mut append_fields: BTreeMap<TaskId, BTreeSet<(StoreId, &'static str)>> = BTreeMap::new();
+    let mut patch_append_fields: BTreeMap<TaskId, BTreeSet<(StoreId, &'static str)>> =
+        BTreeMap::new();
     // `AwaitChildren` proposals deferred to phase 2b (all enqueues known).
     let mut await_children: Vec<(TaskId, Vec<ChildRef>)> = Vec::new();
     // Tasks this batch completes/fails (exact post-batch child states for the
@@ -619,6 +630,7 @@ pub fn commit_proposals(
 
     for &(_, _, index) in &ordered {
         let tagged = &proposals[index];
+        batch_tasks.insert(tagged.task);
         let task = bus
             .arenas
             .tasks
@@ -671,10 +683,12 @@ pub fn commit_proposals(
                     }));
                 }
                 predicted_depth.insert(TaskId::from_index(predicted_next), depth);
+                let predicted_id = TaskId::from_index(predicted_next);
+                predicted_parent.insert(predicted_id, draft.parent);
                 own_enqueues
                     .entry(tagged.task)
                     .or_default()
-                    .push(TaskId::from_index(predicted_next));
+                    .push(predicted_id);
                 predicted_next += 1;
                 new_tasks += 1;
             }
@@ -690,23 +704,30 @@ pub fn commit_proposals(
                 new_results += 1;
                 // Future-dated materialized records must be this task's
                 // own predicted appends (see the prediction table above).
-                if let Proposal::Complete {
-                    value: ResultValue::Record(reference),
-                    ..
-                } = &tagged.proposal
-                {
-                    let predicted_ref = match reference {
-                        RecordRef::Literal(id) if id.index() >= literals_base => {
-                            Some((tagged.task, RecordFamily::Literal, id.index()))
-                        }
-                        RecordRef::Const(id) if id.index() >= consts_base => {
-                            Some((tagged.task, RecordFamily::Const, id.index()))
-                        }
-                        _ => None,
+                // Both `Record` and `Records` carriers are checked: a
+                // future-dated `Literal`/`Const` inside `Records` that is
+                // not this task's own prediction is the same loud reject,
+                // never a silent cross-task alias.
+                if let Proposal::Complete { value, .. } = &tagged.proposal {
+                    let refs: &[RecordRef] = match value {
+                        ResultValue::Record(single) => std::slice::from_ref(single),
+                        ResultValue::Records(many) => many.as_slice(),
+                        _ => &[],
                     };
-                    if let Some(key) = predicted_ref {
-                        if !predicted.contains(&key) {
-                            return Err(CommitError::UnpredictedRecord { task: tagged.task });
+                    for reference in refs {
+                        let predicted_ref = match reference {
+                            RecordRef::Literal(id) if id.index() >= literals_base => {
+                                Some((tagged.task, RecordFamily::Literal, id.index()))
+                            }
+                            RecordRef::Const(id) if id.index() >= consts_base => {
+                                Some((tagged.task, RecordFamily::Const, id.index()))
+                            }
+                            _ => None,
+                        };
+                        if let Some(key) = predicted_ref {
+                            if !predicted.contains(&key) {
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
+                            }
                         }
                     }
                 }
@@ -769,7 +790,19 @@ pub fn commit_proposals(
                         reason: "append bodies must match records 1:1",
                     });
                 }
-                for (handle, body) in batch.records.iter().zip(batch.bodies.iter()) {
+                for (position, (handle, body)) in
+                    batch.records.iter().zip(batch.bodies.iter()).enumerate()
+                {
+                    // `/9` PCR-06: the handle index is the position in the
+                    // owning task's own batch. A non-canonical index would
+                    // decouple identity from apply order and break future
+                    // relocation.
+                    if handle.index.index() != position as u32 {
+                        return Err(CommitError::InvalidPatchShape {
+                            task: tagged.task,
+                            reason: "append draft index must equal its position",
+                        });
+                    }
                     if body.family() != handle.family {
                         return Err(CommitError::InvalidPatchShape {
                             task: tagged.task,
@@ -795,6 +828,20 @@ pub fn commit_proposals(
                             new_consts = new_consts.saturating_add(1);
                         }
                     }
+                }
+                // Append authorization mirrors `validate_patch` (shape first
+                // so malformed batches keep their `InvalidPatchShape`: the
+                // producing chip must be registered, must accept the task
+                // kind, and must declare every store field it appends).
+                validate_append_authorization(bus, tagged.chip, task, batch)?;
+                // `/9` PCR-07: record typed-append fields for the
+                // cross-mechanism conflict check below.
+                for body in &batch.bodies {
+                    let field = match body {
+                        G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
+                        G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+                    };
+                    append_fields.entry(tagged.task).or_default().insert(field);
                 }
             }
             Proposal::Progress {
@@ -847,6 +894,40 @@ pub fn commit_proposals(
             Proposal::StorePatch(patch) => {
                 validate_patch(bus, tagged.chip, tagged.task, task, patch)?;
                 patches += 1;
+                // `/9` PCR-07: record `StorePatch` appends for the
+                // cross-mechanism conflict check below.
+                if patch.op == PatchOp::Append {
+                    patch_append_fields
+                        .entry(tagged.task)
+                        .or_default()
+                        .insert((patch.store, patch.field));
+                }
+            }
+        }
+    }
+
+    // `/9` PCR-02: every enclosed task needs exactly one transition.
+    // At most one is enforced above via `DuplicateCompletion`; at least one
+    // is enforced here before any mutation. A batch of only `Enqueue`,
+    // `AppendRecords`, or `StorePatch` proposals is a loud reject, never a
+    // silent partial success that strands a task `Running`.
+    for &(_, _, index) in &ordered {
+        let task_id = proposals[index].task;
+        if !completing.contains(&task_id) {
+            return Err(CommitError::TaskNotTransitioned { task: task_id });
+        }
+    }
+    // `/9` PCR-07: a task must not append to the same `(store, field)`
+    // through both `AppendRecords` and `StorePatch` in one batch.
+    for task_id in batch_tasks.iter() {
+        if let (Some(appended), Some(patched)) =
+            (append_fields.get(task_id), patch_append_fields.get(task_id))
+        {
+            if appended.intersection(patched).next().is_some() {
+                return Err(CommitError::InvalidPatchShape {
+                    task: *task_id,
+                    reason: "append and store-patch must not target the same field",
+                });
             }
         }
     }
@@ -861,7 +942,20 @@ pub fn commit_proposals(
         let own = own_enqueues.get(parent).unwrap_or(&empty);
         let mut resolved = Vec::with_capacity(children.len());
         for child in children {
-            resolved.push(resolve_child_ref(bus, *parent, child, own)?);
+            let resolved_id = resolve_child_ref(bus, *parent, child, own)?;
+            // `/9` PCR-05: an `OwnBatch` index must name a draft whose
+            // `Enqueue.parent` is this parent. A draft with `parent: None`
+            // (or another task) is not a child, even though the index is
+            // in range.
+            if matches!(child, ChildRef::OwnBatch(_))
+                && predicted_parent.get(&resolved_id) != Some(&Some(*parent))
+            {
+                return Err(CommitError::AwaitChildrenRefInvalid {
+                    task: *parent,
+                    reason: "own-batch child must name this parent",
+                });
+            }
+            resolved.push(resolved_id);
         }
         resolved_wait_map.insert(*parent, resolved.clone());
         resolved_waits.push((*parent, resolved));
@@ -895,17 +989,20 @@ pub fn commit_proposals(
         waiter_children.sort_unstable();
         waiter_children.dedup_by(|a, b| a.0 == b.0);
         for (id, children) in &waiter_children {
+            // `/9` PCR-04 await-all: a parent stays `Waiting` until every
+            // child is terminal. A single `Failed` sibling must not fail the
+            // parent while another sibling is still `Ready`/`Running`/
+            // `Waiting`. Only an all-terminal set decides.
             let mut first_failed: Option<DiagnosticId> = None;
-            let mut all_completed = true;
-            let mut deferred = false;
+            let mut all_terminal = true;
+            let mut has_batch_failed = false;
             for child in children {
                 if completed_by_batch.contains(child) {
                     continue;
                 }
                 if failed_by_batch.contains(child) {
-                    deferred = true;
-                    all_completed = false;
-                    break;
+                    has_batch_failed = true;
+                    continue;
                 }
                 match bus.arenas.tasks.get(*child) {
                     Ok(child_record) => match &child_record.state {
@@ -914,22 +1011,24 @@ pub fn commit_proposals(
                             if first_failed.is_none() {
                                 first_failed = Some(*diagnostic);
                             }
-                            all_completed = false;
                         }
                         _ => {
-                            all_completed = false;
+                            all_terminal = false;
                         }
                     },
                     Err(_) => {
-                        all_completed = false;
+                        all_terminal = false;
                     }
                 }
             }
-            if deferred {
+            if !all_terminal {
+                continue;
+            }
+            if has_batch_failed {
                 join_deferred.push(*id);
             } else if let Some(diagnostic) = first_failed {
                 join_failed.push((*id, diagnostic));
-            } else if all_completed {
+            } else {
                 join_readied.push(*id);
             }
         }
@@ -971,8 +1070,6 @@ pub fn commit_proposals(
         bus.limits().max_queue_len,
         0,
     )?;
-    // Draft materialization records: each draft becomes one record.
-    bus.ensure_total_records(total_drafts as u64)?;
 
     // ---- Apply pass (infallible appends) --------------------------------
     let mut report = CommitReport {
@@ -1178,6 +1275,55 @@ fn set_task_state(bus: &mut CompilerBus, task: TaskId, state: TaskState) {
     }
 }
 
+/// Authorize a typed `AppendRecords` batch against the producing chip's
+/// registered manifest: registered chip, accepted task kind, declared write
+/// for every Gate 1 family appended, and a schema-declared store field.
+///
+/// Family-to-store mapping is the frozen M1 seed (`literal` → `lex.literals`,
+/// `const` → `constants.records`). Version-guard checks do not apply to
+/// appends (fresh IDs, no replace target); per-arena and total capacity are
+/// preflighted by the caller.
+fn validate_append_authorization(
+    bus: &CompilerBus,
+    chip: ChipId,
+    task: &crate::task::Task,
+    batch: &crate::task::AppendBatch,
+) -> Result<(), CommitError> {
+    let manifest = bus
+        .registrations
+        .get(chip)
+        .ok_or(CommitError::UnregisteredChip { chip })?;
+    if !manifest.accepts_kind(task.kind) {
+        return Err(CommitError::TaskKindNotAccepted {
+            chip,
+            kind: task.kind,
+        });
+    }
+    for body in &batch.bodies {
+        let (store, field) = match body {
+            G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
+            G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+        };
+        if !manifest.declares_write(store, field) {
+            return Err(CommitError::WriteNotDeclared {
+                chip,
+                store: store.name(),
+                field,
+            });
+        }
+        if !bus
+            .schema
+            .has_field(&crate::manifest::FieldPath::new(store, field))
+        {
+            return Err(CommitError::UndeclaredStoreField {
+                store: store.name(),
+                field,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn validate_patch(
     bus: &CompilerBus,
     chip: ChipId,
@@ -1325,9 +1471,16 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Diagnostic total.
     bus.ensure_diagnostics(plan.new_diagnostics)?;
-    // Total records (includes the patch log).
-    let additional = (plan.new_tasks + plan.new_results + plan.new_diagnostics + plan.new_requests)
-        as u64
+    // Total records (includes the patch log and Gate 1 materialization):
+    // one unified check over every record this batch creates. Appends are
+    // part of this sum, not a separate budget, so an append plus a result
+    // cannot jointly overshoot a nearly-full job.
+    let additional = (plan.new_tasks
+        + plan.new_results
+        + plan.new_diagnostics
+        + plan.new_requests
+        + plan.new_literals
+        + plan.new_consts) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())
@@ -1668,18 +1821,24 @@ pub fn count_join_reinserts(bus: &CompilerBus) -> u32 {
 ///
 /// For every `Waiting` parent with host-independent, non-empty children, in
 /// ascending task-ID order: all-`Completed` → `Ready` plus one own-stage
-/// queue entry (selectable next tick); any-`Failed` → `Failed` exactly once,
-/// reusing the first failed child's diagnostic ID (never `Ready`). Child
-/// results are NOT consumed at join: consumption stays with the parent's own
-/// atomic commit. Unresolvable or non-terminal children leave the parent
-/// `Waiting`.
+/// queue entry (selectable next tick); all-terminal with any-`Failed` →
+/// `Failed` exactly once, reusing the first failed child's diagnostic ID
+/// (never `Ready`). Child results are NOT consumed at join: consumption stays
+/// with the parent's own atomic commit. Unresolvable or non-terminal children
+/// leave the parent `Waiting` (`/9` PCR-04: a single `Failed` sibling must
+/// not fail the parent while another sibling is still non-terminal).
 ///
+/// Closure (`/9` PCR-03): the decision pass iterates to a fixed point
+/// bounded by the waiter count, so a chain `leaf Failed → parent Failed →
+/// grandparent Failed` drains in one poll instead of one level per tick.
 /// Atomicity: the queue preflight ([`LimitError::Queue`]) and the full
 /// decision scan run before the first mutation; the apply pass is infallible.
 pub fn poll_await_joins(bus: &mut CompilerBus) -> Result<JoinPoll, CommitError> {
     // ---- Decision pass (no mutation) ------------------------------------
-    let mut readied: Vec<TaskId> = Vec::new();
-    let mut failed: Vec<(TaskId, DiagnosticId)> = Vec::new();
+    // Simulate states so newly decided failures feed upper levels in the
+    // same poll. `sim_failed` maps a waiter to the diagnostic it would reuse.
+    use std::collections::BTreeMap;
+    let mut waiter_children: Vec<(TaskId, Vec<TaskId>)> = Vec::new();
     for (id, task) in bus.arenas.tasks.iter() {
         let TaskState::Waiting(wait) = &task.state else {
             continue;
@@ -1687,33 +1846,66 @@ pub fn poll_await_joins(bus: &mut CompilerBus) -> Result<JoinPoll, CommitError> 
         if wait.host_request.is_some() || wait.children.is_empty() {
             continue;
         }
-        let mut first_failed: Option<DiagnosticId> = None;
-        let mut all_completed = true;
-        for child in &wait.children {
-            match bus.arenas.tasks.get(*child) {
-                Ok(child_record) => match &child_record.state {
-                    TaskState::Completed(_) => {}
-                    TaskState::Failed(diagnostic) => {
-                        if first_failed.is_none() {
-                            first_failed = Some(*diagnostic);
+        waiter_children.push((id, wait.children.clone()));
+    }
+    waiter_children.sort_unstable();
+    let mut sim_failed: BTreeMap<TaskId, DiagnosticId> = BTreeMap::new();
+    let mut sim_readied: BTreeSet<TaskId> = BTreeSet::new();
+    // Bounded fixed-point: each iteration decides at least one waiter.
+    for _ in 0..waiter_children.len().saturating_add(1) {
+        let mut progressed = false;
+        for (id, children) in &waiter_children {
+            if sim_failed.contains_key(id) || sim_readied.contains(id) {
+                continue;
+            }
+            let mut first_failed: Option<DiagnosticId> = None;
+            let mut all_terminal = true;
+            for child in children {
+                if let Some(diag) = sim_failed.get(child) {
+                    if first_failed.is_none() {
+                        first_failed = Some(*diag);
+                    }
+                    continue;
+                }
+                if sim_readied.contains(child) {
+                    all_terminal = false;
+                    continue;
+                }
+                match bus.arenas.tasks.get(*child) {
+                    Ok(child_record) => match &child_record.state {
+                        TaskState::Completed(_) => {}
+                        TaskState::Failed(diagnostic) => {
+                            if first_failed.is_none() {
+                                first_failed = Some(*diagnostic);
+                            }
                         }
-                        all_completed = false;
+                        _ => {
+                            all_terminal = false;
+                        }
+                    },
+                    Err(_) => {
+                        all_terminal = false;
                     }
-                    _ => {
-                        all_completed = false;
-                    }
-                },
-                Err(_) => {
-                    all_completed = false;
                 }
             }
+            if !all_terminal {
+                continue;
+            }
+            if let Some(diagnostic) = first_failed {
+                sim_failed.insert(*id, diagnostic);
+            } else {
+                sim_readied.insert(*id);
+            }
+            progressed = true;
         }
-        if let Some(diagnostic) = first_failed {
-            failed.push((id, diagnostic));
-        } else if all_completed {
-            readied.push(id);
+        if !progressed {
+            break;
         }
     }
+    let mut readied: Vec<TaskId> = sim_readied.into_iter().collect();
+    readied.sort_unstable();
+    let mut failed: Vec<(TaskId, DiagnosticId)> = sim_failed.into_iter().collect();
+    failed.sort_unstable_by_key(|(id, _)| *id);
     // ---- Queue preflight -------------------------------------------------
     let limit = bus.limits().max_queue_len;
     let requested = bus.tasks.ready.len() as u32 + readied.len() as u32;

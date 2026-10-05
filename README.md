@@ -10,7 +10,7 @@ software architecture, not a C-specific compilation technique. The root
 application being built on top of them.
 
 Today the repository contains the generic framework, the frozen compiler
-contract foundation (`t01-c01-c06/7`), and an initial, limited constant-fold
+contract foundation (`t01-c01-c06/9`), and an initial, limited constant-fold
 worker. **There is no source-to-executable C compiler yet.** The task catalog and
 acceptance plans describe work to be built, not completed language support.
 See [Project status](#project-status).
@@ -121,7 +121,7 @@ external inputs—not a fresh read of the outside world.
 
 The repository separates the generic runtime, the compiler application contract,
 and the language pipeline. The nested `compiler/` package contains the C01–C06
-foundation, the `/7` Gate 1 literal/constant schemas, and an initial fold worker.
+foundation, the Gate 1 literal/constant schemas (`/7`), worker integration (`/8`), and pre-chip readiness fixes (`/9`), plus an initial fold worker.
 The complete language stages below are **not implemented**. The routing shell
 has quota-bound dispatch and bounded recovery/reporting, but no integrated
 language pipeline; quota 1 remains the comparison baseline, and quota>1
@@ -139,7 +139,7 @@ flowchart TB
         IR -. "target-dependent; probe-gated" .-> TARGET["AArch64 target emission"]
     end
 
-    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas · frozen /7<br/>initial FoldChip on seeded records"]
+    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas + readiness fixes · frozen /9<br/>initial FoldChip on seeded records"]
     PIPE -. "would use the compiler bus, IDs, tasks,<br/>commit protocol and snapshots" .-> FOUNDATION
 
     subgraph RUNTIME["Root cc-silicon framework — implemented mechanism"]
@@ -335,7 +335,7 @@ implemented, tested pipeline.
 | Area | State |
 |---|---|
 | Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. Evidence: [`tests/paradigm.rs`](tests/paradigm.rs), doctests in [`src/chip.rs`](src/chip.rs), [`examples/counter.rs`](examples/counter.rs) |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/7`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/9`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
 | Initial constant-fold worker | **Implemented subset**: [`FoldChip`](compiler/src/chips/fold.rs) reads seeded committed literals and emits a constant append + completion; the fixture folds `2 + 3` to `5` through `drive_task` and commit. Evidence: [`compiler/tests/c08_gate1.rs`](compiler/tests/c08_gate1.rs). No parsing of source text, target-width semantics, IR, or executable generation |
 | Complete C language pipeline (T02–T13) | **Not implemented.** Apart from the initial fold subset, language work remains planned; a frozen task kind is not an installed handler — see [`docs/tasks/README.md`](docs/tasks/README.md) |
 | AArch64 target values | **UNVERIFIED.** The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); codegen readiness fails closed until a probe attests concrete values |
@@ -393,14 +393,17 @@ transaction/rollback service in the root framework.
 | Compiler storage / limits | Checked access and preflight on checked entry points | Global budgets or ownership for direct mutation of public stores |
 | Tests / lint / snapshots | Concrete negative, replay, encoding, and consistency evidence | A proof of all language semantics or all possible executions |
 
-**Current implementation gap:** `FoldChip` uses the application-specific
-[`Worker`](compiler/src/chips/mod.rs) interface, which receives the full
-read-only `CompilerBus`, not a narrow `RestrictedChip::Input`. `drive_task`
-collects proposals, but does not run a complete motherboard tick, dispatch
-lifecycle, or commit. `RoutingShell::clock_tick` does not invoke these workers.
-This path must not be described as generated capability isolation or an
-integrated compiler scheduler; the stronger restricted-chip policy remains the
-design requirement, not an achieved property of this worker API.
+**Current template status (`/9`):** `FoldChip` computes from the narrow
+`FoldInput` projection (`compute(&FoldInput)`), while the `Worker` adapter owns
+the projection from the read-only `CompilerBus`. `WorkerRegistry` rejects
+non-zero-sized workers, `drive_task`/`handler_for` enforce worker/owner/
+registration plus stage/layer agreement, and `RoutingShell::propagate_with` /
+`clock_tick_with` drive workers through reset → dispatch → commit →
+latch/advance with idle join drain. `tools/chip-lint` scans inherent
+`compute` bodies (`vec!`/`format!` and `BTreeMap`/`BTreeSet` allowlisted as
+mechanical). This is the enforced Wave 1 template, not a full
+`RestrictedChip` installation chain; the stronger restricted-chip policy
+remains the design requirement for later waves.
 
 Some linked documents still describe `/5` or `/6`, no chips, or pre-Gate-1
 limitations (including `compiler/README.md` and parts of `docs/guide/`). For
@@ -719,7 +722,7 @@ silent semantic drift is forbidden.
 | [compiler/README.md](compiler/README.md) | Foundation rationale and protocol boundaries; some status/limitation text predates Gate 1 |
 | [compiler/contracts/COMPILER_SFL_MANIFEST.md](compiler/contracts/COMPILER_SFL_MANIFEST.md) | Manifest schema, read/write declarations, and commit-enforcement rules |
 | [docs/tasks/README.md](docs/tasks/README.md) | Compiler master plan and task packages T00–T13; plans are not implementation evidence |
-| [docs/tasks/GATE_1_M1_FIRST_SLICE.md](docs/tasks/GATE_1_M1_FIRST_SLICE.md) | `/7` slice freeze and worker addenda; seeded fixtures are not full M1 acceptance |
+| [docs/tasks/GATE_1_M1_FIRST_SLICE.md](docs/tasks/GATE_1_M1_FIRST_SLICE.md) | Gate 1 slice freeze (`/7`), worker integration (`/8`), readiness fixes (`/9`); seeded fixtures are not full M1 acceptance |
 | [docs/reviews/](docs/reviews/) | Dated documentation and source audits (read-only records) |
 
 ---

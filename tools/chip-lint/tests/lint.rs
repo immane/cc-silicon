@@ -149,3 +149,24 @@ fn parse_failure_is_a_lint_failure() {
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].contains("refusing strict lint"));
 }
+
+#[test]
+fn accepts_deterministic_btree_and_sibling_reexport() {
+    assert!(messages("use std::collections::BTreeMap;").is_empty());
+    assert!(messages("use std::collections::BTreeSet;").is_empty());
+    assert!(messages("pub use fold::{FoldChip};").is_empty());
+}
+
+#[test]
+fn rejects_worker_compute_host_api() {
+    let source = r#"
+        struct FoldChip;
+        impl FoldChip {
+            fn compute(&self) { let _ = std::env::var("SECRET"); }
+        }
+    "#;
+    let diagnostics = messages(source);
+    assert!(diagnostics
+        .iter()
+        .any(|message| message.contains("Host or nondeterministic")));
+}

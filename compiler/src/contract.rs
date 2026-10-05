@@ -25,14 +25,15 @@ use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
 use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
-/// const-fold slice.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/7";
+/// const-fold slice, the `/8` worker-integration amendment, and the `/9`
+/// pre-chip readiness fixes.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/9";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c";
+pub const CONTRACT_HASH: &str = "f9539895a54177e04224fca3dd3b641c8a08f74d8d2d1107b30afa650745eafb";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -105,11 +106,27 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "manifest.store-owner-wave-gated",
     "append.materialize-g1-typed",
     "append.bodies-match-records",
+    "append.authorized-registered-declared",
+    "commit.total-budget-unified",
+    "commit.predicted-records-checked",
     "request.const-evaluate-convention",
+    "request.const-fold-forwards-identical-refs",
+    "request.kind-shape-strict",
+    "const.budget-enforced-chip-overflow",
     "bootstrap.integration-only",
     "snapshot.wire-payloads-encoded",
     "snapshot.reserved-tombstones-visible",
     "serialize.canonical-deterministic",
+    "snapshot.config-encodes-all-bounds",
+    "commit.transition-required-per-task",
+    "join.await-all-requires-all-terminal",
+    "join.idle-drains-with-closure",
+    "commit.ownbatch-requires-parent",
+    "append.draft-index-canonical",
+    "append.patch-conflict-rejected",
+    "const.binary-node-must-be-live",
+    "dispatch.stage-layer-enforced",
+    "worker.stateless-unit-required",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -502,7 +519,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + /9 pre-chip readiness).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\
