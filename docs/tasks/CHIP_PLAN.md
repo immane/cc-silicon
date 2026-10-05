@@ -22,7 +22,7 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04, source-bytes end-to-end) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF01–06/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04, source-bytes end-to-end) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01–06/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
@@ -290,7 +290,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 ### T13 Verify (VF01–VF14) — Wave 2 (subset) → 3
 
 - VF01 StoreInvariant / VF02 TaskInvariant / VF03 WireLifetime / VF04 AccessContract | registrations | 2–3 (VF02–04 need H6 fixtures)
-- VF05 TokenAstInvariant / VF06 TypedAstInvariant (M1: identity-only, after `SemRecord`s) | T01/T13 co-freeze | 2
+- VF05 TokenAstInvariant | ✅ DONE (`/18` Vf05Chip, `c18_vf05` 6 tests; ranges/order/parent-kind + required fields over the closed M1 set; wider syntax deferred) | 2
+- VF06 TypedAstInvariant | ✅ DONE (`/14` Vf06Chip incl. in the SE slice; M1 identity-only checks after `SemRecord`s) | 2
 - VF07 CfgInvariant / VF08 IrInvariant / VF09 SsaInvariant / VF10 MachineInvariant / VF11 AbiInvariant | IR/machine records | 3 (out of M1)
 - VF12 IrInterpret (M1: symbolic, models return `5`) | ✅ DONE (`/17` Vf12Chip, `c17_vf12` 6 tests; single entry block, `Constant`+`Return`, completes modeled `Const`; wider ops deferred) | 2
 - VF13 ReplayCompare (canonical projection) | trace protocol | 2

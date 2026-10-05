@@ -74,7 +74,8 @@ pub use self::types::{
     TyConvInput, TyTypeChip, TyTypeInput,
 };
 pub use self::verify::{
-    project_vf06_input, project_vf12_input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input,
+    project_vf05_input, project_vf06_input, project_vf12_input, Vf05Chip, Vf05Input, Vf06Chip,
+    Vf06Input, Vf12Chip, Vf12Input,
 };
 
 use crate::bus::{CompilerBus, TaggedProposal};

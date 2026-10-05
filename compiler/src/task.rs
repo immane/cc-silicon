@@ -294,6 +294,11 @@ impl TaskKind {
     /// `Const`; non-covered shapes fail, never pass).
     pub const VERIFICATION_IR_INTERPRET: Self =
         Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/18`) VF05-slice kind: token-AST invariant task (payload:
+    /// exactly one TU node; checks M1 ranges/order/parent-kind and required
+    /// fields; completes `Ack`).
+    pub const VERIFICATION_TOKEN_AST_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 18);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -412,6 +417,22 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/18`) VF05-slice registry: the VF12 slice plus the
+    /// frozen token-AST invariant kind (all `Frozen`; `VERIFICATION`
+    /// owners start new codes at local 19).
+    pub fn vf05_slice() -> Self {
+        let mut registry = Self::vf12_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_TOKEN_AST_INVARIANT,
+            "verification.token_ast_invariant",
+        )];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

@@ -355,6 +355,20 @@ models return `5` on real tasks. New hashed rules
 `compiler/tests/c17_vf12.rs` (6 tests); item list in
 [VF12_INTERPRET_SLICE.md](VF12_INTERPRET_SLICE.md).
 
+`/18` amendment — Wave 2 slice 9, VF05 token-AST invariant (R1 auto-bump;
+`/17` preserved as history): read-only `Vf05Chip` re-verifying the M1
+syntax contract by re-walk (parent/children reciprocity, ranges contained
+with ordered non-overlapping siblings, per-kind child counts over the
+closed 8-kind set, `Declarator` name + `IntLiteral` literal with origin
+token, unique trailing EOF); `verification.token_ast_invariant`
+(`VERIFICATION` local 18), stage 2, chip 21, `vf05_slice()` registry (31
+entries, cumulative over `vf12_slice()`); no schema change (PP-slice
+schema reused); completes `Ack`. The token↔AST link is now checked on
+real tasks. New hashed rules `vf05.syntax-ranges-ordered`,
+`vf05.required-fields-complete`. New artifact `t01-c01-c06/18`
+(`7ceeaee5…8256`); acceptance `compiler/tests/c18_vf05.rs` (6 tests);
+item list in [VF05_SYNTAX_SLICE.md](VF05_SYNTAX_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
