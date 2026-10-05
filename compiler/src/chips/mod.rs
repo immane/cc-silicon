@@ -36,6 +36,7 @@
 // ============================================================================
 
 pub mod constant_layout_init;
+pub mod ir_lower;
 pub mod lex;
 pub mod parse;
 pub mod preprocess;
@@ -47,6 +48,7 @@ pub mod verify;
 pub use self::constant_layout_init::{
     const_bits_required, project_fold_input, FoldChip, FoldInput,
 };
+pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
 pub use self::lex::{
     decimal_magnitude, is_keyword, project_lx_classify_input, project_lx_decode_input,
     project_lx_intern_input, LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip,

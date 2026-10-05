@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/14";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/15";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "881f9a3f98a07b1bda80abb6c1d16dc879495509f5be256b3c8d6e55b1319d44";
+pub const CONTRACT_HASH: &str = "d6c06cc4d11bd52e9b86e8160baea575f65cbf162a535c77e692829af8e2ef05";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -156,6 +156,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
     "commit.sem-materialized",
+    "ir.constant-no-refold",
+    "ir.return-single-terminator",
+    "ir.function-single-entry",
+    "commit.ir-materialized",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -340,6 +344,21 @@ pub const VALUE_CATEGORY_NAMES: &[&str] = &["lvalue", "non_lvalue", "function_de
 /// Frozen `/14` `SemRecord` fields, in declaration order.
 pub const SEM_RECORD_FIELDS: &[&str] = &["node", "ty", "category", "effects"];
 
+/// Frozen `/15` `IrOp` names, in declaration order.
+pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
+
+/// Frozen `/15` `FunctionRecord` fields, in declaration order.
+pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+
+/// Frozen `/15` `BlockRecord` fields, in declaration order.
+pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];
+
+/// Frozen `/15` `ValueRecord` fields, in declaration order.
+pub const VALUE_RECORD_FIELDS: &[&str] = &["ty"];
+
+/// Frozen `/15` `InstructionRecord` fields, in declaration order.
+pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &["op", "block", "operands", "immediate", "result"];
+
 /// Frozen `/12` `NodeRecord` fields, in declaration order.
 pub const NODE_RECORD_FIELDS: &[&str] = &[
     "kind",
@@ -453,6 +472,11 @@ impl FrozenSchema {
         push_str_list(&mut w, SCOPE_EVENT_RECORD_FIELDS);
         push_str_list(&mut w, VALUE_CATEGORY_NAMES);
         push_str_list(&mut w, SEM_RECORD_FIELDS);
+        push_str_list(&mut w, IR_OP_NAMES);
+        push_str_list(&mut w, FUNCTION_RECORD_FIELDS);
+        push_str_list(&mut w, BLOCK_RECORD_FIELDS);
+        push_str_list(&mut w, VALUE_RECORD_FIELDS);
+        push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -660,7 +684,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 SE slice).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 IR slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

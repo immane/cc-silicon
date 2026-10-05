@@ -405,6 +405,62 @@ pub enum ValueCategory {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectMask(pub u32);
 
+/// IR opcode (`/15` M1-closed: constant materialization + function return).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IrOp {
+    /// Materialize a committed `ConstRecord` as a value (never refolds).
+    Constant,
+    /// Return a value (the unique terminator in M1).
+    Return,
+}
+
+/// A T09-owned IR function (`/15` slice freeze; one per M1 `main`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionRecord {
+    /// Checked `main` symbol.
+    pub symbol: crate::ids::SymbolId,
+    /// ABI-neutral signature (`int(void)`).
+    pub signature: crate::ids::TypeId,
+    /// Single entry block.
+    pub entry: crate::ids::BlockId,
+    /// Linkage (from the symbol).
+    pub linkage: Linkage,
+}
+
+/// A T09-owned IR basic block (`/15`; instructions derived by ascending
+/// `InstructionId`, never stored on the block).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockRecord {
+    /// Owning function.
+    pub function: crate::ids::FunctionId,
+    /// Ordinal within the function (M1: 0).
+    pub ordinal: u32,
+}
+
+/// A T09-owned IR value (`/15`; the producer is the unique producing
+/// `Instruction.result`, never a stored back-link).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValueRecord {
+    /// Value type (M1: `int`).
+    pub ty: crate::ids::TypeId,
+}
+
+/// A T09-owned IR instruction (`/15`; M1 emits exactly `Constant` then
+/// `Return`, so the terminator is the greatest `InstructionId`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstructionRecord {
+    /// Operation.
+    pub op: IrOp,
+    /// Parent block.
+    pub block: crate::ids::BlockId,
+    /// Operand values (`Return` carries exactly one in M1).
+    pub operands: Vec<crate::ids::ValueId>,
+    /// Folded constant (`Some` only for `Constant`).
+    pub immediate: Option<crate::ids::ConstId>,
+    /// Result value (`None` for `Return`).
+    pub result: Option<crate::ids::ValueId>,
+}
+
 /// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per
 /// checked `NodeId`).
 ///
@@ -555,14 +611,14 @@ pub struct Arenas {
     pub layouts: ReservedArena<LayoutId>,
     /// Initialization plans (schema owned by T08).
     pub inits: ReservedArena<InitId>,
-    /// IR functions (schema owned by T09).
-    pub functions: ReservedArena<FunctionId>,
-    /// IR basic blocks (schema owned by T09).
-    pub blocks: ReservedArena<BlockId>,
-    /// IR values (schema owned by T09).
-    pub values: ReservedArena<ValueId>,
-    /// IR instructions (schema owned by T09).
-    pub instructions: ReservedArena<InstructionId>,
+    /// IR functions (`/15` slice freeze: typed on freeze).
+    pub functions: TypedArena<FunctionId, FunctionRecord>,
+    /// IR basic blocks (`/15` slice freeze: typed on freeze).
+    pub blocks: TypedArena<BlockId, BlockRecord>,
+    /// IR values (`/15` slice freeze: typed on freeze).
+    pub values: TypedArena<ValueId, ValueRecord>,
+    /// IR instructions (`/15` slice freeze: typed on freeze).
+    pub instructions: TypedArena<InstructionId, InstructionRecord>,
     /// Virtual registers (schema owned by T11).
     pub vregs: ReservedArena<VRegId>,
     /// Continuations (mechanical resume state).

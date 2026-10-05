@@ -311,6 +311,21 @@ allowlist rows; `Sem` append materialization; `Semantic` diagnostic group
 (`881f9a3f…19d44`); acceptance `compiler/tests/c14_se.rs` (9 tests); item
 list in [SE_SLICE.md](SE_SLICE.md).
 
+`/15` amendment — Wave 2 slice 6, IR function lowering (R1 auto-bump;
+`/14` preserved as history): `FunctionRecord`/`BlockRecord`/`ValueRecord`/
+`InstructionRecord` + M1-closed `IrOp{Constant, Return}` with the four IR
+arenas becoming typed on freeze; the exactly-one-`Const` handoff rule;
+`ir.function` (`group 8`, local `16`) with `ir_slice()` registry; stage
+row (`function → 5`) + four allowlist rows (`IR_FUNCTION_CHIP = 16`);
+`AppendRecords` materialization for the four IR families; snapshot bodies
++ `IR_OP_NAMES` and four record-field lists in the hash; `IrFunctionChip`
+worker (no arithmetic, ZST, stage/layer, lint). FunctionEnd/IR28 stays
+deferred. New hashed rules `ir.constant-no-refold`,
+`ir.return-single-terminator`, `ir.function-single-entry`,
+`commit.ir-materialized`. New artifact `t01-c01-c06/15`
+(`d6c06cc4…2ef05`); acceptance `compiler/tests/c15_ir.rs` (7 tests); item
+list in [IR_SLICE.md](IR_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

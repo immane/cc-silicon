@@ -211,6 +211,26 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/15`) IR-slice field set: the SE slice plus the IR
+    /// append fields (`ir.functions`, `ir.blocks`, `ir.values`,
+    /// `ir.instructions`). Post-seed runtime declarations stay excluded
+    /// from the frozen hash per the two-tier model; the IR inventory is
+    /// pinned by the `IR_*_NAMES` contract lists instead.
+    pub fn ir_slice() -> Self {
+        let mut schema = Self::se_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Ir, "functions"),
+            (StoreId::Ir, "blocks"),
+            (StoreId::Ir, "values"),
+            (StoreId::Ir, "instructions"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/14`) SE-slice field set: the TY slice plus the SE
     /// append field (`sem.records` for `SemRecord`). Post-seed runtime
     /// declarations stay excluded from the frozen hash per the two-tier
@@ -818,6 +838,30 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "records",
         TaskKind::SEMANTIC_RETURN_STMT,
     ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "functions",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "blocks",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "values",
+        TaskKind::IR_FUNCTION,
+    ),
+    (
+        IR_FUNCTION_CHIP,
+        StoreId::Ir,
+        "instructions",
+        TaskKind::IR_FUNCTION,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -865,6 +909,9 @@ pub const SE_RET_CHIP: ChipId = ChipId(14);
 /// Wave 2 (`/14`) VF06 typed-invariant verifier reservation.
 pub const VF06_CHIP: ChipId = ChipId(15);
 
+/// Wave 2 (`/15`) IR function-lowering chip reservation.
+pub const IR_FUNCTION_CHIP: ChipId = ChipId(16);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -887,6 +934,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/15`) IR slice.
+pub const fn is_ir_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::IR_FUNCTION.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/14`) SE slice (including
@@ -928,6 +980,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pa_slice_kind(kind)
             || is_ty_slice_kind(kind)
             || is_se_slice_kind(kind)
+            || is_ir_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -989,6 +1042,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::SEMANTIC_BINARY_EXPR, 4),
     (TaskKind::SEMANTIC_RETURN_STMT, 4),
     (TaskKind::VERIFICATION_TYPED_INVARIANT, 4),
+    (TaskKind::IR_FUNCTION, 5),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

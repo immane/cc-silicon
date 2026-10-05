@@ -267,6 +267,11 @@ impl TaskKind {
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
         Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/15`) IR-slice kind: whole-function lowering (payload:
+    /// exactly one `FunctionDefinition` node; appends one `Function`, one
+    /// `Block`, one `Value`, and two `Instruction`s in order; completes
+    /// `Record` of the function).
+    pub const IR_FUNCTION: Self = Self(((TaskGroup::IR_LOWER.0 as u16) << Self::LOCAL_BITS) | 16);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -386,6 +391,19 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/15`) IR-slice registry: the SE slice plus the frozen
+    /// function kind (all `Frozen`; `IR_LOWER` owners start new codes at
+    /// local 17).
+    pub fn ir_slice() -> Self {
+        let mut registry = Self::se_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::IR_FUNCTION, "ir.function")];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

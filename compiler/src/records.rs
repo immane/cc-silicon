@@ -15,8 +15,9 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactRecord, ConstRecord, LiteralRecord, NodeRecord, ScopeEventRecord, ScopeRecord,
-    SemRecord, SymbolRecord, TokenRecord, TypeRecord,
+    ArtifactRecord, BlockRecord, ConstRecord, FunctionRecord, InstructionRecord, LiteralRecord,
+    NodeRecord, ScopeEventRecord, ScopeRecord, SemRecord, SymbolRecord, TokenRecord, TypeRecord,
+    ValueRecord,
 };
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
@@ -39,6 +40,7 @@ pub struct RecordDraft {
 /// `Artifact` added at Wave 2 `/10` for the PP01 slice; `Token`/`Name`
 /// added at `/11` for the LX slice; `Node` added at `/12` for the PA slice;
 /// `Type`/`Symbol`/`Scope`/`ScopeEvent` added at `/13` for the TY slice;
+/// `Function`/`Block`/`Value`/`Instruction` added at `/15` for the IR slice).
 /// `Sem` added at `/14` for the SE slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
@@ -74,6 +76,14 @@ pub enum G1DraftBody {
     ScopeEvent(ScopeEventRecord),
     /// A checked-node fact to append to the `sem` arena (`/14` SE slice).
     Sem(SemRecord),
+    /// An IR function to append to the `functions` arena (`/15` IR slice).
+    Function(FunctionRecord),
+    /// An IR block to append to the `blocks` arena (`/15`).
+    Block(BlockRecord),
+    /// An IR value to append to the `values` arena (`/15`).
+    Value(ValueRecord),
+    /// An IR instruction to append to the `instructions` arena (`/15`).
+    Instruction(InstructionRecord),
 }
 
 impl G1DraftBody {
@@ -91,6 +101,10 @@ impl G1DraftBody {
             Self::Scope(_) => RecordFamily::Scope,
             Self::ScopeEvent(_) => RecordFamily::ScopeEvent,
             Self::Sem(_) => RecordFamily::Sem,
+            Self::Function(_) => RecordFamily::Function,
+            Self::Block(_) => RecordFamily::Block,
+            Self::Value(_) => RecordFamily::Value,
+            Self::Instruction(_) => RecordFamily::Instruction,
         }
     }
 }

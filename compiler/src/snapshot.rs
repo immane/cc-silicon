@@ -17,10 +17,11 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CharKind, CompilerBus, ConstRecord, EffectMask, IntRank, Linkage,
-    LiteralRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
-    ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind,
-    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory,
+    ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, ConstRecord, EffectMask,
+    FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord, NodeKind, NodeRecord,
+    PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord,
+    SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord,
+    TypeKind, TypeRecord, ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -743,26 +744,28 @@ impl Snapshot {
             bus.arenas.inits.allocated(),
             bus.arenas.inits.live_ids(),
         );
-        push_reserved(
-            &mut w,
-            bus.arenas.functions.allocated(),
-            bus.arenas.functions.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.blocks.allocated(),
-            bus.arenas.blocks.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.values.allocated(),
-            bus.arenas.values.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.instructions.allocated(),
-            bus.arenas.instructions.live_ids(),
-        );
+        // Wave 2 (`/15`) typed IR: allocated count plus per-record bodies
+        // in ascending ID order.
+        w.u64(bus.arenas.functions.allocated() as u64);
+        for (id, function) in bus.arenas.functions.iter() {
+            w.u32(id.index());
+            w.raw(&encode_function(function));
+        }
+        w.u64(bus.arenas.blocks.allocated() as u64);
+        for (id, block) in bus.arenas.blocks.iter() {
+            w.u32(id.index());
+            w.raw(&encode_block(block));
+        }
+        w.u64(bus.arenas.values.allocated() as u64);
+        for (id, value) in bus.arenas.values.iter() {
+            w.u32(id.index());
+            w.raw(&encode_value(value));
+        }
+        w.u64(bus.arenas.instructions.allocated() as u64);
+        for (id, instruction) in bus.arenas.instructions.iter() {
+            w.u32(id.index());
+            w.raw(&encode_instruction(instruction));
+        }
         push_reserved(
             &mut w,
             bus.arenas.vregs.allocated(),
@@ -2092,6 +2095,153 @@ pub fn decode_sem(bytes: &[u8]) -> Result<SemRecord, CodecError> {
         ty,
         category,
         effects,
+    })
+}
+
+/// Name of an [`IrOp`], in declaration order.
+pub fn ir_op_name(op: IrOp) -> &'static str {
+    match op {
+        IrOp::Constant => "constant",
+        IrOp::Return => "return",
+    }
+}
+
+fn parse_ir_op(name: &str) -> Option<IrOp> {
+    match name {
+        "constant" => Some(IrOp::Constant),
+        "return" => Some(IrOp::Return),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`FunctionRecord`].
+///
+/// Byte layout: symbol `u32` LE | signature `u32` LE | entry `u32` LE |
+/// linkage-name str.
+pub fn encode_function(record: &FunctionRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.symbol.index());
+    w.u32(record.signature.index());
+    w.u32(record.entry.index());
+    w.str(linkage_name(record.linkage));
+    w.finish()
+}
+
+/// Decode one committed [`FunctionRecord`]; consumes the whole input.
+pub fn decode_function(bytes: &[u8]) -> Result<FunctionRecord, CodecError> {
+    use crate::ids::{BlockId, SymbolId, TypeId};
+    let mut r = Reader::new(bytes);
+    let symbol = SymbolId::from_index(r.u32()?);
+    let signature = TypeId::from_index(r.u32()?);
+    let entry = BlockId::from_index(r.u32()?);
+    let name = r.string()?;
+    let linkage = parse_linkage(&name).ok_or(CodecError::Unsupported("unknown linkage"))?;
+    r.finish()?;
+    Ok(FunctionRecord {
+        symbol,
+        signature,
+        entry,
+        linkage,
+    })
+}
+
+/// Canonical encoding of one committed [`BlockRecord`].
+///
+/// Byte layout: function `u32` LE | ordinal `u32` LE.
+pub fn encode_block(record: &BlockRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.function.index());
+    w.u32(record.ordinal);
+    w.finish()
+}
+
+/// Decode one committed [`BlockRecord`]; consumes the whole input.
+pub fn decode_block(bytes: &[u8]) -> Result<BlockRecord, CodecError> {
+    use crate::ids::FunctionId;
+    let mut r = Reader::new(bytes);
+    let function = FunctionId::from_index(r.u32()?);
+    let ordinal = r.u32()?;
+    r.finish()?;
+    Ok(BlockRecord { function, ordinal })
+}
+
+/// Canonical encoding of one committed [`ValueRecord`].
+///
+/// Byte layout: ty `u32` LE.
+pub fn encode_value(record: &ValueRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.ty.index());
+    w.finish()
+}
+
+/// Decode one committed [`ValueRecord`]; consumes the whole input.
+pub fn decode_value(bytes: &[u8]) -> Result<ValueRecord, CodecError> {
+    use crate::ids::TypeId;
+    let mut r = Reader::new(bytes);
+    let ty = TypeId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(ValueRecord { ty })
+}
+
+/// Canonical encoding of one committed [`InstructionRecord`].
+///
+/// Byte layout: op-name str | block `u32` LE | operand-count `u64` LE +
+/// operand `u32` LE each | immediate-present `u8` + optional immediate
+/// `u32` LE | result-present `u8` + optional result `u32` LE.
+pub fn encode_instruction(record: &InstructionRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(ir_op_name(record.op));
+    w.u32(record.block.index());
+    w.u64(record.operands.len() as u64);
+    for operand in &record.operands {
+        w.u32(operand.index());
+    }
+    match record.immediate {
+        Some(immediate) => {
+            w.u8(1);
+            w.u32(immediate.index());
+        }
+        None => w.u8(0),
+    }
+    match record.result {
+        Some(result) => {
+            w.u8(1);
+            w.u32(result.index());
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+/// Decode one committed [`InstructionRecord`]; consumes the whole input.
+pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError> {
+    use crate::ids::{BlockId, ConstId, ValueId};
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let op = parse_ir_op(&name).ok_or(CodecError::Unsupported("unknown IR op"))?;
+    let block = BlockId::from_index(r.u32()?);
+    let operand_count = r.u64()? as usize;
+    let mut operands = Vec::with_capacity(operand_count);
+    for _ in 0..operand_count {
+        operands.push(ValueId::from_index(r.u32()?));
+    }
+    let immediate = match r.u8()? {
+        0 => None,
+        1 => Some(ConstId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let result = match r.u8()? {
+        0 => None,
+        1 => Some(ValueId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(InstructionRecord {
+        op,
+        block,
+        operands,
+        immediate,
+        result,
     })
 }
 
