@@ -18,20 +18,21 @@
 // ============================================================================
 
 use crate::codec::{hex32, sha256, Writer};
-use crate::ids::RecordFamily;
+use crate::ids::{ChipId, RecordFamily};
 use crate::limits::Limits;
-use crate::manifest::StoreSchema;
+use crate::manifest::{is_gate1_slice_kind, StoreSchema, STAGE_ASSIGNMENT, STORE_OWNER_ALLOWLIST};
 use crate::target::{CorpusPolicy, ProbeSubstrate, TargetSpec};
 use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS};
 
-/// Frozen contract version for T01 C01-C06.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/6";
+/// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
+/// const-fold slice.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/7";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8";
+pub const CONTRACT_HASH: &str = "a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -100,6 +101,11 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "sem.effect-mask-zero-only",
     "parse.cursor-via-continuation",
     "manifest.store-owner-allowlist",
+    "manifest.stage-assignment-enforced",
+    "manifest.store-owner-wave-gated",
+    "append.materialize-g1-typed",
+    "append.bodies-match-records",
+    "request.const-evaluate-convention",
     "bootstrap.integration-only",
     "snapshot.wire-payloads-encoded",
     "snapshot.reserved-tombstones-visible",
@@ -197,6 +203,31 @@ pub const DIAG_GROUP_NAMES: &[&str] = &[
     "unsupported",
     "internal",
 ];
+/// The Gate 1 (`/7`) `LiteralRecord` field names, in frozen field order.
+pub const LITERAL_RECORD_FIELDS: &[&str] = &[
+    "token",
+    "kind",
+    "radix",
+    "suffix",
+    "value",
+    "negative",
+    "spelling",
+    "candidate_type",
+];
+/// The Gate 1 (`/7`) `ConstRecord` field names, in frozen field order.
+pub const CONST_RECORD_FIELDS: &[&str] = &["value", "negative"];
+/// The `LiteralKind` member names (only `integer` produced in M1).
+pub const LITERAL_KIND_NAMES: &[&str] = &["integer", "character", "string"];
+/// The `LiteralSuffix` member names (only `none` produced in M1).
+pub const LITERAL_SUFFIX_NAMES: &[&str] = &["none", "U", "L", "UL", "LL", "ULL"];
+/// The `Lx08CandidateType` member names (M1-closed `{Int}`).
+pub const LX08_CANDIDATE_NAMES: &[&str] = &["Int"];
+/// The `ConstExprOp` member names (M1-closed `{Add}`).
+pub const CONST_EXPR_OP_NAMES: &[&str] = &["add"];
+/// The `RequiredKind` member names (M1-closed).
+pub const REQUIRED_KIND_NAMES: &[&str] = &["integer_constant_expression"];
+/// The `ConstLegality` member names.
+pub const CONST_LEGALITY_NAMES: &[&str] = &["legal", "not_constant_expression", "unsupported"];
 
 /// The static, hashable shape of the compiler contract.
 #[derive(Clone, Debug)]
@@ -348,8 +379,9 @@ impl FrozenSchema {
         w.u32(self.limits.max_const_bits);
         w.u32(self.limits.max_task_progress);
 
-        // Foundation store schema.
-        let schema = StoreSchema::foundation();
+        // Gate 1 (`/7`) store schema: foundation plus the two frozen
+        // language append fields.
+        let schema = StoreSchema::m1_slice();
         for store in StoreId::ALL {
             w.str(store.name());
             let fields = schema.fields(store);
@@ -388,8 +420,62 @@ impl FrozenSchema {
         w.str("tick-record.dispatched");
         w.str("tick-record.selected");
 
+        // Gate 1 (`/7`) M1 slice: typed record schemas, closed enum
+        // vocabularies, slice task kinds, the kind-to-stage table, and the
+        // seed allowlist rows.
+        push_str_list(&mut w, LITERAL_RECORD_FIELDS);
+        push_str_list(&mut w, CONST_RECORD_FIELDS);
+        push_str_list(&mut w, LITERAL_KIND_NAMES);
+        push_str_list(&mut w, LITERAL_SUFFIX_NAMES);
+        push_str_list(&mut w, LX08_CANDIDATE_NAMES);
+        push_str_list(&mut w, CONST_EXPR_OP_NAMES);
+        push_str_list(&mut w, REQUIRED_KIND_NAMES);
+        push_str_list(&mut w, CONST_LEGALITY_NAMES);
+        // Slice task kinds (foundation kinds are encoded above; only the
+        // Gate 1 additions are encoded here).
+        let slice_registry = TaskKindRegistry::m1_slice();
+        let mut slice_count = 0u64;
+        for entry in slice_registry.iter() {
+            if is_gate1_slice_kind(entry.kind) {
+                slice_count += 1;
+            }
+        }
+        w.u64(slice_count);
+        for entry in slice_registry.iter() {
+            if !is_gate1_slice_kind(entry.kind) {
+                continue;
+            }
+            w.u16(entry.kind.raw());
+            w.str(entry.name);
+            w.u8(entry.group.raw());
+            w.u8(match entry.status {
+                KindStatus::Frozen => 0,
+                KindStatus::Reserved => 1,
+                KindStatus::GroupOwned => 2,
+            });
+        }
+        // Kind-to-stage table, in table order.
+        w.u64(STAGE_ASSIGNMENT.len() as u64);
+        for &(kind, stage) in STAGE_ASSIGNMENT {
+            w.u16(kind.raw());
+            w.u8(stage);
+        }
+        // Seed allowlist rows, in table order.
+        w.u64(STORE_OWNER_ALLOWLIST.len() as u64);
+        for &(chip, store, field, kind) in STORE_OWNER_ALLOWLIST {
+            w.u16(chip_index(chip));
+            w.str(store.name());
+            w.str(field);
+            w.u16(kind.raw());
+        }
+
         w.finish()
     }
+}
+
+/// Chip ID index for hashing (the stable `u16` code).
+const fn chip_index(chip: ChipId) -> u16 {
+    chip.0
 }
 
 fn push_str_list(w: &mut Writer, values: &[&str]) {
@@ -416,7 +502,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

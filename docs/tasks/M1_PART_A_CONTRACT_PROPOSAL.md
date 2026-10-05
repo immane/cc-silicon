@@ -1,7 +1,7 @@
 # M1 Part A Contract Proposal: Typed Record Materialization for the Frontend + IR
 
 Status: **DRAFT — not accepted/frozen as an application.** The `/6` contract
-itself is frozen (see rev 41): no owner sign-off has been obtained for the
+itself is frozen (execution record: [CDR §12 rev 56](CONTRACT_CHANGE_REQUEST_M1_PIPELINE_AND_PART_A_SCHEMA.md)): no owner sign-off has been obtained for the
 application direction and no owner approval may be inferred from
 this document. Every reviewer listed in §15.3 remains **conditional**.
 
@@ -40,8 +40,10 @@ current-state paragraph), the rev-39 paragraph is the next historical snapshot,
 and the rev-38 paragraph the one after that; the current pointer is recorded in
 the `§16` rev-40 row and the `§24` ledger. Status is
 unchanged from the latest revision:
-this proposal is **DRAFT**, [`/5`](../architecture/SFL_CONTRACT.md) stays current
-(the `/5` artifact is `t01-c01-c06/5`), the `/6` contract stays **unfrozen**,
+this proposal is **DRAFT**; the `/6` foundation is **frozen in code**
+(`t01-c01-c06/6`; the `/5` artifact is preserved as history), but the
+application direction in this proposal remains **unaccepted** and no owner
+sign-off may be inferred from it.
 ADR-0002 stays **PROPOSED**, H6 is a
 **selected quota>1-capable bounded recovery mechanism to be frozen in `/6`**
 (user, CDR rev 42; not owner/T01 signoff, not implemented), H9
