@@ -945,6 +945,12 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "tokens",
         TaskKind::PREPROCESS_VARIADIC_MACRO,
     ),
+    (
+        PP24_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_BUILTIN,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -1044,6 +1050,9 @@ pub const PP18_CHIP: ChipId = ChipId(32);
 /// Wave 2 (`/26`) PP variadic-macro chip reservation.
 pub const PP16_CHIP: ChipId = ChipId(33);
 
+/// Wave 2 (`/27`) PP builtin-macro chip reservation.
+pub const PP24_CHIP: ChipId = ChipId(34);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1066,6 +1075,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/27`) PP builtin slice.
+pub const fn is_pp_builtin_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_BUILTIN.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/26`) PP variadic slice.
@@ -1181,6 +1195,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_expand_slice_kind(kind)
             || is_pp_include_slice_kind(kind)
             || is_pp_variadic_slice_kind(kind)
+            || is_pp_builtin_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1260,6 +1275,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_INCLUDE_RESOLVE, 1),
     (TaskKind::PREPROCESS_INCLUDE_ENTER, 1),
     (TaskKind::PREPROCESS_VARIADIC_MACRO, 1),
+    (TaskKind::PREPROCESS_MACRO_BUILTIN, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

@@ -352,6 +352,13 @@ impl TaskKind {
     /// `__VA_OPT__` policy, `#`/`##`, and blue-paint rescan).
     pub const PREPROCESS_VARIADIC_MACRO: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 30);
+    /// Wave 2 (`/27`) PP-builtin-slice kind: builtin-macro task (payload:
+    /// exactly one `RecordRef::PpToken` naming the builtin use, which must
+    /// be an `Identifier`; expands to exactly one synthesized `PpToken`
+    /// and completes `Records`; unknown or unconfigured names fail as
+    /// explicit `Unsupported`).
+    pub const PREPROCESS_MACRO_BUILTIN: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 31);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -531,6 +538,22 @@ impl TaskKindRegistry {
         let slice: &[(TaskKind, &str)] = &[(
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/27`) PP-builtin-slice registry: the PP-variadic
+    /// slice plus the frozen builtin-macro kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 32).
+    pub fn pp_builtin_slice() -> Self {
+        let mut registry = Self::pp_variadic_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_MACRO_BUILTIN,
+            "preprocess.macro_builtin",
         )];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

@@ -239,8 +239,9 @@ fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
     // Seed: the T08 fold-chip row (`/7`), the PP01 row (`/10`), the three
     // LX rows (`/11`), the PA row (`/12`), the six TY rows (`/13`), the two
     // PP macro rows (`/23`), the two PP expansion rows (`/24`), and the
-    // PP variadic row (`/26`; `/25` adds no rows).
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 28);
+    // PP variadic row (`/26`), and the PP builtin row (`/27`; `/25`
+    // adds no rows).
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 29);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(

@@ -3,6 +3,7 @@
 //! Group directory per `docs/tasks/PARALLEL_EXECUTION.md` §2: one file per
 //! chip (`<group>/<snake_name>.rs`); the integrator owns this `mod.rs`.
 
+mod pp_builtin;
 mod pp_comment;
 mod pp_conditional;
 mod pp_define;
@@ -19,6 +20,7 @@ mod pp_substitute;
 mod pp_undef;
 mod pp_variadic;
 
+pub use self::pp_builtin::{project_pp_builtin_input, PpBuiltinChip, PpBuiltinInput};
 pub use self::pp_comment::{
     project_pp_comment_input, replace_comments, PpCommentChip, PpCommentInput,
 };

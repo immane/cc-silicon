@@ -511,6 +511,32 @@ artifact `t01-c01-c06/26` (`59bdf0f5…9031a006`); acceptance
 `compiler/tests/c26_variadic.rs` (10 tests); item list in
 [PP_VARIADIC_SLICE.md](PP_VARIADIC_SLICE.md).
 
+`/27` amendment — Wave 3 slice 2, PP builtins (R1 auto-bump; `/26`
+preserved as history): new `PpBuiltinChip` (chip 34, PP24), pure
+single-task (one dispatch, at most one quota-1 `PpToken` append,
+`Complete(Records)`; no children, so the frozen-join path never
+applies). One builtin use expands to one synthesized token with the use
+token's span: `__FILE__` spells the quoted source name, `__LINE__`
+spells the physical line (PP23 logical location pending — the
+projector prefers the frozen PP23 carrier once it lands),
+`__COUNTER__` spells the projected base (task-associated counter
+record when present, else the task-local seed 0; no counter carrier
+exists on the bus, so every dispatch replays 0 until one lands),
+frozen-target predefined macros read off the projected target model
+(triple arch/os, ELF, LP64, little-endian, `__STDC__`,
+dialect-derived `__STDC_VERSION__`) plus nothing from the host.
+`__DATE__`/`__TIME__` fail as explicit `Unsupported` (replayable values
+need a frozen config date/time record the config does not carry) and
+any other name fails as unknown-builtin `Unsupported`; every failure
+names PP24. `preprocess.macro_builtin` (local 31), stage 1, layer 1,
+`pp_builtin_slice()` registry (44 entries, cumulative over
+`pp_variadic_slice()`); no schema change; one allowlist row
+(`Pp.tokens` for the synthesized append). New hashed rules
+`pp.builtin-file-line`, `pp.builtin-counter`, `pp.builtin-target`,
+`pp.builtin-date-replayable`. New artifact `t01-c01-c06/27`
+(`1c4c6547…9708faa`); acceptance `compiler/tests/c27_builtin.rs`
+(9 tests); item list in [PP_BUILTIN_SLICE.md](PP_BUILTIN_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/26";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/27";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "59bdf0f52ef0c03757bdf391f427a7423242b83ae4a5dc35bb9bb8bd9031a006";
+pub const CONTRACT_HASH: &str = "1c4c6547865ecc21ffb9f2d89fa762acd5a31d7e1a32c749663e6f8779708faa";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -194,6 +194,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.variadic-collect",
     "pp.va-opt-policy",
     "pp.variadic-arity",
+    "pp.builtin-file-line",
+    "pp.builtin-counter",
+    "pp.builtin-target",
+    "pp.builtin-date-replayable",
 ];
 
 /// The `TaskState` variant names, in encoding order.
