@@ -21,7 +21,7 @@
 | Wave | Content | Unblocks when |
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 const-fold types (`/7`) | — |
-| Wave 1 | M1 const producers/consumers on frozen types: SE02/SE07 request emission, T08 fold (CL02/CL03 integer subset), T09 IR03 constant consumption | kinds `const_eval_*` + `const_fold` already frozen; needs only chip manifests + routing rows (T01 serial, then dispatch) |
+| Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types | kinds already frozen; needs only its manifest + routing row (T01 serial, then dispatch). SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
 | Wave 2 (M1 frontend) | T03 PP01 slice → T04 LX slice (M1-LX-01..07) → T05 PA M1 paths → T06 TY M1 subset → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands like Gate 1 with its own fixture (G2-CL-0x…) |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
@@ -185,7 +185,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - TY32 InlineLinkageChip | link policy | 3
 - TY33 EffectiveTypeChip / TY34 RestrictContractChip (conservative) | access histories | 3
 
-### T07 Semantic (SE01–SE30) — Wave 1 (SE02/SE07) → 2
+### T07 Semantic (SE01–SE30) — Wave 2 (SE02/SE07 emit requests once `SemRecord` lands)
 
 - SE01 NameExpressionChip | symbol protocol | 2
 - SE02 LiteralExpressionChip → emits `ConstantRequest::Literal` | — | 1
@@ -228,7 +228,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - CL26 LayoutValidateChip (re-validates CL08–14) | layout schemas | 2–3
 - All: overflow formula/enforcement split still open (post-Gate-1 decision).
 
-### T09 IR (IR01–IR29) — Wave 1 (IR03) → 2
+### T09 IR (IR01–IR29) — Wave 2 (IR03 consumes once IR records land)
 
 - IR01 FunctionBeginChip / IR28 FunctionEndChip (terminal-fact, no marker) | IR records, hook contract | 2
 - IR02 BlockCreateChip | IR records | 2
@@ -298,7 +298,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 
 ## 5. Unblock checklist (serial T01 work before each wave)
 
-- **Before Wave 1 dispatch:** chip manifests + routing rows for SE02/SE07 request emission, T08 fold, IR03 consume (kinds already frozen). G1-CL-01 stays the acceptance.
+- **Before Wave 1 dispatch:** the fold-chip manifest + routing row (kind already frozen). G1-CL-01 stays the acceptance; the test-driver fold is replaced by the real chip through the host driver (Phase 0 template).
 - **Before Wave 2:** per-slice freezes in chain order — PP01 slice, LX slice, PA kinds+`NodeRecord`, TY scope/symbol/type records, SE `SemRecord` link, CL M1 subset, IR M1 subset, VF subset registrations. Each lands like Gate 1 (own fixture, own hash section if the seed moves).
 - **Before Wave 3:** remaining language schemas, full kind/stage tables, all-family `AppendRecords`, T10 version-guard protocol, named fixtures for every OP chip.
 - **Before Wave 4:** attested probe + C02 incorporation (fail-closed until then).
