@@ -33,9 +33,19 @@
 // ============================================================================
 
 mod fold;
+mod lx_classify;
+mod lx_decode;
+mod lx_intern;
 mod pp_normalize;
 
 pub use fold::{const_bits_required, project_fold_input, FoldChip, FoldInput};
+pub use lx_classify::{
+    is_keyword, project_lx_classify_input, LxClassifyChip, LxClassifyInput, C11_KEYWORDS,
+};
+pub use lx_decode::{
+    decimal_magnitude, project_lx_decode_input, LxDecodeInput, LxDecodeLiteralChip,
+};
+pub use lx_intern::{project_lx_intern_input, LxInternChip, LxInternInput};
 pub use pp_normalize::{normalize, project_pp_input, PpInput, PpNormalizeChip};
 
 use crate::bus::{CompilerBus, TaggedProposal};

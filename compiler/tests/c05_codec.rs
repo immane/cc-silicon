@@ -326,18 +326,14 @@ fn consuming_a_result_changes_the_snapshot() {
 fn reserved_store_tombstones_are_visible() {
     let limits = Limits::fixture();
     let mut allocated_then_removed = CompilerBus::default();
-    let id = allocated_then_removed
-        .arenas
-        .pp_tokens
-        .alloc(&limits)
-        .unwrap();
-    allocated_then_removed.arenas.pp_tokens.remove(id).unwrap();
+    let id = allocated_then_removed.arenas.nodes.alloc(&limits).unwrap();
+    allocated_then_removed.arenas.nodes.remove(id).unwrap();
 
     let untouched = CompilerBus::default();
-    assert_eq!(allocated_then_removed.arenas.pp_tokens.live(), 0);
-    assert_eq!(untouched.arenas.pp_tokens.live(), 0);
-    assert_eq!(allocated_then_removed.arenas.pp_tokens.allocated(), 1);
-    assert_eq!(untouched.arenas.pp_tokens.allocated(), 0);
+    assert_eq!(allocated_then_removed.arenas.nodes.live(), 0);
+    assert_eq!(untouched.arenas.nodes.live(), 0);
+    assert_eq!(allocated_then_removed.arenas.nodes.allocated(), 1);
+    assert_eq!(untouched.arenas.nodes.allocated(), 0);
     assert_ne!(
         Snapshot::capture(&allocated_then_removed).hash(),
         Snapshot::capture(&untouched).hash()

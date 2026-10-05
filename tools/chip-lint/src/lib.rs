@@ -186,7 +186,16 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
                     && (path.contains("BTreeMap") || path.contains("BTreeSet"));
                 let allowed_root = matches!(
                     root,
-                    "crate" | "self" | "super" | "core" | "alloc" | "fold" | "pp_normalize"
+                    "crate"
+                        | "self"
+                        | "super"
+                        | "core"
+                        | "alloc"
+                        | "fold"
+                        | "pp_normalize"
+                        | "lx_intern"
+                        | "lx_classify"
+                        | "lx_decode"
                 ) || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(
@@ -313,7 +322,12 @@ impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
             Expr::Path(path) => match path.path.get_ident() {
                 Some(ident) => {
                     let name = ident.to_string();
-                    self.known_functions.contains(&name)
+                    // UpperCamelCase single-ident calls are tuple-struct or
+                    // enum-variant constructors (`DraftRef(0)`, `Some(x)`),
+                    // deterministic by construction. Lowercase calls are
+                    // function calls and must resolve to a same-file helper.
+                    name.starts_with(|ch: char| ch.is_uppercase())
+                        || self.known_functions.contains(&name)
                         || matches!(name.as_str(), "Some" | "Ok" | "Err")
                 }
                 None => true,

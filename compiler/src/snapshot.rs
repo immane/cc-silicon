@@ -17,7 +17,8 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, SpanRecord,
+    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, PpTokenKind,
+    PpTokenRecord, SpanRecord, TokenKind, TokenRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -675,20 +676,23 @@ impl Snapshot {
             w.raw(&encode_continuation(continuation));
         }
 
+        // Wave 2 (`/11`) typed pp-tokens and C tokens: allocated count plus
+        // per-record bodies in ascending ID order (same convention as the
+        // typed literals/consts below).
+        w.u64(bus.arenas.pp_tokens.allocated() as u64);
+        for (id, token) in bus.arenas.pp_tokens.iter() {
+            w.u32(id.index());
+            w.raw(&encode_pp_token(token));
+        }
+        w.u64(bus.arenas.tokens.allocated() as u64);
+        for (id, token) in bus.arenas.tokens.iter() {
+            w.u32(id.index());
+            w.raw(&encode_token(token));
+        }
         // Reserved language stores: allocated count plus live IDs. Tombstone
         // positions are visible because removed IDs are absent from the live
         // list while `allocated` keeps counting, so trailing tombstones still
         // distinguish states. Record *bodies* remain reserved.
-        push_reserved(
-            &mut w,
-            bus.arenas.pp_tokens.allocated(),
-            bus.arenas.pp_tokens.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.tokens.allocated(),
-            bus.arenas.tokens.live_ids(),
-        );
         push_reserved(
             &mut w,
             bus.arenas.scopes.allocated(),
@@ -1453,6 +1457,116 @@ pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
     let negative = r.bool()?;
     r.finish()?;
     Ok(ConstRecord { value, negative })
+}
+
+/// Name of a [`PpTokenKind`], in declaration order.
+pub fn pp_token_kind_name(kind: PpTokenKind) -> &'static str {
+    match kind {
+        PpTokenKind::Identifier => "identifier",
+        PpTokenKind::PpNumber => "pp_number",
+        PpTokenKind::Punctuator => "punctuator",
+        PpTokenKind::Eof => "eof",
+    }
+}
+
+fn parse_pp_token_kind(name: &str) -> Option<PpTokenKind> {
+    match name {
+        "identifier" => Some(PpTokenKind::Identifier),
+        "pp_number" => Some(PpTokenKind::PpNumber),
+        "punctuator" => Some(PpTokenKind::Punctuator),
+        "eof" => Some(PpTokenKind::Eof),
+        _ => None,
+    }
+}
+
+/// Name of a [`TokenKind`], in declaration order.
+pub fn token_kind_name(kind: TokenKind) -> &'static str {
+    match kind {
+        TokenKind::Keyword => "keyword",
+        TokenKind::Identifier => "identifier",
+        TokenKind::Punctuator => "punctuator",
+        TokenKind::Integer => "integer",
+        TokenKind::Eof => "eof",
+    }
+}
+
+fn parse_token_kind(name: &str) -> Option<TokenKind> {
+    match name {
+        "keyword" => Some(TokenKind::Keyword),
+        "identifier" => Some(TokenKind::Identifier),
+        "punctuator" => Some(TokenKind::Punctuator),
+        "integer" => Some(TokenKind::Integer),
+        "eof" => Some(TokenKind::Eof),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`PpTokenRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | span `u32` LE |
+/// spelling bytes.
+pub fn encode_pp_token(record: &PpTokenRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(pp_token_kind_name(record.kind));
+    w.u32(record.span.index());
+    w.bytes(&record.spelling);
+    w.finish()
+}
+
+/// Decode one committed [`PpTokenRecord`]; consumes the whole input.
+pub fn decode_pp_token(bytes: &[u8]) -> Result<PpTokenRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind =
+        parse_pp_token_kind(&name).ok_or(CodecError::Unsupported("unknown pp-token kind"))?;
+    let span = SpanId::from_index(r.u32()?);
+    let spelling = r.bytes()?;
+    r.finish()?;
+    Ok(PpTokenRecord {
+        kind,
+        span,
+        spelling,
+    })
+}
+
+/// Canonical encoding of one committed [`TokenRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | span `u32` LE |
+/// name-present `u8` + optional name `u32` LE | pp-token `u32` LE.
+pub fn encode_token(record: &TokenRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(token_kind_name(record.kind));
+    w.u32(record.span.index());
+    match record.name {
+        Some(name) => {
+            w.u8(1);
+            w.u32(name.index());
+        }
+        None => w.u8(0),
+    }
+    w.u32(record.pp_token.index());
+    w.finish()
+}
+
+/// Decode one committed [`TokenRecord`]; consumes the whole input.
+pub fn decode_token(bytes: &[u8]) -> Result<TokenRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_token_kind(&name).ok_or(CodecError::Unsupported("unknown token kind"))?;
+    let span = SpanId::from_index(r.u32()?);
+    let token_name = match r.u8()? {
+        0 => None,
+        1 => Some(NameId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let pp_token = PpTokenId::from_index(r.u32()?);
+    r.finish()?;
+    Ok(TokenRecord {
+        kind,
+        span,
+        name: token_name,
+        pp_token,
+    })
 }
 
 /// Hash-relevant symbolic projection of a literal.

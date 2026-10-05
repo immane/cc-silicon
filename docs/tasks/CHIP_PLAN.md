@@ -22,7 +22,7 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP01 slice ✅ (`/10`, `c10_pp01` 7 tests) → T04 LX slice (M1-LX-01..07) → T05 PA M1 paths → T06 TY M1 subset → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 2 (M1 frontend) | T03 PP01 slice ✅ (`/10`, `c10_pp01` 7 tests) → T04 LX slice ✅ (`/11`, `c11_lex` 8 tests) → T05 PA M1 paths → T06 TY M1 subset → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
@@ -38,7 +38,7 @@ guarantees rework.
 |---|---|---|---|---|---|
 | T02 Control | CT01–CT14 (14) | 0 | 14 headers | stage/limit/hook freezes | 2–3 (CT subset for M1 run: CT01/02/06/11/13) |
 | T03 Preprocess | PP01–PP28 (28) | 0 | PP01 slice | `PpRequest`/`PpResult`, token-range, map rules | 2 (PP01 slice first) |
-| T04 Lex | LX01–LX18 (18) | 0 | LX01–08 slice | `TokenRecord`, link tags, provenance carrier | 2 (M1-LX-01..07 first) |
+| T04 Lex | LX01–LX18 (18) | LX01/02/05–08/16/17 slice scope (3 workers) | LX09–15/18 + forward link + PP04 | records frozen, kinds/stages/allowlist frozen | 2 (M1-LX-01..07 slice ✅ `/11`) |
 | T05 Parse | PA01–PA38 (38) | 0 | M1 paths | `NodeKind`, `NodeRecord`, kinds, TU carrier | 2 |
 | T06 Symbol/Type | TY01–TY34 (34) | 0 | M1 subset | scope/symbol/type records, File-Enter payload | 2 |
 | T07 Semantic | SE01–SE30 (30) | 0 (SE02/SE07 shapes need `SemRecord`) | M1 subset | `SemRecord` link encoding, conversion matrix | 2 |
@@ -104,14 +104,14 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 
 ### T04 Lex (LX01–LX18) — Wave 2 (M1-LX-01..07 first)
 
-- LX01 TokenClassifyChip | — (PP token in) | 2 FIRST
-- LX02 IdentifierDecodeChip: spelling → NameId | `names.entries` policy | 2
+- LX01 TokenClassifyChip | ✅ DONE (`/11` LxClassifyChip: keyword/identifier/punct/integer/Eof, C11 table) | 2
+- LX02 IdentifierDecodeChip: spelling → NameId | ✅ DONE (`/11` LxInternChip: first-seen order, 4 M1 names) | 2
 - LX03 KeywordClassifyChip | dialect gates | 2
 - LX04 PunctuatorDecodeChip | — | 2
-- LX05 IntegerRadixChip | M1 decimal-only gate | 2 FIRST
-- LX06 IntegerSuffixChip | M1 None-only gate | 2 FIRST
-- LX07 IntegerValueChip (big-int, no host overflow) | — | 2 FIRST
-- LX08 IntegerTypeSelectChip → `Int` only | full candidate set open | 2 FIRST
+- LX05 IntegerRadixChip | ✅ DONE (`/11` decimal-only gate in classify+decode) | 2
+- LX06 IntegerSuffixChip | ✅ DONE (`/11` None-only gate) | 2
+- LX07 IntegerValueChip (big-int, no host overflow) | ✅ DONE (`/11` decimal_magnitude in decode) | 2
+- LX08 IntegerTypeSelectChip → `Int` only | ✅ DONE (`/11` Int-only in decode) | 2
 - LX09 FloatSyntaxChip | float schemas | 3
 - LX10 FloatValueChip (correct rounding) | target formats | 3–4
 - LX11 EscapeDecodeChip | — | 3
@@ -119,8 +119,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX13 StringLiteralChip | string schemas | 3
 - LX14 AdjacentStringChip | provenance carrier (T03/T04) | 3
 - LX15 LiteralExtensionChip | GNU modes | 3–5
-- LX16 TokenLocationChip | provenance carrier | 3
-- LX17 TokenPublishChip (sole ordered publisher) | token/link tags | 2
+- LX16 TokenLocationChip | ✅ DONE (`/11` committed-span reuse, no T04 span writes) | 2
+- LX17 TokenPublishChip (sole ordered publisher) | ✅ PARTIAL (`/11` deterministic append/dispatch order; orchestrator fan-in deferred) | 2
 - LX18 LexErrorChip (finite advance) | diagnostic codes | 2
 
 ### T05 Parse (PA01–PA38) — Wave 2

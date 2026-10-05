@@ -187,6 +187,18 @@ impl TaskKind {
     /// artifact, or `Fail` with a typed diagnostic).
     pub const PREPROCESS_NORMALIZE: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/11`) LX-slice kind: T04 name-intern task (payload: PP-token
+    /// refs in source order; appends one `Name` body per first-seen
+    /// identifier spelling; completes `Ack`).
+    pub const LEX_INTERN: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 16);
+    /// Wave 2 (`/11`) LX-slice kind: T04 token-classify task (payload: PP-token
+    /// refs in source order; appends one `Token` per ref in order; completes
+    /// `Records` of the appended token refs).
+    pub const LEX_CLASSIFY: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/11`) LX-slice kind: T04 literal-decode task (payload:
+    /// exactly `[Token, PpToken]`; appends one `Literal` with
+    /// `token: Some(committed TokenId)`; completes `Record`).
+    pub const LEX_DECODE_LITERAL: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 18);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -306,6 +318,23 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/11`) LX-slice registry: the PP01 slice plus the three
+    /// frozen LX kinds (all `Frozen`; `LEX` owners start new codes at
+    /// local 19).
+    pub fn lx_slice() -> Self {
+        let mut registry = Self::pp01_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_INTERN, "lex.intern"),
+            (TaskKind::LEX_CLASSIFY, "lex.classify"),
+            (TaskKind::LEX_DECODE_LITERAL, "lex.decode_literal"),
+        ];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

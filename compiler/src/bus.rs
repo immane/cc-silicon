@@ -162,6 +162,68 @@ impl ArtifactRecord {
     }
 }
 
+/// A T03-owned preprocessing token (`/11` LX-slice freeze).
+///
+/// M1 produces only `Identifier`, `PpNumber`, `Punctuator`, and `Eof`;
+/// string/character literals and header names are deferred as explicit
+/// unsupported. `Eof` carries empty spelling and a zero-width span at the
+/// source end.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PpTokenRecord {
+    /// Preprocessing-token kind.
+    pub kind: PpTokenKind,
+    /// Committed T03-owned span (byte offsets into the owning source).
+    pub span: SpanId,
+    /// Raw spelling bytes.
+    pub spelling: Vec<u8>,
+}
+
+/// Preprocessing-token kinds (`/11` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PpTokenKind {
+    /// `int`, `main`, `void`, `return` at PP level (keywords not yet distinguished).
+    Identifier,
+    /// `2`, `3` (M1 decimal only; other numeric forms are explicit unsupported).
+    PpNumber,
+    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    Punctuator,
+    /// End of input (zero-width span at the source end).
+    Eof,
+}
+
+/// A T04-owned C token (`/11` LX-slice freeze).
+///
+/// `span` reuses the committed T03 PP span; T04 writes no spans. `name` is
+/// the interned spelling for `Identifier`/`Keyword` tokens. There is no
+/// forward `literal` link in this slice: literals point back at their token
+/// (`LiteralRecord.token`), and the reciprocal link stays deferred.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TokenRecord {
+    /// C-token kind.
+    pub kind: TokenKind,
+    /// Committed T03-owned PP span reused verbatim.
+    pub span: SpanId,
+    /// Interned spelling for `Identifier`/`Keyword` tokens.
+    pub name: Option<NameId>,
+    /// Originating committed PP token (committed before classification).
+    pub pp_token: PpTokenId,
+}
+
+/// C-token kinds (`/11` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenKind {
+    /// `int`, `void`, `return` (full C11 keyword table, membership-tested).
+    Keyword,
+    /// `main`.
+    Identifier,
+    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    Punctuator,
+    /// `2`, `3` (M1 decimal no-suffix only).
+    Integer,
+    /// End of input.
+    Eof,
+}
+
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
 /// candidate type (Gate 1 `/7` freeze of the rev-45 exact ordered fields).
 ///
@@ -215,10 +277,10 @@ pub struct Arenas {
     pub spans: TypedArena<SpanId, SpanRecord>,
     /// Macro expansion provenance.
     pub expansions: TypedArena<ExpansionId, ExpansionRecord>,
-    /// Preprocessing tokens (schema owned by T03).
-    pub pp_tokens: ReservedArena<PpTokenId>,
-    /// C tokens (schema owned by T04).
-    pub tokens: ReservedArena<TokenId>,
+    /// Preprocessing tokens (`/11` T03/T04 co-freeze: typed on freeze).
+    pub pp_tokens: TypedArena<PpTokenId, PpTokenRecord>,
+    /// C tokens (`/11` LX-slice freeze: typed on freeze).
+    pub tokens: TypedArena<TokenId, TokenRecord>,
     /// Scopes (schema owned by T06).
     pub scopes: ReservedArena<ScopeId>,
     /// Scope lifecycle events (schema owned by T06).

@@ -14,7 +14,7 @@
 // protocol order or hash-relevant wire tags.
 // ============================================================================
 
-use crate::bus::{ArtifactRecord, ConstRecord, LiteralRecord};
+use crate::bus::{ArtifactRecord, ConstRecord, LiteralRecord, TokenRecord};
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
 
@@ -33,7 +33,8 @@ pub struct RecordDraft {
 
 /// Closed typed draft bodies: the only families the commit
 /// materialization path accepts (`Literal`/`Const` frozen at Gate 1 `/7`;
-/// `Artifact` added at Wave 2 `/10` for the PP01 slice).
+/// `Artifact` added at Wave 2 `/10` for the PP01 slice; `Token`/`Name`
+/// added at `/11` for the LX slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
 /// draft body and the committed record share their fields exactly. Bodies
@@ -49,6 +50,13 @@ pub enum G1DraftBody {
     Const(ConstRecord),
     /// A normalized artifact to append to the `artifacts` arena (`/10`).
     Artifact(ArtifactRecord),
+    /// A C token to append to the `tokens` arena (`/11` LX slice).
+    Token(TokenRecord),
+    /// A name spelling to intern through the `InternTable` (`/11` LX slice).
+    Name {
+        /// Raw spelling bytes.
+        spelling: Vec<u8>,
+    },
 }
 
 impl G1DraftBody {
@@ -58,6 +66,8 @@ impl G1DraftBody {
             Self::Literal(_) => RecordFamily::Literal,
             Self::Const(_) => RecordFamily::Const,
             Self::Artifact(_) => RecordFamily::Artifact,
+            Self::Token(_) => RecordFamily::Token,
+            Self::Name { .. } => RecordFamily::Name,
         }
     }
 }

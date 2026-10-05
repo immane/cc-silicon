@@ -211,6 +211,26 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/11`) LX-slice field set: the M1 slice plus the LX
+    /// append fields (`names.entries` for interned names, `pp.tokens` for
+    /// `PpTokenRecord`, `lex.tokens` for `TokenRecord`; `lex.literals` is
+    /// already declared). Post-seed runtime declarations stay excluded from
+    /// the frozen hash per the two-tier model; the LX inventory is pinned by
+    /// the `LX_*_NAMES` contract lists instead.
+    pub fn lx_slice() -> Self {
+        let mut schema = Self::m1_slice();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Names, "entries"),
+            (StoreId::Pp, "tokens"),
+            (StoreId::Lex, "tokens"),
+        ];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Gate 1 (`/7`) M1 slice field set: foundation plus the two frozen
     /// language append fields (`lex.literals` for the `LiteralRecord`
     /// schema, `constants.records` for the `ConstRecord` schema).
@@ -677,6 +697,24 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "fragments",
         TaskKind::PREPROCESS_NORMALIZE,
     ),
+    (
+        LX_INTERN_CHIP,
+        StoreId::Names,
+        "entries",
+        TaskKind::LEX_INTERN,
+    ),
+    (
+        LX_CLASSIFY_CHIP,
+        StoreId::Lex,
+        "tokens",
+        TaskKind::LEX_CLASSIFY,
+    ),
+    (
+        LX_DECODE_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_DECODE_LITERAL,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -695,6 +733,13 @@ pub const G1_FOLD_CHIP: ChipId = ChipId(2);
 /// its `artifacts.fragments` appends.
 pub const PP01_CHIP: ChipId = ChipId(3);
 
+/// Wave 2 (`/11`) LX name-intern chip reservation.
+pub const LX_INTERN_CHIP: ChipId = ChipId(4);
+/// Wave 2 (`/11`) LX token-classify chip reservation.
+pub const LX_CLASSIFY_CHIP: ChipId = ChipId(5);
+/// Wave 2 (`/11`) LX literal-decode chip reservation.
+pub const LX_DECODE_CHIP: ChipId = ChipId(6);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -707,6 +752,13 @@ pub const fn is_pp01_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PREPROCESS_NORMALIZE.raw()
 }
 
+/// Whether a task kind belongs to the Wave 2 (`/11`) LX slice.
+pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_INTERN.raw()
+        || kind.raw() == TaskKind::LEX_CLASSIFY.raw()
+        || kind.raw() == TaskKind::LEX_DECODE_LITERAL.raw()
+}
+
 /// Enforce the store-owner allowlist for one manifest.
 ///
 /// Wave-gated: manifests that claim no Gate 1 slice kind pass untouched
@@ -717,11 +769,9 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
     if STORE_OWNER_ALLOWLIST.is_empty() {
         return Ok(());
     }
-    if !manifest
-        .task_kinds
-        .iter()
-        .any(|&kind| is_gate1_slice_kind(kind) || is_pp01_slice_kind(kind))
-    {
+    if !manifest.task_kinds.iter().any(|&kind| {
+        is_gate1_slice_kind(kind) || is_pp01_slice_kind(kind) || is_lx_slice_kind(kind)
+    }) {
         return Ok(());
     }
     let Some(&first_kind) = manifest.task_kinds.first() else {
@@ -765,6 +815,9 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONTROL_START_JOB, 0),
     (TaskKind::CONTROL_IMPORT_SOURCE, 0),
     (TaskKind::PREPROCESS_NORMALIZE, 1),
+    (TaskKind::LEX_INTERN, 2),
+    (TaskKind::LEX_CLASSIFY, 2),
+    (TaskKind::LEX_DECODE_LITERAL, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

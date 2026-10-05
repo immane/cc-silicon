@@ -307,6 +307,9 @@ pub enum CommitError {
     Limit(LimitError),
     /// An arena is at capacity; nothing was committed.
     Capacity(ArenaError),
+    /// The intern table would exceed its entry or byte budget; nothing was
+    /// committed (`/11` LX-slice `Name` appends).
+    Intern(InternError),
 }
 
 impl std::fmt::Display for CommitError {
@@ -434,6 +437,7 @@ impl std::fmt::Display for CommitError {
             ),
             Self::Limit(error) => write!(f, "limit: {error}"),
             Self::Capacity(error) => write!(f, "capacity: {error}"),
+            Self::Intern(error) => write!(f, "intern: {error}"),
         }
     }
 }
@@ -454,7 +458,8 @@ impl CommitError {
     /// `NonAdvancingProgress` → `(Protocol, 15)`,
     /// `ProgressLimit` → `(Protocol, 16)`,
     /// `TerminatorMissing` → `(Task, 10)`,
-    /// `UnpredictedRecord` → `(Protocol, 17)`.
+    /// `UnpredictedRecord` → `(Protocol, 17)`,
+    /// `Intern` → `(Protocol, 18)`.
     pub fn code(&self) -> DiagnosticCode {
         match self {
             Self::BackpressureCapacity { .. } => DiagnosticCode::new(DiagGroup::Protocol, 10),
@@ -465,6 +470,7 @@ impl CommitError {
             Self::NonAdvancingProgress { .. } => DiagnosticCode::new(DiagGroup::Protocol, 15),
             Self::ProgressLimit { .. } => DiagnosticCode::new(DiagGroup::Protocol, 16),
             Self::UnpredictedRecord { .. } => DiagnosticCode::new(DiagGroup::Protocol, 17),
+            Self::Intern { .. } => DiagnosticCode::new(DiagGroup::Protocol, 18),
             Self::TerminatorMissing { .. } => DiagnosticCode::new(DiagGroup::Task, 10),
             _ => DiagnosticCode::new(DiagGroup::Protocol, 1),
         }
@@ -591,6 +597,12 @@ pub fn commit_proposals(
     let mut new_literals: u32 = 0;
     let mut new_consts: u32 = 0;
     let mut new_artifacts: u32 = 0;
+    let mut new_tokens: u32 = 0;
+    // Simulated intern table for `Name` bodies (`/11`): cloned once, then
+    // fed every `Name` spelling in validation order so capacity is decided
+    // without mutating the bus. The apply pass repeats the identical
+    // sequence, so its interns are infallible after this preflight.
+    let mut intern_sim = bus.intern.clone();
 
     // Predicted record IDs for this batch's appends, in apply order:
     // `(owning task, family, predicted index)`. A `Complete` that names a
@@ -600,11 +612,14 @@ pub fn commit_proposals(
     let literals_base = bus.arenas.literals.allocated();
     let consts_base = bus.arenas.consts.allocated();
     let artifacts_base = bus.arenas.artifacts.allocated();
+    let tokens_base = bus.arenas.tokens.allocated();
+    let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
         let mut next_literal = literals_base;
         let mut next_const = consts_base;
         let mut next_artifact = artifacts_base;
+        let mut next_token = tokens_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -632,6 +647,20 @@ pub fn commit_proposals(
                                 next_artifact,
                             ));
                             next_artifact = next_artifact.saturating_add(1);
+                        }
+                        G1DraftBody::Token(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Token,
+                                next_token,
+                            ));
+                            next_token = next_token.saturating_add(1);
+                        }
+                        G1DraftBody::Name { .. } => {
+                            // Names intern lookup-first: no predicted ID is
+                            // needed because no `Complete` carrier references
+                            // a same-batch name (future-dated `Name` refs are
+                            // rejected below; workers read committed names).
                         }
                     }
                 }
@@ -735,6 +764,17 @@ pub fn commit_proposals(
                             }
                             RecordRef::Artifact(id) if id.index() >= artifacts_base => {
                                 Some((tagged.task, RecordFamily::Artifact, id.index()))
+                            }
+                            RecordRef::Token(id) if id.index() >= tokens_base => {
+                                Some((tagged.task, RecordFamily::Token, id.index()))
+                            }
+                            RecordRef::Name(id) if id.index() >= intern_base => {
+                                // Names must be committed before use: same-batch
+                                // names are interned in this batch, but no
+                                // prediction carrier exists for them (lookup-first
+                                // dedup), so a future-dated `Name` ref is a loud
+                                // reject, never a guessed ID.
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
                             }
                             _ => None,
                         };
@@ -841,6 +881,18 @@ pub fn commit_proposals(
                         G1DraftBody::Const(_) => {
                             new_consts = new_consts.saturating_add(1);
                         }
+                        G1DraftBody::Token(_) => {
+                            new_tokens = new_tokens.saturating_add(1);
+                        }
+                        G1DraftBody::Name { spelling } => {
+                            // Lookup-first dedup: already-interned spellings
+                            // consume no capacity and produce no new ID.
+                            if intern_sim.lookup(spelling).is_none() {
+                                intern_sim
+                                    .intern(spelling, &limits)
+                                    .map_err(CommitError::Intern)?;
+                            }
+                        }
                         G1DraftBody::Artifact(artifact) => {
                             // `/10` rev-44/45: map-mandatory kinds need a
                             // valid source and a well-formed map; map-optional
@@ -889,6 +941,8 @@ pub fn commit_proposals(
                         G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
                         G1DraftBody::Const(_) => (StoreId::Constants, "records"),
                         G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
+                        G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
+                        G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1104,6 +1158,7 @@ pub fn commit_proposals(
             new_literals,
             new_consts,
             new_artifacts,
+            new_tokens,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1207,6 +1262,29 @@ pub fn commit_proposals(
                                 id.index()
                             )));
                             report.appended.push((*task, RecordRef::Artifact(id)));
+                        }
+                        G1DraftBody::Token(record) => {
+                            let id = bus.arenas.tokens.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Token,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Token(id)));
+                        }
+                        G1DraftBody::Name { spelling } => {
+                            // Preflighted exactly (same order, same table
+                            // state): infallible here. Limits are immutable
+                            // mid-batch, so capacity reserved above holds.
+                            let limits = bus.limits();
+                            match bus.intern.intern(spelling, &limits) {
+                                Ok(id) => {
+                                    report.appended.push((*task, RecordRef::Name(id)));
+                                }
+                                Err(_) => {
+                                    debug_assert!(false, "intern preflight reserved this entry");
+                                }
+                            }
                         }
                     }
                 }
@@ -1363,6 +1441,8 @@ fn validate_append_authorization(
             G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
             G1DraftBody::Const(_) => (StoreId::Constants, "records"),
             G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
+            G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
+            G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1480,6 +1560,8 @@ struct CapacityPlan {
     new_consts: u32,
     /// New artifact records (Wave 2 `/10` PP01 materialization).
     new_artifacts: u32,
+    /// New C-token records (Wave 2 `/11` LX-slice materialization).
+    new_tokens: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1494,7 +1576,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 7] = [
+    let checks: [(u32, u32, &'static str); 8] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1518,6 +1600,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             plan.new_artifacts,
             "artifacts",
         ),
+        (bus.arenas.tokens.allocated(), plan.new_tokens, "tokens"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1548,7 +1631,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_requests
         + plan.new_literals
         + plan.new_consts
-        + plan.new_artifacts) as u64
+        + plan.new_artifacts
+        + plan.new_tokens) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

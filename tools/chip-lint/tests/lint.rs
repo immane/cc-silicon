@@ -170,3 +170,30 @@ fn rejects_worker_compute_host_api() {
         .iter()
         .any(|message| message.contains("Host or nondeterministic")));
 }
+
+#[test]
+fn accepts_type_constructors_but_rejects_bare_unknown_calls() {
+    let source = r#"
+        struct TokenChip;
+        impl TokenChip {
+            fn compute(&self) -> u32 {
+                let handle = DraftRef(0);
+                let ok: Option<u32> = Some(1);
+                handle.0 + ok.unwrap_or(0)
+            }
+        }
+    "#;
+    assert!(messages(source).is_empty());
+
+    let source = r#"
+        struct UnknownCallChip;
+        impl UnknownCallChip {
+            fn compute(&self) -> u32 {
+                mystery_helper(1)
+            }
+        }
+    "#;
+    assert!(messages(source)
+        .iter()
+        .any(|message| message.contains("not statically auditable")));
+}

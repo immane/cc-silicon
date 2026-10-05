@@ -246,6 +246,23 @@ New artifact `t01-c01-c06/10` (`9d2479e7…81a5e9`); acceptance
 `compiler/tests/c10_pp01.rs` (7 tests); item list in
 [PP01_NORMALIZE_SLICE.md](PP01_NORMALIZE_SLICE.md).
 
+`/11` amendment — Wave 2 slice 2, LX tokenize/classify/decode (R1 auto-bump; `/10` preserved as history): `PpTokenRecord`/`PpTokenKind` and
+`TokenRecord`/`TokenKind` (M1-closed) with `pp.tokens`/`tokens` arenas
+becoming typed on freeze; full C11 keyword table (membership); identifier +
+keyword interning with four-name M1 order (NI-02 resolved); integer-only
+decode with the commit-side token back-link (DOC-10); `lex.intern(16)` /
+`lex.classify(17)` / `lex.decode_literal(18)` with stage-2 rows and three
+allowlist rows (chips 4/5/6); `Name`/`Token` append materialization
+(lookup-first interning with read-only capacity simulation, `Intern`
+protocol-18 error, future-`Name` refs rejected); snapshot bodies +
+`PPTOKEN/TOKEN_KIND_NAMES` and record-field lists in the hash. New hashed
+rules `lex.intern-first-seen-order`, `lex.keyword-table-membership`,
+`lex.integer-decimal-only`, `lex.token-back-link-committed`,
+`commit.name-interned-lookup-first`, `commit.token-materialized`. New
+artifact `t01-c01-c06/11` (`4484ae13…ce69`); acceptance
+`compiler/tests/c11_lex.rs` (8 tests); item list in
+[LX_SLICE.md](LX_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
