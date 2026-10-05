@@ -32,14 +32,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`), the
 /// Wave 3 LX string slice (`/33`), the Wave 3 PA decl slice (`/34`),
 /// the Wave 3 PA expr slice (`/35`), the Wave 3 PA recovery
-/// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/37";
+/// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`), and
+/// the Wave 3 VF14 evidence slice (`/38`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/38";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "59721bd8870722785e43ed48680d818ca1d913641009fab8e8a8a503b562fc8c";
+pub const CONTRACT_HASH: &str = "f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -231,6 +232,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pa.recovery-sync",
     "const.branch-selected",
     "const.static-assert",
+    "vf.evidence-complete",
+    "vf.evidence-stage",
+    "vf.evidence-never-pass-missing",
 ];
 
 /// The `TaskState` variant names, in encoding order.

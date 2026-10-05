@@ -515,6 +515,13 @@ impl TaskKind {
     /// be empty; checks the global M1 store contract; completes `Ack`).
     pub const VERIFICATION_STORE_INVARIANT: Self =
         Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/38`) VF14-slice kind: evidence-classify task (payload:
+    /// exactly six refs `[instance, gate, compile, link, run, check]`;
+    /// classifies the T00 gate outcome over the complete
+    /// compile/link/run/check evidence vector; PASS completes `Ack`,
+    /// every other verdict emits exactly one typed `Fail`).
+    pub const VERIFICATION_EVIDENCE_CLASSIFY: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 20);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -641,7 +648,7 @@ impl TaskKindRegistry {
 
     /// The Wave 2 (`/19`) VF01-slice registry: the VF05 slice plus the
     /// frozen store-invariant kind (all `Frozen`; `VERIFICATION` owners
-    /// start new codes at local 20).
+    /// start new codes at local 21).
     pub fn vf01_slice() -> Self {
         let mut registry = Self::vf05_slice();
         let slice: &[(TaskKind, &str)] = &[(
@@ -697,6 +704,22 @@ impl TaskKindRegistry {
             (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
             (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
         ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/38`) VF14 evidence-slice registry: the
+    /// const-branch slice plus the frozen evidence-classify kind (all
+    /// `Frozen`; `VERIFICATION` owners start new codes at local 21).
+    pub fn vf_evidence_slice() -> Self {
+        let mut registry = Self::const_branch_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_EVIDENCE_CLASSIFY,
+            "verification.evidence_classify",
+        )];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

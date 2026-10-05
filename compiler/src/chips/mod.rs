@@ -119,8 +119,10 @@ pub use self::types::{
     TyConvInput, TyTypeChip, TyTypeInput,
 };
 pub use self::verify::{
-    project_vf01_input, project_vf05_input, project_vf06_input, project_vf12_input, Vf01Chip,
-    Vf01Input, Vf05Chip, Vf05Input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input,
+    classify_vf14_evidence, decode_gate_raw, decode_result_value, project_vf01_input,
+    project_vf05_input, project_vf06_input, project_vf12_input, project_vf14_input, StageEvidence,
+    Vf01Chip, Vf01Input, Vf05Chip, Vf05Input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input, Vf14Chip,
+    Vf14Input, Vf14Outcome, Vf14Stage, VF14_TASK_KIND,
 };
 
 use crate::bus::{CompilerBus, TaggedProposal};

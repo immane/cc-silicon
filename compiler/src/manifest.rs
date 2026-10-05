@@ -1148,6 +1148,11 @@ pub const CL04_COND_CHIP: ChipId = ChipId(54);
 /// asserted ICE, nonzero passes, zero fails, non-ICE is
 /// `NotConstantExpression`, Ack-only).
 pub const CL07_ASSERT_CHIP: ChipId = ChipId(55);
+/// Wave 3 (`/38`) T13 evidence-classify chip reservation (VF14 scope:
+/// one Host-fed evidence pin set plus a frozen test-instance ref,
+/// classified over the complete compile/link/run/check vector; PASS
+/// completes `Ack`, every other verdict is exactly one typed `Fail`).
+pub const VF14_CHIP: ChipId = ChipId(56);
 
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
@@ -1188,6 +1193,13 @@ pub const fn is_const_branch_slice_kind(kind: TaskKind) -> bool {
         || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_OR.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_COND.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_STATIC_ASSERT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/38`) VF14 evidence
+/// slice (evidence classification over the complete
+/// compile/link/run/check vector).
+pub const fn is_vf_evidence_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_EVIDENCE_CLASSIFY.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/36`) PA recovery slice
@@ -1369,6 +1381,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pa_expr_slice_kind(kind)
             || is_pa_recovery_slice_kind(kind)
             || is_const_branch_slice_kind(kind)
+            || is_vf_evidence_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1472,6 +1485,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONSTANT_CONST_BRANCH_OR, 2),
     (TaskKind::CONSTANT_CONST_BRANCH_COND, 2),
     (TaskKind::CONSTANT_CONST_STATIC_ASSERT, 2),
+    (TaskKind::VERIFICATION_EVIDENCE_CLASSIFY, 6),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

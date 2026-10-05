@@ -243,8 +243,8 @@ fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
     // (`/31`), and the two LX char/string rows (`/33`; `/25` and the Ack-only
     // PP line (`/28`), pragma (`/29`), expansion-map (`/30`), LX float
     // (`/32`), LX escape (`/33`), PA decl (`/34`), PA expr (`/35`),
-    // PA recovery (`/36`), and T08 const-branch (`/37`) slices add no
-    // rows).
+    // PA recovery (`/36`), T08 const-branch (`/37`), and VF14 evidence
+    // (`/38`) slices add no rows).
     assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.

@@ -809,6 +809,40 @@ plus chip IDs 52–55; the integrator verified the `/36` head (no
 (`59721bd8…2fc8c`); acceptance `compiler/tests/c37_const_branch.rs`
 (10 tests); item list in [CONST_BRANCH_SLICE.md](CONST_BRANCH_SLICE.md).
 
+`/38` amendment — Wave 3 slice 13, VF14 evidence-classify (R1
+auto-bump; `/37` preserved as history): one read-only verifier
+classifying the T00 gate outcome over the complete
+compile/link/run/check evidence vector (T13 VF14 scope).
+`Vf14Chip` (chip 56) completes `Ack` when every required stage is
+present and passing; any present failure — in particular compile-ok
+with run-fail — is FAIL at the earliest failing stage in pipeline
+order (typed `Fail`, never PASS); a required-but-missing stage is
+rejected (typed `Fail`, never PASS); an undecodable carrier or an
+invalid stage gate is rejected (typed `Fail`, never PASS).
+Precedence is total: invalid gate, then earliest missing required
+stage, then earliest undecodable slot anywhere, then earliest failing
+slot anywhere. The payload convention is exactly six refs
+`[instance, gate, compile, link, run, check]`; the gate is a
+single-byte `Const` (0 compile / 1 link / 2 run / 3 check, required
+evidence is the pipeline prefix); evidence slots decode the frozen
+M1-scope carrier map (`Ack`→pass, `Diagnostic`→fail,
+`Empty`→absent, `Record`/`Records`→undecodable, never PASS); the
+instance ref is resolvability-checked only, never interpreted
+(`HostTestEvidence` schema stays deferred as DEFECT-VF14-01, the
+boolean carrier as DEFECT-VF14-02). No batch logic, no H6
+dependency: exactly one transition proposal per handle. The
+delivered draft defined file-local candidate kind/chip consts plus a
+`candidate_kind()` helper; the integrator verified the `/37` head
+(no `VERIFICATION` local past 19, `VF14` chip 56 free after
+`CL07_ASSERT_CHIP = 55`) and froze `evidence_classify` (local 20),
+stage 6, layer 6, `vf_evidence_slice()` registry (68 entries,
+cumulative over `const_branch_slice()`); no schema change
+(PP-slice reuse); no allowlist rows (zero writes).
+New hashed rules `vf.evidence-complete`, `vf.evidence-stage`,
+`vf.evidence-never-pass-missing`. New artifact `t01-c01-c06/38`
+(`f18068f9…0d83`); acceptance `compiler/tests/c38_vf14.rs`
+(10 tests); item list in [VF_EVIDENCE_SLICE.md](VF_EVIDENCE_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

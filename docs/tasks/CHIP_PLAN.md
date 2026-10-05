@@ -296,7 +296,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - VF07 CfgInvariant / VF08 IrInvariant / VF09 SsaInvariant / VF10 MachineInvariant / VF11 AbiInvariant | IR/machine records | 3 (out of M1)
 - VF12 IrInterpret (M1: symbolic, models return `5`) | ✅ DONE (`/17` Vf12Chip, `c17_vf12` 6 tests; single entry block, `Constant`+`Return`, completes modeled `Const`; wider ops deferred) | 2
 - VF13 ReplayCompare (canonical projection) | trace protocol | 2
-- VF14 EvidenceClassify (never PASS on missing evidence) | T00 protocol | 2–3
+- VF14 EvidenceClassify (never PASS on missing evidence) | ✅ DONE (`/38` Vf14Chip, `c38_vf14` 10 tests; complete-vector classify with total invalid→missing→undecodable→fail precedence; instance resolvability-only + M1 carrier map deferred as DEFECT-VF14-01/02) | 2–3
 
 ## 5. Unblock checklist (serial T01 work before each wave)
 
