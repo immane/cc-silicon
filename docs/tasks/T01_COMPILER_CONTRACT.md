@@ -537,6 +537,26 @@ names PP24. `preprocess.macro_builtin` (local 31), stage 1, layer 1,
 (`1c4c6547…9708faa`); acceptance `compiler/tests/c27_builtin.rs`
 (9 tests); item list in [PP_BUILTIN_SLICE.md](PP_BUILTIN_SLICE.md).
 
+`/28` amendment — Wave 3 slice 3, PP line (R1 auto-bump; `/27`
+preserved as history): new `PpLineChip` (chip 35, PP23), pure
+single-task (one dispatch, no bus writes, `Complete(Ack)`; no children,
+so the frozen-join path never applies). One directive line's pp-token
+refs validate to a `LogicalLocation`: `#line number "file"?` or a GNU
+`# lineno "file" flags?` marker (`#` accepts the `%:` spelling; flag
+values accepted and ignored). Numbers must be all-ASCII-digit spellings
+in `1..=2^31-1` (zero, overflow, and non-digit forms like `1e5` fail);
+files must be `"..."` strings decoded with only `\\` and `\"` escapes;
+a missing file means retain-current-file (`file: None`). The physical
+source (first token's span owner) and the declared logical line/file
+stay distinct; the wiring layer persists the location (no store field
+lands). `preprocess.line_directive` (local 32), stage 1, layer 1,
+`pp_line_slice()` registry (45 entries, cumulative over
+`pp_builtin_slice()`); no schema change; no allowlist row (Ack-only,
+read-only). New hashed rules `pp.line-logical`, `pp.line-gnu-marker`,
+`pp.line-range`. New artifact `t01-c01-c06/28`
+(`5af3f3fb…48acc71`); acceptance `compiler/tests/c28_line.rs`
+(10 tests); item list in [PP_LINE_SLICE.md](PP_LINE_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

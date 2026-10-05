@@ -1,7 +1,7 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/27` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/28` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/26` (committed) with `/27` implemented
+> 2026-10-06 after landing `/27` (committed) with `/28` implemented
 > and test-green but NOT yet fully verified or committed.
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
@@ -9,18 +9,18 @@
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/26` (`6e73055`), hash
-  `59bdf0f52ef0c03757bdf391f427a7423242b83ae4a5dc35bb9bb8bd9031a006`.
-- In worktree, UNCOMMITTED: `/27` PP builtins (PP24 chip), contract
-  already bumped to `t01-c01-c06/27`, hash recomputed
-  (`1c4c6547865ecc21ffb9f2d89fa762acd5a31d7e1a32c749663e6f8779708faa`).
-  `c27_builtin` 9/9 green, but the final full-suite (§5) run is still
+- Committed: `t01-c01-c06/27` (`0c9dba4`), hash
+  `1c4c6547865ecc21ffb9f2d89fa762acd5a31d7e1a32c749663e6f8779708faa`.
+- In worktree, UNCOMMITTED: `/28` PP line (PP23 chip), contract
+  already bumped to `t01-c01-c06/28`, hash recomputed
+  (`5af3f3fb3dbb74931765332dc5d67b732ac7f6ea1b5276df0e458176948acc71`).
+  `c28_line` 10/10 green, but the final full-suite (§5) run is still
   pending — run §5 fully, then commit as
-  `feat: add Wave 3 PP builtins slice as t01-c01-c06/27`.
-- Untracked, explicitly deferred: `pp_line.rs`, `pp_pragma.rs`
-  (later slices; do NOT touch in `/27`).
+  `feat: add Wave 3 PP line slice as t01-c01-c06/28`.
+- Untracked, explicitly deferred: `pp_pragma.rs`
+  (later slice; do NOT touch in `/28`).
 - Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
-  H04) is MERGED; `/20`–`/26` (7 commits) are committed locally,
+  H04) is MERGED; `/20`–`/27` (8 commits) are committed locally,
   UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
 - The M1 C frontend is closed end-to-end with a working PP pipeline:
   normalize→splice→comment→scan→conditional→define→expand→directive→LX
@@ -56,7 +56,8 @@
 | `/24` | PP macro expansion (+`function_like` fix) | `preprocess/{pp_invoke,pp_substitute}.rs` | `c24_expand` 12 |
 | `/25` | PP include resolve + enter | `preprocess/{pp_resolve,pp_enter}.rs` | `c25_include` 8 |
 | `/26` | PP variadic invocation | `preprocess/pp_variadic.rs` | `c26_variadic` 10 |
-| `/27` | PP builtin macros (UNCOMMITTED) | `preprocess/pp_builtin.rs` | `c27_builtin` 9 |
+| `/27` | PP builtin macros | `preprocess/pp_builtin.rs` | `c27_builtin` 9 |
+| `/28` | PP line directives (UNCOMMITTED) | `preprocess/pp_line.rs` | `c28_line` 10 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
@@ -152,8 +153,8 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/27` (run §5 first), then PP remainder in pipeline
-  order — PP23 line, PP25
+- NEXT UP: commit `/28` (run §5 first), then PP remainder in pipeline
+  order — PP25
   pragma, PP27 expansion map, PP28 preprocessed emit — then T04 LX
   remainder (strings/chars/floats), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +

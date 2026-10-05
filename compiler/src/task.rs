@@ -359,6 +359,13 @@ impl TaskKind {
     /// explicit `Unsupported`).
     pub const PREPROCESS_MACRO_BUILTIN: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 31);
+    /// Wave 3 (`/28`) PP-line-slice kind: line-directive task (payload: one
+    /// directive line's pp-token refs in payload order, either `#line
+    /// number "file"?` or a GNU `# lineno "file" flags?` marker;
+    /// validates the logical location and completes `Ack`; malformed
+    /// input fails as a typed `Invalid`).
+    pub const PREPROCESS_LINE_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 32);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -538,6 +545,22 @@ impl TaskKindRegistry {
         let slice: &[(TaskKind, &str)] = &[(
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/28`) PP-line-slice registry: the PP-builtin
+    /// slice plus the frozen line-directive kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 33).
+    pub fn pp_line_slice() -> Self {
+        let mut registry = Self::pp_builtin_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_LINE_DIRECTIVE,
+            "preprocess.line_directive",
         )];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

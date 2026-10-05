@@ -56,15 +56,16 @@ pub use self::lex::{
 };
 pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use self::preprocess::{
-    compose_map, normalize, project_pp_builtin_input, project_pp_comment_input, project_pp_input,
-    project_pp_scan_input, project_pp_splice_input, replace_comments, scan, splice, PpBuiltinChip,
-    PpBuiltinInput, PpCommentChip, PpCommentInput, PpConditionalChip, PpConditionalInput,
-    PpDefineChip, PpDefineInput, PpDiagnosticChip, PpDiagnosticInput, PpDirectiveChip,
-    PpDirectiveInput, PpIncludeEnterChip, PpIncludeEnterInput, PpIncludeResolveChip,
-    PpIncludeResolveInput, PpInput, PpInvokeChip, PpInvokeInput, PpNormalizeChip, PpRedefineChip,
-    PpRedefineInput, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, PpSubstituteChip,
-    PpSubstituteInput, PpUndefChip, PpUndefInput, PpVariadicChip, PpVariadicInput, PpVariadicMode,
-    ScannedToken, M1_PUNCTUATORS,
+    compose_map, line_location, normalize, project_pp_builtin_input, project_pp_comment_input,
+    project_pp_input, project_pp_line_input, project_pp_scan_input, project_pp_splice_input,
+    replace_comments, scan, splice, LogicalLocation, PpBuiltinChip, PpBuiltinInput, PpCommentChip,
+    PpCommentInput, PpConditionalChip, PpConditionalInput, PpDefineChip, PpDefineInput,
+    PpDiagnosticChip, PpDiagnosticInput, PpDirectiveChip, PpDirectiveInput, PpIncludeEnterChip,
+    PpIncludeEnterInput, PpIncludeResolveChip, PpIncludeResolveInput, PpInput, PpInvokeChip,
+    PpInvokeInput, PpLineChip, PpLineInput, PpNormalizeChip, PpRedefineChip, PpRedefineInput,
+    PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, PpSubstituteChip, PpSubstituteInput,
+    PpUndefChip, PpUndefInput, PpVariadicChip, PpVariadicInput, PpVariadicMode, ScannedToken,
+    M1_PUNCTUATORS, PP23_TASK_KIND, PP_LINE_MAX,
 };
 pub use self::semantic::{
     project_se_binary_input, project_se_literal_input, project_se_return_input, SeBinChip,
