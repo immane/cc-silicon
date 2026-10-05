@@ -319,6 +319,13 @@ Keep the selected AB1a/AB1b decision (CT03 decision-only; dispatcher applies):
    T02/T13 owner fixtures/sign-offs remain pending; the alternative (another
    T01-approved atomic terminal path, e.g. reserve bounded terminal diagnostic
    slots before dispatch) is retained as an implementation option.
+   **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a
+   `/6` freeze; no code): the "BLOCKED" framing above is qualified by the
+   rev-42 selected quota>1-capable bounded recovery mechanism to be frozen in
+   `/6` (pre-dispatch errors leave tasks `Ready`; failed batch commits no
+   semantic state; dispatch-order `Failed` recovery; no N pre-reservation;
+   `NONE` fallback; state guard); exact atomic realization + fixtures remain
+   open.]**
 7. The sole report-append site (M1 draft §10.2 step 6) appends one
    `TickRecord` for the tick, now recording the ordered dispatched set and the
    per-stage metrics.
@@ -379,6 +386,10 @@ Selection must be deterministic **and** starvation-free across non-empty stages:
   `TaskState::Failed(DiagnosticId::NONE)` sentinel (never stranded); the batch
   behavior is **proposed only** and its exact atomic/bounded implementation is
   **BLOCKED/co-freeze** (§2.1 invariant 4, §2.4 step 6, §6).
+  **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a
+  `/6` freeze; no code): the "proposed only / BLOCKED" batch framing above is
+  qualified by the rev-42 selected quota>1-capable bounded recovery mechanism
+  to be frozen in `/6`; exact atomic realization + fixtures remain open.]**
 - **Replay.** For identical input, config, pins, and initial state, the stage
   assignment version, dispatch order, proposal order, commit outcome, snapshot
   hash, and per-tick report are identical across runs. The quota is part of the
@@ -398,6 +409,10 @@ Selection must be deterministic **and** starvation-free across non-empty stages:
 > committed `DiagnosticId` when capacity allows, else the
 > `TaskState::Failed(DiagnosticId::NONE)` sentinel, never stranded) is preserved
 > (see §2.1 invariant 4, §2.4 step 6, §6).
+> **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a
+> `/6` freeze; no code): the "direction only / BLOCKED" batch framing above is
+> qualified by the rev-42 selected quota>1-capable bounded recovery mechanism
+> to be frozen in `/6`; exact atomic realization + fixtures remain open.]**
 
 ### 2.8 Metrics and acceptance evidence
 
@@ -629,6 +644,13 @@ listed here.
   `TaskState::Failed(DiagnosticId::NONE)` sentinel (never stranded). **Alternative
   retained for `/6` (exact design `[INT]`):** another T01-approved atomic terminal
   path (e.g. reserve bounded terminal diagnostic slots **before** dispatch).
+  **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a
+  `/6` freeze; no code): the "implementation BLOCKED" framing of this H6 item
+  is qualified by the rev-42 selected quota>1-capable bounded recovery
+  mechanism to be frozen in `/6` (pre-dispatch errors leave tasks `Ready`;
+  failed batch commits no semantic state; dispatch-order `Failed` recovery; no
+  N pre-reservation; `NONE` fallback; state guard); exact atomic realization +
+  fixtures remain open.]**
 - **In-flight bound (rev 33/34 H9 removal direction accepted in principle;
   remaining `[INT]` items open).** **Current operative direction:** the `/6`
   candidate **removes `max_inflight_total`** (and with it `InflightQuotaExceeded`)

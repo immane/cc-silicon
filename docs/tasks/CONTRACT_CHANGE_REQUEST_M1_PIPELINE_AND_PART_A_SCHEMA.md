@@ -1961,6 +1961,47 @@ line 59**. These additions are recorded here as **open catalog corrections**
 (consolidated as OB-18 in the M1 proposal §24.11), not as accepted amendments; the
 `/6` freeze must reconcile T01 §4, T01 §7.1, and ADR-0002 §2.4 together.
 
+**OB-18 seed list S1–S12 (user-accepted recommendation, 2026-10-05; T01
+co-freeze pending; not a `/6` freeze; no code).** The rev-54 open catalog
+corrections above are seeded as twelve entries. None is frozen; each awaits
+T01/integrator co-freeze:
+- **S1 — continuation fields:** `continuation: Option<ContinuationRef>` typing
+  plus the rev-43 exact ordered `ContinuationRecord` fields (no `awaited`);
+  `TaskState::Waiting(WaitSet)` sole awaited-child source.
+- **S2 — dispatch ordering rule:** `(stage ordinal, phase priority, enqueue
+  ordinal, TaskId)`.
+- **S3 — commit order rule:** `(dispatch_ordinal, enqueue ordinal, TaskId,
+  proposal index)`.
+- **S4 — `Proposal`/`ResultValue` deltas:** `AppendRecords`/`Progress`/
+  `AwaitChildren` additions and the `ResultValue` wire set. The
+  `ResultValue::DraftRecords` conflict is resolved against the OB-42 Group-B
+  reuse direction (Legal=`Record`, multi=`Records`, non-legal=`Fail`, cursor
+  via continuation; `DraftRecords` dropped from `M1AppendSchema`) before the
+  seed list is frozen.
+- **S5 — consume envelope:** the result-consumption (consume+enqueue) atomic
+  unit or the T01-defined equivalent persistent delivery claim.
+- **S6 — queue membership:** `Waiting` tasks sit in no stage queue;
+  `Progress` → `Ready` plus exactly one own-stage-queue entry.
+- **S7 — latch/in-flight clear:** the latch clear allowance (ADR-0002 §2.4
+  step 1 already records the tick-start-clear supersession); the clear
+  owner/order remains open.
+- **S8 — five-outcome set + T01 §7.1 C03 update:** `{Complete, Fail,
+  AwaitHost, AwaitChildren, Progress}` (plus the failed-batch regime)
+  replacing the three-outcome set; C03 updated accordingly.
+- **S9 — reserved-ID protocol:** the T01 deterministic reserved-ID /
+  local-reference relocation protocol (whole-batch pre-reservation/prediction
+  before typed `RecordLink` validation/resolution), generalizing the T04-rev-2
+  reciprocal-pair condition (OB-10/OB-49).
+- **S10 — `Fault` representation:** the missing `Fault` carrier stays an open
+  catalog item.
+- **S11 — Group A/B/C decided entries as first catalogued supersessions:**
+  the user-accepted Group A/B/C recommendations (M1 proposal §24.15–§24.17)
+  are applied as the first catalogued `/6` supersessions of the stale T01 §4
+  sentences (fail-fast/sibling-cancellation, `operands`/`awaited`,
+  `DraftRecords`, marker family).
+- **S12 — §3-vs-§4 mis-attribution fix:** the symbolic-width citation belongs
+  to **T01 §3:59-60**, not T01 §4; the catalog entry is retargeted there.
+
 **Request I5 — documentation reconciliation.** Resolve the direct contradiction
 between [COMPILER_SFL_MANIFEST.md](../../compiler/contracts/COMPILER_SFL_MANIFEST.md)
 §4 ("adding fields or rules changes the frozen contract hash") and
@@ -2499,7 +2540,7 @@ draft from one track must not invent another track's shape.
 |---|---|---|---|
 | C + E (artifacts/literals + scope/symbol/type) | H1/row C (`§17.1`, `§18.1`), T06/E (`§17.3`) | Different stores/families and no shared carrier between them; each owner drafts its own enum/field questions | No mutual field references, no private family reuse |
 | A + T13 (pipeline + verifier) | pipeline T02/T13 (`§17.7`, `§18.4`/`§18.6`) | T13's batch-verification fixtures can be designed while the T01 shared scheduler schema is still draft | T13 may not define a verifier interface; VD/CT chips may not bind a stage until `/6` |
-| H (IR rule inventory) | T09/H (`§17.6`, `§18.5`/`§18.8`) | The `(rejection → rule-id)` inventory and marker question can be inventoried (§H3/§H8/H11) while the shared marker family is still open | No rule may be claimed hashed; no marker family may be invented before T01 consolidation |
+| H (IR rule inventory) | T09/H (`§17.6`, `§18.5`/`§18.8`) | The `(rejection → rule-id)` inventory and marker question can be inventoried (§H3/§H8/H11) while the shared marker family is still open **[Rev-49 note: the marker-family residual is superseded for the operative direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new marker family); history preserved]** | No rule may be claimed hashed; no marker family may be invented before T01 consolidation |
 
 ### 9A.3 Serial freeze dependencies (must wait, in order)
 
@@ -3017,6 +3058,9 @@ defaults** (bundle **H**: shorter aliases `ir.op-immediate-type` and
 `ir.terminator-missing`, `Constant` validates immediate before result when both are
 missing, target type equals the result `ValueRecord.ty`; all prospective `/6`, and
 the `CompletedFunction` marker family stays unresolved with no family invented).
+**[Rev-49 note: the marker-family residual above is superseded for the operative
+direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new marker
+family); history preserved. The rev-47 default itself is unchanged.]**
 These entries are **selected under user-delegated integration default** and are
 **explicitly NOT role signoffs**: they are **not** evidence of T03/T05/T06/T09
 owner acceptance (unless the user separately already accepted that exact
@@ -3544,7 +3588,9 @@ encoding/lifecycle/allowlist rows still co-freeze); and **(4)** the T09 noncriti
 rule defaults (shorter aliases `ir.op-immediate-type` and `ir.terminator-missing`;
 immediate-before-result when `Constant` misses both; target type = result
 `ValueRecord.ty`; all prospective `/6`; `CompletedFunction` marker family
-unresolved, no family invented). **These are candidate defaults selected under
+unresolved, no family invented **[Rev-49 note: superseded for the operative
+direction by the rev-49 `FunctionEnd`-terminal-result reuse; history
+preserved]**). **These are candidate defaults selected under
 delegated integration default, not a user-authored technical decision, not owner
 signoffs, and not T01 `[INT]` acceptance;** they are **not** evidence of
 T03/T05/T06/T09 owner acceptance unless the user separately already accepted that
@@ -4179,7 +4225,9 @@ dependency and exact event encoding/lifecycle/allowlist rows still co-freeze), a
 the T09 noncritical rule defaults (shorter aliases `ir.op-immediate-type` and
 `ir.terminator-missing`; immediate-before-result when `Constant` misses both;
 target type = result `ValueRecord.ty`; all prospective `/6`; `CompletedFunction`
-marker family unresolved, no family invented) — these are **selected under
+marker family unresolved, no family invented **[Rev-49 note: superseded for the
+operative direction by the rev-49 `FunctionEnd`-terminal-result reuse; history
+preserved]**) — these are **selected under
 user-delegated integration default**, **not** owner or T01 `[INT]` signoffs and
 **not** evidence of T03/T05/T06/T09 owner acceptance (unless the user separately
 already accepted that exact subdecision); **overall rows C/D/E/H remain PENDING**,
@@ -4214,7 +4262,10 @@ pipeline is unimplemented; the dispatcher `Ready→Running`/`in_flight`-populati
 relationship to the single ordered atomic commit, the `in_flight` clear
 ownership/order relative to the bounded H6 recovery, and the no-`Running`/residual
 proof for all paths remain open; the `max_dispatches_per_tick`-vs-
-`max_inflight_per_tick` internal proposed-limit conflict is deferred to `/6`; the
+`max_inflight_per_tick` internal proposed-limit conflict is deferred to `/6`
+**[Rev-51/54 note: this deferral is historical/superseded — the rev-51
+delegated default drops `max_dispatches_per_tick` (sole bound
+`max_inflight_per_tick`); history retained]**; the
 H6/H9 fan-out fixtures and T13 VF02/VF03/VF04/VF13 remain pending; the H9
 no-residual guarantee is conditional on the H6 recovery implementation; the H9
 removal direction and H6 mechanism are unchanged) — docs-only, no
@@ -4422,7 +4473,10 @@ the corresponding **T03/T04/T05/T06/T09** task-package text remains an **unedite
 pending owner amendment** (no task package is edited by this CDR; the exact
 `ParseContext`/request-result variants, the T05 `NodeKind`/token-range dependency,
 the exact event encoding/lifecycle/allowlist rows, the exact numeric error codes,
-and the `CompletedFunction` marker family remain open). **Rev 48 note:** the
+and the `CompletedFunction` marker family remain open **[Rev-49 note: the
+marker-family residual is superseded for the operative direction by the rev-49
+`FunctionEnd`-terminal-result reuse (no new marker family); history
+preserved]**). **Rev 48 note:** the
 **read-only T01 audit findings** (2026-10-05) are recorded in this CDR as
 **facts/proposals only** — the checked-in `/5` code facts (**24** `RECORD_KINDS` /
 **24** `RecordRef` variants, tags 0–23; `RecordFamily` **absent**), the
