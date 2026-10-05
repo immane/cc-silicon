@@ -5,8 +5,10 @@
 // snapshot/trace evidence with the modeled return `5`, repeated runs are
 // byte-identical, invalid input yields a structured diagnostic with no
 // evidence (exit 1), and target emission (`-S`) plus unknown flags fail
-// closed (exit 2). This is host tooling: no contract version is bumped
-// and no frozen hash changes here.
+// closed (exit 2). Part B adds host-only `-E` preprocessed emission through
+// the frozen PP28 worker (golden bytes, determinism, `-o` file, `#error`
+// exit 1, evidence-flag clash exit 2). This is host tooling: no contract
+// version is bumped and no frozen hash changes here.
 // ============================================================================
 
 use std::path::PathBuf;
@@ -38,7 +40,97 @@ fn write_source(dir: &std::path::Path, name: &str, bytes: &[u8]) -> PathBuf {
 
 const M1_MAIN: &[u8] = b"int main(void){return 2+3;}\n";
 const M1_BAD: &[u8] = b"int main(void){return foo;}\n";
+const M1_ERROR: &[u8] = b"#error boom\nint main(void){return 2+3;}\n";
+/// Golden PP28 emission of [`M1_MAIN`]: single-line source, one space
+/// between tokens, terminal newline.
+const M1_EMIT_GOLDEN: &[u8] = b"int main ( void ) { return 2 + 3 ; }\n";
 
+#[test]
+fn candidate_emit_golden() {
+    let dir = workdir("emit-golden");
+    let source = write_source(&dir, "main.c", M1_MAIN);
+    let output = Command::new(binary())
+        .arg("-E")
+        .arg(&source)
+        .output()
+        .expect("candidate runs");
+    assert!(output.status.success());
+    assert_eq!(output.stdout, M1_EMIT_GOLDEN);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn candidate_emit_is_deterministic() {
+    let dir = workdir("emit-determinism");
+    let source = write_source(&dir, "main.c", M1_MAIN);
+    let first = Command::new(binary())
+        .arg("-E")
+        .arg(&source)
+        .output()
+        .expect("candidate runs");
+    let second = Command::new(binary())
+        .arg("-E")
+        .arg(&source)
+        .output()
+        .expect("candidate runs");
+    assert!(first.status.success() && second.status.success());
+    assert_eq!(first.stdout, second.stdout);
+    assert_eq!(first.stdout, M1_EMIT_GOLDEN);
+}
+
+#[test]
+fn candidate_emit_writes_to_output_path() {
+    let dir = workdir("emit-output");
+    let source = write_source(&dir, "main.c", M1_MAIN);
+    let emitted = dir.join("main.i");
+    let output = Command::new(binary())
+        .arg("-E")
+        .arg("-o")
+        .arg(&emitted)
+        .arg(&source)
+        .output()
+        .expect("candidate runs");
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty());
+    let text = std::fs::read(&emitted).expect("emitted file written");
+    assert_eq!(text, M1_EMIT_GOLDEN);
+}
+
+#[test]
+fn candidate_emit_rejects_error_directive() {
+    let dir = workdir("emit-error");
+    let source = write_source(&dir, "bad.c", M1_ERROR);
+    let emitted = dir.join("bad.i");
+    let output = Command::new(binary())
+        .arg("-E")
+        .arg("-o")
+        .arg(&emitted)
+        .arg(&source)
+        .output()
+        .expect("candidate runs");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(!emitted.exists());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("candidate diagnostic: "));
+    assert!(stderr.contains("boom"));
+}
+
+#[test]
+fn candidate_emit_clashes_with_evidence_selection() {
+    let dir = workdir("emit-clash");
+    let source = write_source(&dir, "main.c", M1_MAIN);
+    for flag in ["--emit-ir-snapshot", "--emit-trace", "--interpret-ir"] {
+        let output = Command::new(binary())
+            .arg("-E")
+            .arg(flag)
+            .arg(&source)
+            .output()
+            .expect("candidate runs");
+        assert_eq!(output.status.code(), Some(2), "flag: {flag}");
+        let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+        assert!(stderr.contains("clashes"), "flag: {flag}");
+    }
+}
 #[test]
 fn candidate_models_m1_return_5() {
     let dir = workdir("model");

@@ -6,10 +6,11 @@
 // VF06/VF05→IR→VF12→VF01), and prints Part A evidence (snapshot hash,
 // trace hash, modeled constant). It performs no compilation itself, never
 // shells out to another C compiler, and refuses target emission (`-S`,
-// `-c`) while the target is unverified (fail-closed, Part B). Flag
-// spellings are illustrative until the H04 driver contract freezes;
-// `-E`, `-I`/`-D`/`-U`, and multi-source compilations are explicit
-// deferred errors, never silent fallbacks.
+// `-c`) while the target is unverified (fail-closed, Part B). Part B adds
+// host-only `-E` preprocessed emission through the frozen PP28 worker
+// (no contract change, no version bump). Flag spellings are illustrative
+// until the H04 driver contract freezes; `-I`/`-D`/`-U`, and multi-source
+// compilations are explicit deferred errors, never silent fallbacks.
 //
 // Exit codes: 0 = evidence produced; 1 = candidate diagnostic (the input
 // is rejected with a structured message, no evidence); 2 = driver error
@@ -19,10 +20,10 @@
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
-    PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpInvokeChip,
-    PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip, SeLitChip, SeRetChip,
-    TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip,
-    Worker, WorkerRegistry,
+    PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
+    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip, SeLitChip,
+    SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip,
+    Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -30,7 +31,7 @@ use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP_COMMENT_CHIP,
+    PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP,
     PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
     TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
@@ -40,6 +41,11 @@ use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec}
 use cc_silicon_compiler::task::{
     Payload, ResultValue, TaskDraft, TaskKind, TaskKindRegistry, TaskState,
 };
+
+/// H04 Part B `-E` terminal host step (pure orchestration; chip does the
+/// work, host owns file/stdout persistence).
+#[path = "candidate/emit_helper.rs"]
+mod emit_helper;
 
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
@@ -54,13 +60,17 @@ struct Invocation {
     snapshot: bool,
     trace: bool,
     interpret: bool,
+    /// Preprocessed emission (`-E`, Part B).
+    emit: bool,
 }
 
 fn usage() -> &'static str {
     "usage: candidate [-std=c11] [-O0] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
+     usage: candidate -E [-o <path>] file.c\n\
      Part A evidence driver (M1): snapshot/trace emission and IR interpretation.\n\
+     -E emits the preprocessed source (PP28) to stdout or -o <path> (Part B, host-only).\n\
      -S and -c are refused while the target is unverified (fail-closed, Part B).\n\
-     -E, -I/-D/-U, and multi-source compilations are deferred (explicit error)."
+     -I/-D/-U, and multi-source compilations are deferred (explicit error)."
 }
 
 fn parse_args(args: &[String]) -> Result<Invocation, String> {
@@ -70,6 +80,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         snapshot: false,
         trace: false,
         interpret: false,
+        emit: false,
     };
     let mut inputs = Vec::new();
     let mut index = 0;
@@ -82,9 +93,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
                 "{arg} refused: target emission is fail-closed while the target is unverified (Part B, probe-gated)"
             ));
         } else if arg == "-E" {
-            return Err(
-                "-E refused in Part A: preprocessed emission (PP28) is deferred".to_string(),
-            );
+            invocation.emit = true;
         } else if arg == "-o" {
             index += 1;
             let path = args
@@ -145,7 +154,14 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         ));
     }
     invocation.input = inputs.pop().expect("one input checked above");
-    if !invocation.snapshot && !invocation.trace && !invocation.interpret {
+    if invocation.emit {
+        if invocation.snapshot || invocation.trace || invocation.interpret {
+            return Err(
+                "-E clashes with evidence selection (--emit-ir-snapshot/--emit-trace/--interpret-ir)"
+                    .to_string(),
+            );
+        }
+    } else if !invocation.snapshot && !invocation.trace && !invocation.interpret {
         invocation.snapshot = true;
         invocation.trace = true;
         invocation.interpret = true;
@@ -154,7 +170,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::pp_expand_slice();
+    bus.kinds = TaskKindRegistry::pp_emit_slice();
     bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
@@ -169,6 +185,7 @@ fn install(bus: &mut CompilerBus) {
         &PpSubstituteChip,
         &PpDirectiveChip,
         &PpDiagnosticChip,
+        &PpEmitChip,
         &LxInternChip,
         &LxClassifyChip,
         &LxDecodeLiteralChip,
@@ -200,6 +217,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, PP12_CHIP, 1),
         (TaskKind::PREPROCESS_DIRECTIVE, PP05_CHIP, 1),
         (TaskKind::PREPROCESS_DIAGNOSTIC, PP26_CHIP, 1),
+        (TaskKind::PREPROCESS_EMIT, PP28_CHIP, 1),
         (TaskKind::LEX_INTERN, LX_INTERN_CHIP, 2),
         (TaskKind::LEX_CLASSIFY, LX_CLASSIFY_CHIP, 2),
         (TaskKind::LEX_DECODE_LITERAL, LX_DECODE_CHIP, 2),
@@ -318,7 +336,101 @@ fn nodes_of(bus: &CompilerBus, kind: NodeKind) -> Vec<NodeId> {
     ids
 }
 
-fn run(input: &str) -> Result<Evidence, String> {
+fn build_workers() -> Result<WorkerRegistry, String> {
+    let mut workers = WorkerRegistry::new();
+    workers
+        .register(PpNormalizeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpSpliceChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpCommentChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpScanChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpConditionalChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpInvokeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpSubstituteChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpDirectiveChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpDiagnosticChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpEmitChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxInternChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxClassifyChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxDecodeLiteralChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PaTuChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyTypeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyScopeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TySymbolChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyConvChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeLitChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeBinChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeRetChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf06Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf05Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(IrFunctionChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf12Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf01Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(FoldChip)
+        .map_err(|error| format!("fold worker registration failed: {error}"))?;
+    Ok(workers)
+}
+
+/// Shared preprocessing prefix: source bytes through PP01→PP04, PP19
+/// conditional, PP09 expansion, and the PP05 directive gate. Returns the
+/// final pp-token stream (`expanded_tokens`, post-conditional,
+/// post-expansion, post-directive) that both the evidence pipeline and the
+/// `-E` emit step thread onward. Host owns the file read; chips own every
+/// semantic decision.
+fn pp_prefix(
+    input: &str,
+) -> Result<(CompilerBus, WorkerRegistry, Trace, Vec<RecordRef>), String> {
     let bytes = std::fs::read(input).map_err(|error| format!("cannot read {input}: {error}"))?;
     let mut bus = CompilerBus::new(CompilerConfig::new(
         TargetSpec::aarch64_unknown_linux_gnu_unverified(),
@@ -328,88 +440,7 @@ fn run(input: &str) -> Result<Evidence, String> {
         Limits::fixture(),
     ));
     install(&mut bus);
-    let workers = {
-        let mut workers = WorkerRegistry::new();
-        workers
-            .register(PpNormalizeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpSpliceChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpCommentChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpScanChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpConditionalChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpInvokeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpSubstituteChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpDirectiveChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpDiagnosticChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxInternChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxClassifyChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxDecodeLiteralChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PaTuChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyTypeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyScopeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TySymbolChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyConvChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeLitChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeBinChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeRetChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf06Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf05Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(IrFunctionChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf12Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf01Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(FoldChip)
-            .map_err(|error| format!("fold worker registration failed: {error}"))?;
-        workers
-    };
+    let workers = build_workers()?;
     let mut trace = Trace::new();
     // Source import (host file access; the name is the file stem).
     let stem = std::path::Path::new(input)
@@ -500,6 +531,19 @@ fn run(input: &str) -> Result<Evidence, String> {
         PP05_CHIP,
         Payload::from_refs(expanded_tokens.clone()),
     )?;
+    Ok((bus, workers, trace, expanded_tokens))
+}
+
+/// Part B `-E` terminal: the shared prefix, then the frozen PP28 worker
+/// over the final pp-token stream. Returns the emitted preprocessed bytes;
+/// persistence stays with the caller (host owns artifact persistence).
+fn run_emit(input: &str) -> Result<Vec<u8>, String> {
+    let (mut bus, workers, mut trace, final_tokens) = pp_prefix(input)?;
+    emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
+}
+
+fn run(input: &str) -> Result<Evidence, String> {
+    let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input)?;
     // Lex over every expanded pp-token (no fixed positions).
     step(
         &mut bus,
@@ -721,6 +765,30 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if invocation.emit {
+        match run_emit(&invocation.input) {
+            Ok(bytes) => match &invocation.output {
+                Some(path) => {
+                    if let Err(error) = std::fs::write(path, &bytes) {
+                        eprintln!("candidate: cannot write {path}: {error}");
+                        std::process::exit(2);
+                    }
+                }
+                None => {
+                    use std::io::Write as _;
+                    if let Err(error) = std::io::stdout().lock().write_all(&bytes) {
+                        eprintln!("candidate: cannot write stdout: {error}");
+                        std::process::exit(2);
+                    }
+                }
+            },
+            Err(message) => {
+                eprintln!("candidate: {message}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     match run(&invocation.input) {
         Ok(evidence) => {
             let mut report = format!("candidate evidence ({CONTRACT_VERSION})\n");
