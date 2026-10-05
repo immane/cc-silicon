@@ -1,8 +1,11 @@
+use cc_silicon_compiler::bus::CompilerBus;
 use cc_silicon_compiler::codec::{hex32, sha256};
+use cc_silicon_compiler::diagnostic::DiagGroup;
+use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::target::{
-    CompilerConfig, ConfigError, DataModel, Endianness, ObjectFormat, ProbeError, ProbeReport,
-    ProbeStatus, ScalarKind, TargetSpec, VerificationState, MEASURED_SCALARS,
-    REQUIRED_PROBE_FIELDS,
+    CompilerConfig, ConfigError, DataModel, Dialect, Endianness, ObjectFormat, OptLevel,
+    OptionFlag, ProbeError, ProbeReport, ProbeStatus, ScalarKind, TargetSpec, VerificationState,
+    MEASURED_SCALARS, REQUIRED_PROBE_FIELDS,
 };
 
 const PROBE: &str = include_str!("../contracts/target/aarch64-linux-probe.txt");
@@ -198,4 +201,137 @@ fn attestation_rejects_an_unknown_wchar_encoding() {
             ..
         }) if field == "wchar_t.encoding"
     ));
+}
+
+fn try_valid(limits: Limits) -> Result<CompilerConfig, ConfigError> {
+    CompilerConfig::try_new(
+        TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+        Dialect::C11,
+        OptLevel::O0,
+        Vec::new(),
+        limits,
+    )
+}
+
+#[test]
+fn config_try_new_accepts_fixture_limits() {
+    let config = try_valid(Limits::fixture()).unwrap();
+    assert!(config.validate().is_ok());
+    // Fail-closed codegen gating is unchanged through the new constructor:
+    // the unverified target still refuses codegen.
+    assert!(matches!(
+        config.ensure_codegen_ready(),
+        Err(ConfigError::TargetUnverified { .. })
+    ));
+    assert!(CompilerBus::try_new(config).is_ok());
+}
+
+#[test]
+fn config_try_new_rejects_max_ticks_overflow() {
+    let limits = Limits {
+        max_ticks: u64::MAX,
+        ..Limits::fixture()
+    };
+    let error = try_valid(limits).unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::MaxTicksOverflow {
+            max_ticks: u64::MAX
+        }
+    ));
+    assert_eq!(error.code(), "config.max_ticks_overflow");
+    let draft = error.to_diagnostic();
+    assert_eq!(draft.code.group, DiagGroup::Config);
+    assert_eq!(draft.code.code, 2);
+    // The bus constructor revalidates as defense with the same error.
+    assert!(matches!(
+        CompilerBus::try_new(CompilerConfig::new(
+            TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+            Dialect::C11,
+            OptLevel::O0,
+            Vec::new(),
+            Limits {
+                max_ticks: u64::MAX,
+                ..Limits::fixture()
+            },
+        )),
+        Err(ConfigError::MaxTicksOverflow { .. })
+    ));
+}
+
+#[test]
+fn config_try_new_rejects_bad_quota_queue_and_const_bits() {
+    let mut quota = Limits::fixture();
+    quota.max_inflight_per_tick = 0;
+    let error = try_valid(quota).unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::InvalidInflightQuota { value: 0 }
+    ));
+    assert_eq!(error.code(), "config.invalid_inflight_quota");
+
+    let mut queue = Limits::fixture();
+    queue.stage_queue_bound[5] = 0;
+    let error = try_valid(queue).unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::InvalidStageQueueBound { stage: 5, value: 0 }
+    ));
+    assert_eq!(error.code(), "config.invalid_stage_queue_bound");
+
+    let mut bits = Limits::fixture();
+    bits.max_const_bits = 129;
+    let error = try_valid(bits).unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::InvalidConstBits { value: 129 }
+    ));
+    assert_eq!(error.code(), "config.invalid_const_bits");
+}
+
+#[test]
+fn config_error_codes_are_stable() {
+    assert_eq!(
+        ConfigError::TargetUnverified { triple: "t" }.code(),
+        "config.target_unverified"
+    );
+    assert_eq!(
+        ConfigError::DuplicateOption {
+            option: OptionFlag::Fwrapv,
+        }
+        .code(),
+        "config.duplicate_option"
+    );
+    assert_eq!(
+        ConfigError::MaxTicksOverflow {
+            max_ticks: u64::MAX
+        }
+        .code(),
+        "config.max_ticks_overflow"
+    );
+    assert_eq!(
+        ConfigError::InvalidInflightQuota { value: 0 }.code(),
+        "config.invalid_inflight_quota"
+    );
+    assert_eq!(
+        ConfigError::InvalidStageQueueBound { stage: 0, value: 0 }.code(),
+        "config.invalid_stage_queue_bound"
+    );
+    // Reserved for the /6 fairness-weight freeze; the code string is frozen now.
+    assert_eq!(
+        ConfigError::InvalidFairnessWeight { value: 0 }.code(),
+        "config.invalid_fairness_weight"
+    );
+    assert_eq!(
+        ConfigError::InvalidConstBits { value: 0 }.code(),
+        "config.invalid_const_bits"
+    );
+    // Forwarded limit codes survive the mapping losslessly.
+    assert_eq!(
+        ConfigError::InvalidLimits {
+            code: "limits.invalid_const_bits",
+        }
+        .code(),
+        "limits.invalid_const_bits"
+    );
 }

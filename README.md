@@ -21,8 +21,10 @@ component of this compiler project, not the project's end goal.
 The repository has three layers. The compiler application contract and storage
 foundation live in the nested `compiler/` package; the C language pipeline is a
 planned application layer; the root crate supplies its generic tick/chip
-execution mechanism. The planned language stages below are **not implemented**
-and the proposed staged scheduler is not yet an accepted `/6` contract.
+execution mechanism. The planned language stages below are **not implemented**;
+the staged-scheduler mechanisms (quota-bound dispatcher, bounded recovery,
+canonical report) are frozen in the `/6` contract on a quota-1 baseline —
+quota>1 stays measured post-freeze work.
 
 ```mermaid
 flowchart TB
@@ -36,7 +38,7 @@ flowchart TB
         IR -. "target-dependent; probe-gated" .-> TARGET["AArch64 target emission"]
     end
 
-    FOUNDATION["compiler/ package<br/>T01 C01–C06 contract foundation<br/>implemented · frozen /5"]
+    FOUNDATION["compiler/ package<br/>T01 C01–C06 contract foundation<br/>implemented · frozen /6"]
     PIPE -. "would use the compiler bus, IDs, tasks,<br/>commit protocol and snapshots" .-> FOUNDATION
 
     subgraph RUNTIME["Root cc-silicon framework — implemented mechanism"]
@@ -229,7 +231,7 @@ proposals, not code.
 | Area | State |
 |---|---|
 | Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. 15 integration tests + 6 compile-fail doctests; worked circuit in `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/5`: storage profile, stable IDs, task/result/proposal protocol, target model, SFL manifest extension, canonical snapshot/trace, routing shell. 86 integration tests + 2 doctests; identity in [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/6`: storage profile, stable IDs, task/result/proposal protocol (five-outcome set), target model, SFL manifest extension with owner-allowlist skeleton, canonical snapshot/trace with `encode_*` round-trip, quota-bound dispatcher with bounded recovery, `m1-append/1` seed. 140 integration tests + 2 doctests; identity in [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION) |
 | C language chips (T02–T13) | **Not implemented.** Task packages, acceptance plans, and contract proposals only — see [`docs/tasks/README.md`](docs/tasks/README.md) |
 | AArch64 target values | **UNVERIFIED.** The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); codegen readiness fails closed until a probe attests concrete values |
 | ABI probe harness (`tools/torture/probe/`) | Harness and normalizer self-tests pass, but the probe has **never run**: no report, no attestation, no verified ABI facts |
@@ -325,7 +327,7 @@ tests/
   paradigm.rs       framework-level tests on a neutral domain
 compiler/                nested Cargo package: frozen T01 contract foundation
   src/                   arenas, ids, limits, target, task, bus, commit,
-                         manifest, codec, snapshot, routing, contract
+                         manifest, codec, snapshot, routing, contract, records
   contracts/             CONTRACT_VERSION (frozen identity) + SFL manifest doc
   examples/freeze_hash   recompute/publish the frozen contract hash
   tests/                 c01..c07 + freeze
@@ -448,7 +450,7 @@ silent semantic drift is forbidden.
 | [docs/architecture/SFL_CONTRACT.md](docs/architecture/SFL_CONTRACT.md) | Multi-backend semantic contract |
 | [docs/architecture/SFL_SCHEMA_DRAFT.md](docs/architecture/SFL_SCHEMA_DRAFT.md) | Structured document shape for tooling |
 | [docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md](docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) | **Accepted**: application-scoped CPU dynamic arena; the framework bus stays fixed-layout |
-| [docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md](docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | **Proposed only**: deterministic staged compiler pipelines (inert until accepted) |
+| [docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md](docs/architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | **Proposed** as an ADR; its staged-scheduler mechanisms are frozen in the `/6` contract (quota-1 baseline) |
 | [docs/design/ARCHITECTURAL_BLUEPRINT.md](docs/design/ARCHITECTURAL_BLUEPRINT.md) | How to build a system on cc-silicon |
 | [docs/design/GETTING_STARTED.md](docs/design/GETTING_STARTED.md) | Step-by-step walkthrough |
 | [compiler/README.md](compiler/README.md) | The frozen C01–C06 foundation: status, guarantees, hash scope, M0 gates |

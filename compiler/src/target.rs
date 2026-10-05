@@ -1104,10 +1104,72 @@ pub enum ConfigError {
         /// Offending option.
         option: OptionFlag,
     },
+    /// `max_ticks + 1` (the report bound) overflows `u64`.
+    MaxTicksOverflow {
+        /// The rejected `max_ticks` value.
+        max_ticks: u64,
+    },
+    /// The per-tick dispatch quota is zero.
+    InvalidInflightQuota {
+        /// The rejected value.
+        value: u32,
+    },
+    /// A per-stage queue bound is zero.
+    InvalidStageQueueBound {
+        /// Stage ordinal (see [`crate::limits::STAGE_COUNT`]).
+        stage: usize,
+        /// The rejected value.
+        value: u32,
+    },
+    /// A fairness-weight bound is invalid.
+    ///
+    /// Reserved: `/5` [`Limits`](crate::limits::Limits) carries no
+    /// fairness-weight bound, so `try_new` never produces this variant. It
+    /// exists so the `/6` fairness-weight freeze needs no error-family
+    /// change; its code string is frozen now.
+    InvalidFairnessWeight {
+        /// The rejected value.
+        value: u32,
+    },
+    /// `max_const_bits` is zero or exceeds 128.
+    InvalidConstBits {
+        /// The rejected value.
+        value: u32,
+    },
+    /// A limit-configuration violation forwarded from
+    /// [`Limits`](crate::limits::Limits) validation.
+    ///
+    /// Carries the stable [`LimitError`](crate::limits::LimitError) code so
+    /// no information is lost in the mapping.
+    InvalidLimits {
+        /// Stable limit error code.
+        code: &'static str,
+    },
 }
 
 impl ConfigError {
+    /// Stable machine-readable code for this failure.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::TargetUnverified { .. } => "config.target_unverified",
+            Self::DuplicateOption { .. } => "config.duplicate_option",
+            Self::MaxTicksOverflow { .. } => "config.max_ticks_overflow",
+            Self::InvalidInflightQuota { .. } => "config.invalid_inflight_quota",
+            Self::InvalidStageQueueBound { .. } => "config.invalid_stage_queue_bound",
+            Self::InvalidFairnessWeight { .. } => "config.invalid_fairness_weight",
+            Self::InvalidConstBits { .. } => "config.invalid_const_bits",
+            Self::InvalidLimits { code } => code,
+        }
+    }
+
     /// Map to a structured diagnostic.
+    ///
+    /// Numeric codes within [`DiagGroup::Config`] are frozen: 1 is
+    /// `DuplicateOption`, 2 is `MaxTicksOverflow`, 3 is
+    /// `InvalidInflightQuota`, 4 is `InvalidStageQueueBound`, 5 is
+    /// `InvalidFairnessWeight`, 6 is `InvalidConstBits`, and 7 is
+    /// `InvalidLimits`. (`TargetUnverified` reports under
+    /// [`DiagGroup::Target`] code 1.)
     pub fn to_diagnostic(&self) -> DiagnosticDraft {
         match self {
             Self::TargetUnverified { triple } => DiagnosticDraft::error(
@@ -1118,12 +1180,57 @@ impl ConfigError {
                 DiagnosticCode::new(DiagGroup::Config, 1),
                 format!("option `{}` declared more than once", option.name()),
             ),
+            Self::MaxTicksOverflow { max_ticks } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 2),
+                format!(
+                    "max_ticks {max_ticks} is invalid ({}: max_ticks + 1 must not overflow)",
+                    self.code()
+                ),
+            ),
+            Self::InvalidInflightQuota { value } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 3),
+                format!(
+                    "per-tick dispatch quota {value} is invalid ({}: must be at least 1)",
+                    self.code()
+                ),
+            ),
+            Self::InvalidStageQueueBound { stage, value } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 4),
+                format!(
+                    "stage {stage} queue bound {value} is invalid ({}: must be at least 1)",
+                    self.code()
+                ),
+            ),
+            Self::InvalidFairnessWeight { value } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 5),
+                format!(
+                    "fairness weight {value} is invalid ({})",
+                    self.code()
+                ),
+            ),
+            Self::InvalidConstBits { value } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 6),
+                format!(
+                    "max_const_bits {value} is invalid ({}: must satisfy 1 <= bits <= 128)",
+                    self.code()
+                ),
+            ),
+            Self::InvalidLimits { code } => DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Config, 7),
+                format!("invalid limits ({code})"),
+            ),
         }
     }
 }
 
 impl CompilerConfig {
     /// Build a configuration from its parts.
+    ///
+    /// This stays `pub` (not `pub(crate)`) until the `/6` integration migrates
+    /// every external call site (`compiler/tests/{c03_task,c05_codec,c06_routing,
+    /// c07_limits}.rs` and `compiler/README.md` examples) to [`Self::try_new`];
+    /// narrowing it now would break those compilation units, which are outside
+    /// the frozen-file scope. External callers should prefer [`Self::try_new`].
     pub fn new(
         target: TargetSpec,
         dialect: Dialect,
@@ -1140,6 +1247,30 @@ impl CompilerConfig {
         };
         config.canonicalize();
         config
+    }
+
+    /// Fallible constructor: canonicalize, then [`Self::validate`].
+    ///
+    /// External fixtures must use this (the infallible [`Self::new`] cannot
+    /// reject an invalid config); no fixture may rely on
+    /// [`Self::default()`].
+    pub fn try_new(
+        target: TargetSpec,
+        dialect: Dialect,
+        opt_level: OptLevel,
+        options: Vec<OptionFlag>,
+        limits: crate::limits::Limits,
+    ) -> Result<Self, ConfigError> {
+        let mut config = Self {
+            target,
+            dialect,
+            opt_level,
+            options,
+            limits,
+        };
+        config.canonicalize();
+        config.validate()?;
+        Ok(config)
     }
 
     /// Sort and deduplicate option flags so equal intent has one encoding.
@@ -1174,6 +1305,9 @@ impl CompilerConfig {
     }
 
     /// Structural validation independent of target verification.
+    ///
+    /// Checks duplicate options, the `max_ticks + 1` report-bound overflow,
+    /// and the configured [`Limits`](crate::limits::Limits).
     pub fn validate(&self) -> Result<(), ConfigError> {
         let mut sorted = self.options.clone();
         sorted.sort();
@@ -1182,6 +1316,28 @@ impl CompilerConfig {
                 return Err(ConfigError::DuplicateOption { option: pair[0] });
             }
         }
+        // The tick report trace holds at most `max_ticks` non-terminal
+        // records plus one terminal record, so `max_ticks + 1` must not
+        // overflow.
+        if self.limits.max_ticks.checked_add(1).is_none() {
+            return Err(ConfigError::MaxTicksOverflow {
+                max_ticks: self.limits.max_ticks,
+            });
+        }
+        self.limits.validate().map_err(|error| match error {
+            crate::limits::LimitError::InvalidInflightQuota { value } => {
+                ConfigError::InvalidInflightQuota { value }
+            }
+            crate::limits::LimitError::InvalidStageQueueBound { stage, value } => {
+                ConfigError::InvalidStageQueueBound { stage, value }
+            }
+            crate::limits::LimitError::InvalidConstBits { value } => {
+                ConfigError::InvalidConstBits { value }
+            }
+            // `Limits::validate` only produces the three configuration
+            // violations above; anything else is forwarded losslessly.
+            other => ConfigError::InvalidLimits { code: other.code() },
+        })?;
         Ok(())
     }
 
@@ -1200,5 +1356,21 @@ impl Default for CompilerConfig {
             Vec::new(),
             crate::limits::Limits::default(),
         )
+    }
+}
+
+/// Fallible [`CompilerBus`](crate::bus::CompilerBus) construction.
+///
+/// This inherent impl lives here (rather than in `bus.rs`) only because
+/// `bus.rs` is frozen outside the `/6` scope: it revalidates the config as
+/// defense (same error as [`CompilerConfig::validate`]) before delegating to
+/// the infallible in-crate constructor. It moves next to
+/// `CompilerBus::new` at the `/6` integration, together with narrowing both
+/// infallible constructors to `pub(crate)`.
+impl crate::bus::CompilerBus {
+    /// Build a bus from a validated configuration.
+    pub fn try_new(config: CompilerConfig) -> Result<Self, ConfigError> {
+        config.validate()?;
+        Ok(Self::new(config))
     }
 }

@@ -16,7 +16,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-01: The commit-permission guarantee is stronger than the actual checks
 
 - Severity: high.
-- Status: pending.
+- Status: fixed — enforcement documented as exact per proposal kind with StorePatch-only manifest check and stated exception; verified in `compiler/contracts/COMPILER_SFL_MANIFEST.md:97–130`.
 - Location: `compiler/contracts/COMPILER_SFL_MANIFEST.md:97–110`.
 - Problem: the document claims that a producer is rejected when it has not declared the task kind it wants to commit, but in fact only `StorePatch` checks the producer registration and kind; `Complete`, `Fail`, and `AwaitHost` have no equivalent check. `Enqueue` checks the destination chip registration and the destination kind.
 - Evidence: `compiler/src/commit.rs:384–475,608–617`; `compiler/tests/c03_task.rs:104–118` completes a basic task with no registered producer manifest.
@@ -25,7 +25,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-02: The Part A acceptance command violates the target-probe gate
 
 - Severity: high.
-- Status: pending.
+- Status: fixed — Part A limited to snapshot/trace/IR interpretation, `-S`/assembly-hash moved to Part B; verified in `docs/tasks/M1_TARGET_ACCEPTANCE.md:438,461,500,588`.
 - Location: `docs/tasks/M1_TARGET_ACCEPTANCE.md:466–479`.
 - Problem: Part A requires running `candidate … -S -o main.s`, but lines `330–341` of the same document require target code generation to be refused while the target is unverified, and Part A generates no target code. Following these steps either fails Part A or breaks the gate.
 - Recommendation: Part A should only emit snapshots/IR and interpret them; move `-S` and the assembly-hash comparison to Part B after the probe is complete, together with assembling and linking.
@@ -35,7 +35,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-03: The C-language judgement in a negative fixture is wrong
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — `M1-NEG-14` requires undeclared-identifier diagnostic, implicit-declaration split to `M1-NEG-19`; verified in `docs/tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md:321,326`.
 - Location: `docs/tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md:306`.
 - Problem: the undeclared object `x` in `return x+3;` cannot be judged by the GNU89 implicit-function-declaration rule. The current acceptance oracle may accept the wrong behavior as a pass.
 - Recommendation: require an undeclared-identifier diagnostic; test implicit function declaration separately with a call expression and declare the dialect policy explicitly.
@@ -43,7 +43,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-04: The T02 package permission ceiling is insufficient for its own tasks
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — package-level ceiling completed with imports/diagnostics/artifact coverage; verified in `docs/tasks/T02_CONTROL_CHIPS.md` rev 30–35 permission/ceiling rows.
 - Location: `docs/tasks/T02_CONTROL_CHIPS.md:3,99,108,111`.
 - Problem: the package-level ceiling only permits reading `config/control/tasks` and writing its own control records, but CT02 imports sources, CT11 handles diagnostics, and CT14 reads artifacts. T01 treats the package-level envelope as the permission ceiling, so refining per-chip fields alone cannot remove the contradiction.
 - Recommendation: complete the package-level permission ceiling and keep per-chip manifests to narrow the concrete fields, preserving commit-only mutation.
@@ -51,7 +51,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-05: The macro-expansion dependency graph puts pasting before argument substitution
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — historical table annotated with superseding raw-substitution-first/paste/rescan order; verified in `docs/tasks/T03_PREPROCESS_CHIPS.md:38-70`.
 - Location: `docs/tasks/T03_PREPROCESS_CHIPS.md:19–23,38`.
 - Problem: the dependency graph reads `…11/13/14→12→15`, but PP14 must use PP12's substituted argument tokens/placemarkers. Implementing `CAT(a,b)` in that order easily pastes the parameter names instead of the argument tokens.
 - Status boundary: lines `42–44` of the same document already mark that table and the scheduling text as historical; this item is a problem where outdated guidance may still mislead an implementer, not a defect of a currently implemented preprocessor.
@@ -60,7 +60,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-06: The comment-replacement task omits the literal-protection constraint
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — PP03 stateful scan with literal/header-name protection and PP04 contract added; verified in `docs/tasks/T03_PREPROCESS_CHIPS.md:11,38,310–385`.
 - Location: `docs/tasks/T03_PREPROCESS_CHIPS.md:11–12,38`.
 - Problem: PP03 replaces comments before token scanning but does not state the requirement to protect string literals, character constants, and the related header-name context. A naive byte-wise replacement can break `"https://example"` or `"/*not a comment*/"`.
 - Recommendation: define the scan states and the collaboration contract with PP04, and add tests for the literals above, escaped quotes, include context, and line splicing.
@@ -68,7 +68,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-07: An accepted ADR incorrectly claims the whole framework is heap-free
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — bus-storage vs topology-init vs tick-hot-path scopes distinguished; verified in `docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md:5–8,50–71`.
 - Location: `docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md:5–8,50–51`.
 - Problem: the ADR describes the root framework and the example as heap-free, but `Motherboard` actually uses `Vec` and `Box` and allocates during construction/installation.
 - Evidence: `src/motherboard.rs:20–38,57–71`.
@@ -77,7 +77,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-08: The probe's fail-closed description does not cover behavioral self-check failures
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — `.ok=0` recorded as evidence-not-gate, fail-closed scoped to platform/pins/capture; verified in `tools/torture/probe/README.md:23–34,63–83,166–176`.
 - Location: `tools/torture/probe/README.md:23–34`.
 - Problem: a failed ABI self-check only prints `.ok=0` and the program still returns 0; the normalizer merely copies these fields, and the harness does not reject the report on their basis.
 - Evidence: `tools/torture/probe/src/abi-args.c:139–150`, `tools/torture/probe/normalize/normalize.py:362–375`; a subagent changed `abi.gp_ten.ok` to `0` in a synthetic capture and observed that `build_report()` still accepts it.
@@ -86,7 +86,7 @@ Overall conclusion: the documentation keeps the distinction between "implemented
 ### DOC-09: The complete SFL example violates its own field rules
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — `prev_pulse` register declaration, init, and latch semantics completed; verified in `docs/architecture/SFL_SCHEMA_DRAFT.md:295–324`.
 - Location: `docs/architecture/SFL_SCHEMA_DRAFT.md:295–324`.
 - Problem: `EdgeDetect` reads `prev_pulse`, but the bus never declares that register and its latch update is not described, which is inconsistent with the field-reference rules in the same document.
 - Recommendation: complete the declaration, initial value, and update semantics so the example can be accepted by a future validator. This item is an internal inconsistency in a draft example, not a defect of an implemented validator.
@@ -98,7 +98,7 @@ This round adds 9 items, with numbering continuing from the first round. Contrad
 ### DOC-10: Literal decoding has a prerequisite dependency cycle
 
 - Severity: high.
-- Status: pending; T04 `/6` candidate-contract problem.
+- Status: fixed — decode input is committed PP spelling/kind with publish-time back-link, token-first path rejected; verified in `docs/tasks/T04_LEX_CHIPS.md:84–115` (DOC-10 resolution).
 - Location: `docs/tasks/T04_LEX_CHIPS.md:84–86,115,158`.
 - Problem: the literal-decode subtask requires a committed C `TokenId`, but the token and the decoded literal must be published in the same task append batch. There is no such committed token before decoding; publishing the token first violates the same-batch requirement.
 - Evidence: the whole-batch ID-prediction mechanism at `87–90` of the same document can only resolve reciprocal links at commit time and cannot supply the committed input the next subtask needs earlier.
@@ -107,7 +107,7 @@ This round adds 9 items, with numbering continuing from the first round. Contrad
 ### DOC-11: Global resource limits can be bypassed through public mutation APIs
 
 - Severity: high.
-- Status: pending; the current documented guarantee does not match the implementation boundary.
+- Status: fixed — guarantee scoped to checked bus/commit paths with trusted-integration bypass boundary stated; verified in `compiler/README.md:130–145` and `docs/tasks/T01_COMPILER_CONTRACT.md:152`.
 - Location: `compiler/README.md:130–133`; `docs/tasks/T01_COMPILER_CONTRACT.md:152`.
 - Problem: the documentation promises that every configured limit is checked before mutation, but the public `bus.arenas` can allocate directly; an arena checks only its own capacity, not the total record count, source bytes, task count, or diagnostic budget. Allocating into several arenas separately can exceed the global record budget while staying within each per-arena capacity; the bytes of an existing source can also grow through public mutable access.
 - Evidence: `compiler/src/bus.rs:101–147,355`; `compiler/src/arena.rs:275–287,305–310,377–389`. `compiler/tests/c07_limits.rs:55–106` covers the checked wrapper paths and establishes no budget guarantee for all public mutation entry points.
@@ -116,7 +116,7 @@ This round adds 9 items, with numbering continuing from the first round. Contrad
 ### DOC-12: The point of declaration for declarations is taken at the wrong place
 
 - Severity: medium.
-- Status: pending; T06 `/6` candidate semantic-rule problem. The current M1 positive fixture does not expose the error.
+- Status: fixed — identity stays identifier leaf, visibility derived from complete-declarator completion per C11 6.2.1p7 with `int n[n]` contrast test; verified in `docs/tasks/T06_SYMBOL_TYPE_CHIPS.md:37–40,76`.
 - Location: `docs/tasks/T06_SYMBOL_TYPE_CHIPS.md:37–41`; `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:1300–1319`.
 - Problem: the candidate rule uses the position of the identifier leaf as the point of declaration. C11 §6.2.1 ¶7 specifies for an ordinary identifier that its scope begins after the end of the complete declarator, not immediately after the name appears.
 - Counter-example: in the code below the array bound must look up the outer `n`, because the inner declarator is not yet complete; judging by identifier position would expose the inner `n` too early.
@@ -133,7 +133,7 @@ void f(void) {
 ### DOC-13: The scope-uniqueness rule rejects legal sibling scopes
 
 - Severity: medium.
-- Status: pending; T06 `/6` candidate structural-invariant problem.
+- Status: fixed — scopes keyed by owner lexical node, duplicate-creation only on same owner; verified in `docs/tasks/T06_SYMBOL_TYPE_CHIPS.md:40` and operative item 6b.
 - Location: `docs/tasks/T06_SYMBOL_TYPE_CHIPS.md:39`; `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:1236–1241`.
 - Problem: duplicate live `(parent, kind)` is forbidden, but two function bodies or sibling blocks can have the same parent and the same `Block` kind. A closed scope keeps its record, so detecting duplicates through a live arena record does not resolve this collision.
 - Evidence: `docs/tasks/T06_SYMBOL_TYPE_CHIPS.md:72` requires a closed scope to keep its record; the two blocks of `int f(void){return 1;} int g(void){return 2;}` need independent scopes.
@@ -142,7 +142,7 @@ void f(void) {
 ### DOC-14: The claim that every legal bit budget accommodates the M1 constants does not hold
 
 - Severity: medium.
-- Status: pending; T08 M1 candidate-assertion problem.
+- Status: fixed — M1 success limited to sufficient budget, insufficient budget yields typed overflow/capacity; verified in `docs/tasks/T08_CONSTANT_LAYOUT_INIT_CHIPS.md:10,24,41–44` (rev 4).
 - Location: `docs/tasks/T08_CONSTANT_LAYOUT_INIT_CHIPS.md:10,39–41,46`.
 - Problem: the document permits budgets less than or equal to 128 yet claims that `2`, `3`, and `5` are representable for every legal `max_const_bits`. With a budget of 1, the magnitude of `2` already needs 2 bits and `5` needs 3 bits, before any sign representation is counted.
 - Status boundary: the general signed-range formula remains an unselected draft; this item does not treat that formula as an accepted rule. It points out that withdrawing the formula does not establish an alternative universal representability guarantee.
@@ -151,7 +151,7 @@ void f(void) {
 ### DOC-15: The optional-artifact source policy is not synchronized into the commit algorithm
 
 - Severity: medium.
-- Status: pending; cross-file `/6` candidate consistency problem.
+- Status: fixed — commit algorithm synchronized to optional-kind empty-offsets + validated `Some(source)`; verified in `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:2460–2462,2540–2544,2588,4173` and CDR §24.12.
 - Location: `docs/tasks/CONTRACT_CHANGE_REQUEST_M1_PIPELINE_AND_PART_A_SCHEMA.md:136`; `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:2460–2462,2540–2544`.
 - Problem: the CDR rev-47 candidate default already allows a map-optional artifact to carry a valid `Some(source)` and requires empty offsets, but the proposal's commit algorithm still rejects any source on an optional kind and requires `source=None`.
 - Counter-example: a `Trace` artifact with a valid source and empty `raw_offsets` matches the candidate default but is rejected by the algorithm.
@@ -160,7 +160,7 @@ void f(void) {
 ### DOC-16: The ABI probe's aggregate classification and HVA coverage claim are inaccurate
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — non-homogeneous aggregate corrected to consecutive-GP classification, HVA stated untested; verified in `tools/torture/probe/src/abi-args.c:38–42` and `tools/torture/probe/README.md:23–27`.
 - Location: `tools/torture/probe/src/abi-args.c:38–42,64–68`; `tools/torture/probe/README.md:23–26`.
 - Problem: the non-homogeneous 16-byte aggregate `struct { long i; double d; }` is described as a GP+FP split. Under the AAPCS64 classification of the frozen target, its arguments use consecutive GP registers and its return uses `x0/x1`; the presence of a double does not by itself move the representation into FP registers. The README also claims HVA coverage, yet the source has no short-vector aggregate fixture.
 - Recommendation: correct the aggregate-classification description and distinguish mixed scalar arguments from aggregate classification; add a real HVA fixture or state explicitly that HVA is untested. This incorrect description must not be used to explain assembly evidence or to claim that the corresponding ABI class is covered.
@@ -168,7 +168,7 @@ void f(void) {
 ### DOC-17: Purity and totality are written as unconditional guarantees
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — restated as conditional property with four chip/backend conditions; verified in `README.md:411–413` (and `129–131,215` caveats).
 - Location: `README.md:325–328`.
 - Problem: `Because F is pure and total` is stated as an existing guarantee, but the public API accepts any `LogicChip` and guarantees neither purity, termination, nor the absence of panics. The ordinary integer addition in the README example also has no explicit overflow result at boundary states.
 - Evidence: `src/chip.rs:29–36`; `src/backend.rs:31–40`; `README.md:231,244`. Lines `129–131` of the same document already acknowledge that Rust cannot prove the absence of I/O or nondeterminism.
@@ -177,7 +177,7 @@ void f(void) {
 ### DOC-18: The H00 status document overstates the strength of the provenance check
 
 - Severity: medium.
-- Status: pending.
+- Status: fixed — stated as warning-only `provenance.revision-unresolved` with no per-asset linkage; verified in `docs/tasks/T00_H00_IMPLEMENTATION_STATUS.md:107–125`.
 - Location: `docs/tasks/T00_H00_IMPLEMENTATION_STATUS.md:107–110`.
 - Problem: the status record describes the provenance revision token as a checked condition, but in fact a missing token only produces a warning and does not make verification fail even under a frozen lock.
 - Evidence: `tools/torture/src/lock.rs:1337–1347`, `tools/torture/src/verify.rs:68–95`; `tools/torture/README.md:112–116` correctly describes it as a policy nudge.
@@ -189,7 +189,7 @@ The following items record unclosed paths in the proposal (a resolution directio
 
 ### OPEN-01: Scope startup order
 
-- Status: a candidate resolution direction and test requirements have been submitted (proposal §5/§24.14; T05 item F point 6; T06 item 8); selection/freeze by T01/T05/T06 is still outstanding, so this item is not closed.
+- Status: direction-recorded-not-frozen — a candidate resolution direction and test requirements have been submitted (proposal §5/§24.14; T05 item F point 6; T06 item 8); selection/freeze by T01/T05/T06 is still outstanding, so this item is not closed.
 - Location: `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:1241–1248` (line numbers as originally reviewed); `docs/tasks/T05_PARSE_CHIPS.md:3–5`.
 - Risk: the proposal opens the file scope after the TU node is committed, while T05 parsing depends on scope lookup. It must be explicit whether the TU root is committed early; if it is only committed after the whole TU has been parsed, a startup dependency cycle can form.
 - Recommendation: fix the order that commits the TU root early, or explicitly bound a no-scope parse path for M1, and test the complete startup without any pre-created scope.
@@ -197,7 +197,7 @@ The following items record unclosed paths in the proposal (a resolution directio
 
 ### OPEN-02: Result delivery after join
 
-- Status: a resolution direction and test requirements have been recorded (proposal §5/§7/§13/§18.3 and §24 OB-4); T01/T02/T05 still have to select the concrete mechanism and freeze it, so this item is not closed.
+- Status: direction-recorded-not-frozen — a resolution direction and test requirements have been recorded (proposal §5/§7/§13/§18.3 and §24 OB-4); T01/T02/T05 still have to select the concrete mechanism and freeze it, so this item is not closed.
 - Location: `docs/tasks/M1_PART_A_CONTRACT_PROPOSAL.md:2621–2631` (line numbers as originally reviewed).
 - Risk: the commit-apply step already consumes the child result when resuming the parent task, but how the parent task durably obtains and processes the result on its next tick is still unclosed. Exactly-once consumption is not the same as exactly-once semantic processing.
 - Recommendation: keep consumption with the parent task's atomic commit, or transfer it at join into persistent state explicitly owned by the parent task; test replay/retry after join and before parent execution.
@@ -217,4 +217,4 @@ The following items record unclosed paths in the proposal (a resolution directio
 - The remaining conclusions of both rounds come from cross-reading the documentation, implementation, and test sources; DOC-08 additionally used a synthetic-capture check performed by a first-round subagent. The second round ran no additional execution tests.
 - Cargo fmt/clippy/test were not run, no real Linux/AArch64 probe was executed, and neither the candidate compiler nor GCC torture acceptance was run.
 - This document reports no compiler capability, no target verification result, no GCC pass rate, and no formal proof.
-- This document preserves 18 findings and 3 pre-freeze design items; it does not claim to have exhausted every documentation defect. Apart from OPEN-02, which has a recorded resolution direction and test requirements (still unfrozen and unclosed), all items remain pending; nothing is deemed fixed or closed merely because this report was saved.
+- This document preserves 18 findings and 3 pre-freeze design items; it does not claim to have exhausted every documentation defect. DOC-01–DOC-18 are fixed with handling notes and fix locations above; OPEN-01/OPEN-02 are direction-recorded-not-frozen (still unfrozen and unclosed); OPEN-03 stays pending T01/T07/T08 co-freeze; no `/6` freeze is claimed by this record.

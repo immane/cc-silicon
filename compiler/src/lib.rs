@@ -37,6 +37,8 @@ pub mod intern;
 pub mod limits;
 /// SFL manifest extension and validator (C04).
 pub mod manifest;
+/// Draft-record envelope handles (C01/C03, integrator interim).
+pub mod records;
 /// Minimal routing integration shell (C06).
 pub mod routing;
 /// Deterministic snapshot and trace (C05).

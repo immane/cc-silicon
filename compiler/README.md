@@ -21,16 +21,16 @@ shell. Language work (T02–T13) builds on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/5` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5` |
+| Contract version | `t01-c01-c06/6` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/5
-hash=61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5
+version=t01-c01-c06/6
+hash=60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)
@@ -131,8 +131,8 @@ cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D wa
 cargo test   --locked --manifest-path compiler/Cargo.toml            # all green
 ```
 
-Test breakdown: `c01_arena` 6, `c02_target` 7, `c03_task` 22, `c04_manifest` 11,
-`c05_codec` 14, `c06_routing` 10, `c07_limits` 11, `freeze` 5, plus 2 compile-fail
+Test breakdown: `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15,
+`c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `freeze` 7, plus 2 compile-fail
 doctests for non-forgeable verification. Coverage boundary: `c07_limits`
 exercises the checked bus/commit entry points only, so no test establishes
 global budgets for direct public-store mutation, and `max_intern_bytes` has no

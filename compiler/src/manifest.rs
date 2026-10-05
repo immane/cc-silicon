@@ -380,6 +380,33 @@ pub enum ManifestError {
         /// Field path.
         field: &'static str,
     },
+    /// A declared write has no `(ChipId, StoreId, field)` allowlist row
+    /// authorizing it (rule `manifest.store-owner-allowlist-mandatory`).
+    StoreOwnerViolation {
+        /// Chip name.
+        chip: &'static str,
+        /// Target store.
+        store: StoreId,
+        /// Field path within the store.
+        field: &'static str,
+        /// The task kind authorized for this field by the seed; echoes the
+        /// chip's first claimed kind when no seed row matches.
+        expected_kind: TaskKind,
+    },
+    /// A claimed task kind has no stage assignment.
+    StageUnassigned {
+        /// Offending kind.
+        kind: TaskKind,
+    },
+    /// A claimed kind's stage does not match its routed layer.
+    StageLayerMismatch {
+        /// Offending kind.
+        kind: TaskKind,
+        /// `/6` stage ordinal.
+        stage: u16,
+        /// Routed layer.
+        layer: u16,
+    },
 }
 
 impl std::fmt::Display for ManifestError {
@@ -438,6 +465,26 @@ impl std::fmt::Display for ManifestError {
             Self::ConfigStoreWrite { chip, field } => {
                 write!(f, "chip `{chip}` writes read-only config field `{field}`")
             }
+            Self::StoreOwnerViolation {
+                chip,
+                store,
+                field,
+                expected_kind,
+            } => write!(
+                f,
+                "chip `{chip}` writes `{}.{}` without an allowlist row (expected kind {})",
+                store.name(),
+                field,
+                expected_kind.raw()
+            ),
+            Self::StageUnassigned { kind } => {
+                write!(f, "task kind {} has no stage assignment", kind.raw())
+            }
+            Self::StageLayerMismatch { kind, stage, layer } => write!(
+                f,
+                "task kind {} in stage {stage} does not match routed layer {layer}",
+                kind.raw()
+            ),
         }
     }
 }
@@ -584,6 +631,75 @@ pub struct ManifestRegistry {
     manifests: Vec<ChipManifest>,
 }
 
+/// Seed store-owner allowlist: `(chip, store, field, kind)` rows.
+///
+/// Each row authorizes one chip ([`ChipId`]) to write one store field for one
+/// task kind. The table is EMPTY until `/6`.
+///
+/// TODO(`/6`): seed per-chip rows from the frozen `M1AppendSchema`
+/// (proposal sections 8/`12.17`); per-chip rows land wave-gated with their
+/// tests, NOT now. Once seeded, [`ManifestRegistry::register`] rejects any
+/// declared write without a matching row
+/// ([`ManifestError::StoreOwnerViolation`], rule
+/// `manifest.store-owner-allowlist-mandatory`).
+///
+/// Pinned invariant: `tasks.ready` (the [`StoreId::Tasks`] `"queue.ready"`
+/// field) gets zero allowlisted chip writers — it is a derived quota-1
+/// compatibility view over the canonical per-stage queues, never a second
+/// write target.
+pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[];
+
+/// Enforce the store-owner allowlist skeleton for one manifest.
+///
+/// Dormant while [`STORE_OWNER_ALLOWLIST`] is empty (the `/6` seed is not
+/// frozen, so every declared write is allowed and all existing validations
+/// keep passing). Once rows land, each declared write needs a row matching
+/// the chip ID, store, field, and one of the chip's claimed task kinds.
+fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestError> {
+    if STORE_OWNER_ALLOWLIST.is_empty() {
+        return Ok(());
+    }
+    let Some(&first_kind) = manifest.task_kinds.first() else {
+        // No claimed kinds: structural validation already reported
+        // `NoTaskKinds`; there is nothing to authorize against.
+        return Ok(());
+    };
+    for path in &manifest.writes {
+        let allowed = manifest.task_kinds.iter().any(|&kind| {
+            STORE_OWNER_ALLOWLIST
+                .iter()
+                .any(|&(chip, store, field, row_kind)| {
+                    chip == manifest.id
+                        && store == path.store
+                        && field == path.field
+                        && row_kind == kind
+                })
+        });
+        if !allowed {
+            return Err(ManifestError::StoreOwnerViolation {
+                chip: manifest.chip_name,
+                store: path.store,
+                field: path.field,
+                expected_kind: first_kind,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Chip-to-stage declaration check (skeleton).
+///
+/// Always `Ok`: no total `kind -> stage` assignment table exists in `/5`, so
+/// [`ManifestError::StageUnassigned`] and
+/// [`ManifestError::StageLayerMismatch`] are currently unreachable.
+///
+/// TODO(`/6`): validate total `kind -> stage` coverage, unique stage
+/// ordinals, and stage-vs-routed-layer agreement here (proposal sections
+/// `6.2.1`/`12.9`).
+fn check_stage_assignment(_manifest: &ChipManifest) -> Result<(), ManifestError> {
+    Ok(())
+}
+
 impl ManifestRegistry {
     /// An empty registry.
     pub fn new() -> Self {
@@ -604,6 +720,11 @@ impl ManifestRegistry {
                 errors,
             });
         }
+        // Store-owner allowlist skeleton (dormant until the /6 seed lands)
+        // and chip-to-stage declaration skeleton (always Ok until the /6
+        // stage table lands).
+        check_store_owner_allowlist(&manifest).map_err(ManifestRegistryError::Registry)?;
+        check_stage_assignment(&manifest).map_err(ManifestRegistryError::Registry)?;
         if self.manifests.iter().any(|other| other.id == manifest.id) {
             return Err(ManifestRegistryError::Registry(
                 ManifestError::DuplicateId { id: manifest.id },

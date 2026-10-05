@@ -20,9 +20,9 @@
 
 use cc_silicon::Bus;
 
-use crate::bus::{CompilerBus, CompilerPins, JobState, TaggedProposal};
+use crate::bus::{CompilerBus, CompilerPins, JobState, TaggedProposal, TickMetrics, TickRecord};
 use crate::commit::{commit_proposals, CommitError, CommitReport};
-use crate::diagnostic::{DiagnosticDraft, DiagnosticRecord};
+use crate::diagnostic::DiagnosticDraft;
 use crate::ids::{ChipId, DiagnosticId, TaskId};
 use crate::task::{Proposal, ResultValue, TaskKind, TaskState};
 
@@ -197,8 +197,18 @@ impl RoutingShell {
 
     /// Select the next ready task, if any, by the frozen order.
     pub fn select(&self, bus: &CompilerBus) -> Option<TaskId> {
+        self.select_batch(bus, u32::MAX).into_iter().next()
+    }
+
+    /// Select up to `quota` ready tasks by the frozen order
+    /// (phase priority, enqueue ordinal, TaskId).
+    ///
+    /// Deterministic: eligible keys are collected and sorted, never
+    /// hash-iterated. Stage-ordinal keying applies once stage assignment
+    /// lands (T01); the current key is the frozen T01 §4 triple.
+    pub fn select_batch(&self, bus: &CompilerBus, quota: u32) -> Vec<TaskId> {
         let tick = bus.control.tick;
-        let mut best: Option<(u16, u64, u32, TaskId)> = None;
+        let mut eligible: Vec<(u16, u64, u32, TaskId)> = Vec::new();
         for &id in &bus.tasks.ready {
             let Ok(task) = bus.arenas.tasks.get(id) else {
                 continue;
@@ -207,12 +217,25 @@ impl RoutingShell {
                 continue;
             }
             let key = task.schedule_key(phase_priority(task.kind));
-            let candidate = (key.0, key.1, key.2, id);
-            if best.is_none_or(|current| candidate < current) {
-                best = Some(candidate);
-            }
+            eligible.push((key.0, key.1, key.2, id));
         }
-        best.map(|(_, _, _, id)| id)
+        eligible.sort_unstable();
+        let take = (quota as usize).min(eligible.len());
+        eligible
+            .into_iter()
+            .take(take)
+            .map(|(_, _, _, id)| id)
+            .collect()
+    }
+
+    /// The per-tick dispatch quota (`max_inflight_per_tick`).
+    ///
+    /// The configured value is at least 1 under `Limits::try_new`; a legacy
+    /// struct-literal zero is clamped defensively (never a panic, never zero
+    /// dispatch). Quota `> 1` paths are implemented per Group A but flagged
+    /// for T13 fixtures (T13 H6-M matrix, VF02/VF03/VF04/VF13 pending).
+    pub fn dispatch_quota(bus: &CompilerBus) -> u32 {
+        bus.limits().max_inflight_per_tick.max(1)
     }
 
     /// Resolve a task kind using the routing table stored in the bus.
@@ -232,12 +255,30 @@ impl RoutingShell {
     }
 
     /// Run one propagation step.
+    ///
+    /// Cancel takes precedence over the tick budget: a cancel tick is handled
+    /// once pre-selection with no dispatch and no commit. Quota-1 behavior is
+    /// unchanged from `/5` (one ordered atomic commit, single-task recovery).
     pub fn propagate(&self, bus: &mut CompilerBus) -> Result<TickReport, CommitError> {
         let tick = bus.control.tick;
         bus.control.selected = None;
         bus.tasks.active = None;
         bus.wires.selected = None;
 
+        // Cancel precedence: before any budget accounting, selection, or
+        // dispatch. Idempotent: repeated cancel ticks repeat this outcome
+        // without further state change.
+        if bus.control.cancel_requested {
+            bus.control.job_state = JobState::Failed;
+            bus.control.selected = None;
+            bus.tasks.active = None;
+            bus.tasks.in_flight.clear();
+            return Ok(TickReport {
+                tick,
+                selected: None,
+                outcome: TickOutcome::Cancelled,
+            });
+        }
         if tick >= bus.limits().max_ticks {
             bus.control.budget_exhausted = true;
             return Ok(TickReport {
@@ -253,135 +294,210 @@ impl RoutingShell {
                 outcome: TickOutcome::BudgetExhausted,
             });
         }
-        let Some(selected) = self.select(bus) else {
+        let quota = Self::dispatch_quota(bus);
+        let batch = self.select_batch(bus, quota);
+        if batch.is_empty() {
             return Ok(TickReport {
                 tick,
                 selected: None,
                 outcome: TickOutcome::Idle,
             });
-        };
-        // Read first (the only fallible step); nothing semantic is mutated
-        // before this succeeds.
-        let (kind, owner) = bus
-            .arenas
-            .tasks
-            .get(selected)
-            .map(|task| (task.kind, task.owner))
-            .map_err(|_| CommitError::UnknownTask { task: selected })?;
-        // The task is known live (it came from the ready queue); this cannot
-        // fail, so use a non-fallible update and begin mutation only now.
-        if let Ok(record) = bus.arenas.tasks.get_mut(selected) {
-            record.state = TaskState::Running;
         }
-        bus.control.selected = Some(selected);
-        bus.tasks.active = Some(selected);
-        bus.tasks.ready.retain(|id| *id != selected);
-        bus.wires.selected = Some(selected);
-
-        let resolution = self.resolve(bus, kind);
-        let proposal = match resolution {
-            Resolution::Noop => Proposal::Complete {
-                task: selected,
-                value: ResultValue::Empty,
-            },
-            Resolution::Unsupported => Proposal::Fail {
-                task: selected,
-                diagnostic: DiagnosticDraft::unsupported(format!(
-                    "task kind `{}` ({}) is explicitly unsupported",
-                    bus.kind_name(kind),
-                    kind.raw()
-                )),
-            },
-            Resolution::Registered { chip, layer } => Proposal::Fail {
-                task: selected,
-                diagnostic: DiagnosticDraft::unsupported(format!(
-                    "task kind `{}` routed to chip {} layer {layer} has no handler installed",
-                    bus.kind_name(kind),
-                    chip.index()
-                )),
-            },
-            Resolution::Unregistered => Proposal::Fail {
-                task: selected,
-                diagnostic: DiagnosticDraft::unsupported(format!(
-                    "task kind `{}` ({}) is not registered",
-                    bus.kind_name(kind),
-                    kind.raw()
-                )),
-            },
-        };
-        // A chip may only act on a task it owns.
-        bus.wires.proposals.push(TaggedProposal {
-            chip: owner,
-            task: selected,
-            proposal,
-        });
-        let pending = std::mem::take(&mut bus.wires.proposals);
-        match commit_proposals(bus, pending) {
-            Ok(commit) => Ok(TickReport {
-                tick,
-                selected: Some(selected),
-                outcome: TickOutcome::Executed {
-                    task: selected,
-                    kind,
-                    resolution,
-                    commit,
-                },
-            }),
-            Err(error) => {
-                let diagnostic = self.fail_selected(bus, selected, &error);
-                Ok(TickReport {
-                    tick,
-                    selected: Some(selected),
-                    outcome: TickOutcome::CommitFailed {
-                        task: selected,
-                        error,
-                        diagnostic,
-                    },
-                })
+        // Pre-dispatch guard: the selection batch never exceeds the quota via
+        // `select_batch`; a larger batch is a structured pre-dispatch error
+        // and leaves every affected task `Ready` (no state mutated yet).
+        if batch.len() > quota as usize {
+            return Err(CommitError::SelectionBatchOverflow {
+                limit: quota,
+                count: batch.len(),
+            });
+        }
+        // Distinct pre-worker mutation: mark each dispatched task `Running` in
+        // dispatch order and populate the ephemeral in-flight set. This is the
+        // dispatcher's mutation only; the one ordered atomic semantic commit
+        // happens below through `commit_proposals` (H9 relationship stays a
+        // T01 decision). Reads (fallible) precede the first mutation.
+        let mut kinds: Vec<(TaskId, TaskKind, ChipId)> = Vec::with_capacity(batch.len());
+        for &id in &batch {
+            let (kind, owner) = bus
+                .arenas
+                .tasks
+                .get(id)
+                .map(|task| (task.kind, task.owner))
+                .map_err(|_| CommitError::UnknownTask { task: id })?;
+            kinds.push((id, kind, owner));
+        }
+        for &(id, _, _) in &kinds {
+            // Every selected ID came from the ready queue and read back live
+            // above; the update cannot fail.
+            if let Ok(record) = bus.arenas.tasks.get_mut(id) {
+                record.state = TaskState::Running;
             }
+            bus.tasks.in_flight.push(id);
+        }
+        bus.tasks.ready.retain(|id| !batch.contains(id));
+        let selected = batch.first().copied();
+        bus.control.selected = selected;
+        bus.tasks.active = selected;
+        bus.wires.selected = selected;
+
+        let mut routed: Vec<(TaskId, TaskKind, Resolution)> = Vec::with_capacity(kinds.len());
+        for &(id, kind, owner) in &kinds {
+            let resolution = self.resolve(bus, kind);
+            routed.push((id, kind, resolution));
+            let proposal = match resolution {
+                Resolution::Noop => Proposal::Complete {
+                    task: id,
+                    value: ResultValue::Empty,
+                },
+                Resolution::Unsupported => Proposal::Fail {
+                    task: id,
+                    diagnostic: DiagnosticDraft::unsupported(format!(
+                        "task kind `{}` ({}) is explicitly unsupported",
+                        bus.kind_name(kind),
+                        kind.raw()
+                    )),
+                },
+                Resolution::Registered { chip, layer } => Proposal::Fail {
+                    task: id,
+                    diagnostic: DiagnosticDraft::unsupported(format!(
+                        "task kind `{}` routed to chip {} layer {layer} has no handler installed",
+                        bus.kind_name(kind),
+                        chip.index()
+                    )),
+                },
+                Resolution::Unregistered => Proposal::Fail {
+                    task: id,
+                    diagnostic: DiagnosticDraft::unsupported(format!(
+                        "task kind `{}` ({}) is not registered",
+                        bus.kind_name(kind),
+                        kind.raw()
+                    )),
+                },
+            };
+            // A chip may only act on a task it owns.
+            bus.wires.proposals.push(TaggedProposal {
+                chip: owner,
+                task: id,
+                proposal,
+            });
+        }
+        // Exactly-one-outcome rule: any dispatched task with an empty proposal
+        // vector fails with the `TaskNotTransitioned` diagnostic (never silent
+        // success, never stranded `Running`). The shell always emits one
+        // proposal per task above, so this covers worker adapters and
+        // prepopulated-wire batches. The failure is attributed to the task's
+        // owner chip so commit attribution holds.
+        for &id in &batch {
+            let covered = bus.wires.proposals.iter().any(|tagged| tagged.task == id);
+            if !covered {
+                let owner = kinds
+                    .iter()
+                    .find(|(kid, _, _)| *kid == id)
+                    .map(|(_, _, owner)| *owner);
+                if let Some(owner) = owner {
+                    bus.wires.proposals.push(TaggedProposal {
+                        chip: owner,
+                        task: id,
+                        proposal: crate::commit::empty_proposal_fail(id),
+                    });
+                }
+            }
+        }
+        let pending = std::mem::take(&mut bus.wires.proposals);
+        let outcome = match commit_proposals(bus, pending) {
+            Ok(commit) => {
+                let outcome = self.outcome_for_batch(&routed, commit);
+                bus.tasks.in_flight.clear();
+                return Ok(TickReport {
+                    tick,
+                    selected,
+                    outcome,
+                });
+            }
+            Err(error) => {
+                let diagnostics = self.fail_selected(bus, &batch, &error);
+                bus.tasks.in_flight.clear();
+                // Quota-1 projection preserves the `/5` outcome shape exactly;
+                // the empty-batch fallback only satisfies totality (the batch
+                // is non-empty on this path).
+                match batch.first().copied() {
+                    Some(task) => TickOutcome::CommitFailed {
+                        task,
+                        error,
+                        diagnostic: diagnostics.into_iter().next().flatten(),
+                    },
+                    None => TickOutcome::Idle,
+                }
+            }
+        };
+        Ok(TickReport {
+            tick,
+            selected,
+            outcome,
+        })
+    }
+
+    /// Project a batch commit onto the quota-1 outcome shape.
+    ///
+    /// Quota-1 returns the full `Executed` outcome. Quota `> 1` (Group A,
+    /// flagged for T13 fixtures) projects onto the first dispatched task; a
+    /// multi-task outcome shape is a T01/T13 `/6` item.
+    fn outcome_for_batch(
+        &self,
+        routed: &[(TaskId, TaskKind, Resolution)],
+        commit: CommitReport,
+    ) -> TickOutcome {
+        // `routed` is non-empty whenever this runs (the empty batch returns
+        // `Idle` before dispatch); the fallback only satisfies totality.
+        match routed.first().copied() {
+            Some((task, kind, resolution)) => TickOutcome::Executed {
+                task,
+                kind,
+                resolution,
+                commit,
+            },
+            None => TickOutcome::Idle,
         }
     }
 
-    /// Transition a stranded task to `Failed`, allocating a diagnostic when
-    /// the budget allows. Returns the diagnostic ID when one was committed.
+    /// `fail_selected` generalized to bounded dispatch-order recovery (H6,
+    /// Group A): after a failed atomic batch commit (which committed no
+    /// semantic state), transition every dispatched task exactly once, in
+    /// dispatch order, to `Failed`.
+    ///
+    /// Per-task diagnostic attempt with the `DiagnosticId::NONE` fallback (no
+    /// pre-reservation of N diagnostics) plus the state guard: only `Running`
+    /// tasks transition, so a duplicate transition is impossible. Clearing
+    /// the in-flight set is not itself a transition (the caller clears after
+    /// every outcome is recorded). Quota-1 behavior is identical to `/5`
+    /// (single-task batch, same sentinel semantics). Quota `> 1` follows the
+    /// same path; fixtures are T13 work (H6-M matrix pending).
     fn fail_selected(
         &self,
         bus: &mut CompilerBus,
-        task: TaskId,
+        dispatched: &[TaskId],
         error: &CommitError,
-    ) -> Option<DiagnosticId> {
-        let ordinal = bus.control.next_diagnostic_ordinal;
-        let limits = bus.limits();
-        let record = DiagnosticRecord::commit(ordinal, error.to_diagnostic().with_task(task));
-        // The recovery diagnostic must respect the same budget as any other
-        // record; if it cannot be committed, use the sentinel so the task is
-        // still not stranded.
-        let diagnostic = if bus.ensure_total_records(1).is_ok() && bus.ensure_diagnostics(1).is_ok()
-        {
-            match bus.arenas.diagnostics.alloc(record, &limits) {
-                Ok(id) => {
-                    bus.control.next_diagnostic_ordinal += 1;
-                    Some(id)
-                }
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-        let state = match diagnostic {
-            Some(id) => TaskState::Failed(id),
-            None => TaskState::Failed(DiagnosticId::NONE),
-        };
-        if let Ok(task) = bus.arenas.tasks.get_mut(task) {
-            task.state = state;
+    ) -> Vec<Option<DiagnosticId>> {
+        let mut diagnostics = Vec::with_capacity(dispatched.len());
+        for &task in dispatched {
+            let draft = error.to_diagnostic().with_task(task);
+            diagnostics.push(crate::commit::try_fail_task(bus, task, draft));
         }
         bus.control.selected = None;
         bus.tasks.active = None;
-        diagnostic
+        diagnostics
     }
 
     /// Run a full clock cycle: reset wires, apply pins, propagate, latch,
     /// advance.
+    ///
+    /// Exactly one [`TickRecord`] is appended to the canonical bounded
+    /// `bus.report` per tick (the driver step-6 sole-append-site rule; this
+    /// shell acts as that driver until `report.rs`/`driver.rs` land). A full
+    /// report therefore also bounds how far past the tick budget the shell
+    /// can be driven: further records saturate deterministically at
+    /// `max_ticks + 1` while the tick outcome itself is still reported.
     pub fn clock_tick(
         &self,
         pins: &CompilerPins,
@@ -396,18 +512,41 @@ impl RoutingShell {
             bus.control.job_state = JobState::Failed;
             bus.control.selected = None;
             bus.tasks.active = None;
+            bus.tasks.in_flight.clear();
             let report = TickReport {
                 tick: bus.control.tick,
                 selected: None,
                 outcome: TickOutcome::Cancelled,
             };
+            self.record_tick(bus, &report);
             bus.latch(pins);
             bus.advance_tick();
             return Ok(report);
         }
         let report = self.propagate(bus);
+        if let Ok(report) = &report {
+            self.record_tick(bus, report);
+        }
         bus.latch(pins);
         bus.advance_tick();
         report
+    }
+
+    /// Append the tick's canonical record (driver step 6).
+    fn record_tick(&self, bus: &mut CompilerBus, report: &TickReport) {
+        // Canonical dispatched set: quota-1 projects onto `selected`; the
+        // multi-dispatch list is a T01/T13 `/6` item (see `outcome_for_batch`).
+        let dispatched: Vec<TaskId> = report.selected.into_iter().collect();
+        let metrics = TickMetrics {
+            dispatched: dispatched.len() as u32,
+        };
+        let _ = bus.push_tick_record(TickRecord {
+            dispatched,
+            metrics,
+            selected: report.selected,
+        });
+        // Saturation past `max_ticks + 1` is a documented deterministic
+        // truncation (first records retained); the tick outcome above is
+        // still reported to the caller.
     }
 }

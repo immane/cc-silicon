@@ -1,5 +1,5 @@
-use cc_silicon_compiler::arena::{ArenaError, ReservedArena, TypedArena};
-use cc_silicon_compiler::ids::{SpanId, TypeId};
+use cc_silicon_compiler::arena::{ArenaError, ArenaId, ReservedArena, TypedArena};
+use cc_silicon_compiler::ids::{LiteralId, ScopeEventId, SemId, SpanId, TypeId};
 use cc_silicon_compiler::intern::{InternError, InternTable};
 use cc_silicon_compiler::limits::Limits;
 
@@ -93,4 +93,36 @@ fn intern_capacity_is_structured() {
         table.intern(b"two", &limits),
         Err(InternError::EntryCapacity { limit: 1 })
     ));
+}
+
+#[test]
+fn new_sem_literal_scope_event_ids_are_arena_stable() {
+    // Labels pin the frozen contract vocabulary.
+    assert_eq!(SemId::LABEL, "sem");
+    assert_eq!(LiteralId::LABEL, "literals");
+    assert_eq!(ScopeEventId::LABEL, "scope_events");
+    // Sentinels are never allocated.
+    assert!(SemId::NONE.is_none());
+    assert!(LiteralId::NONE.is_none());
+    assert!(ScopeEventId::NONE.is_none());
+
+    // TypedArena backing: dense indices, tombstones, never reused.
+    let limits = Limits::fixture();
+    let mut sem: TypedArena<SemId, u32> = TypedArena::new();
+    let a = sem.alloc(1, &limits).unwrap();
+    let b = sem.alloc(2, &limits).unwrap();
+    assert_eq!((a.index(), b.index()), (0, 1));
+    sem.remove(a).unwrap();
+    let c = sem.alloc(3, &limits).unwrap();
+    assert_eq!(c.index(), 2, "IDs are never reused");
+    assert!(matches!(sem.get(a), Err(ArenaError::Tombstoned { .. })));
+
+    // ReservedArena backing: pre-reserved IDs yield the marker, not a body.
+    let mut events: ReservedArena<ScopeEventId> = ReservedArena::new();
+    let first = events.alloc(&limits).unwrap();
+    assert_eq!(first.index(), 0);
+    assert!(events.get(first).is_ok());
+
+    // Literal IDs round-trip through index conversion.
+    assert_eq!(LiteralId::from_index(7).index(), 7);
 }

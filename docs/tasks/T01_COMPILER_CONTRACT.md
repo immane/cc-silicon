@@ -142,11 +142,37 @@ Frozen artifacts carry a version/hash; protocol changes are published in one pla
 
 ### 7.1 C01–C06 implementation status (2026-10-04; audit notes added 2026-10-05)
 
-Frozen artifact: version `t01-c01-c06/5`, hash
-`61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5`
+Frozen artifact: version `t01-c01-c06/6`, hash
+`60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8`
 (`compiler/contracts/CONTRACT_VERSION`), verified by `compiler/tests/freeze.rs`.
 The hash fingerprints normative shapes and rule identifiers, not source code
-and not semantic equivalence.
+and not semantic equivalence. The `/5` artifact (`t01-c01-c06/5`,
+`61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5`) is
+preserved as history; the rows below describe `/5` as implemented, followed by
+the `/6` amendment deltas.
+
+`/6` amendment (2026-10-05; user-confirmed freeze of the §24.15–§24.19
+recommendations; T01/owner co-freeze signatures still pending): C01 gains the
+named reserved-ID reservation core (P1.0 inventory, 2a name plan, 2b predicted
+refs, 2c link validation) with structural `AppendRecords` validation and an
+explicit pending-rejection until the records track lands typed
+materialization; C03 gains the five-outcome set (`AppendRecords`/`Progress`/
+`AwaitChildren`), per-task empty-proposal `Fail`, bounded dispatch-order
+recovery, await-all join without consumption, Progress reinsert with persisted
+count/ordinal and exceedance-to-`Fail`, and the 9-field continuation (formal
+T01 §4 supersession entries are catalogued, not yet signed); C04 gains
+`StoreOwnerViolation`/`StageUnassigned`/`StageLayerMismatch` plus the
+allowlist skeleton (per-chip rows wave-gated); C05 gains span-u64, tags 24–26,
+new wire arms, per-record `encode_*` with round-trip decode, snapshot coverage
+of the new reserved arenas/`in_flight`/`report`, and the `m1-append/1` seed
+(inventories + `dispatched`/`selected` + encode presence; magnitudes/widths
+and full metrics bodies excluded until probe-gated Part B); C06 gains the
+quota-bound dispatcher with `in_flight`, cancel precedence, and the bounded
+`report`. `SelectionBatchOverflow` is carried on `CommitError` although
+proposal §6.2.1 classifies dispatch-count failures as dispatcher failures
+(`/5` has no such carrier; the carrier stays the open T01 item from C17-9).
+`CompilerConfig::new`/`CompilerBus::new` stay `pub` (narrowing deferred);
+`CompilerBus::try_new` lives in `target.rs` pending relocation next to `new`.
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
@@ -157,6 +183,6 @@ and not semantic equivalence.
 | C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs` |
 | C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; pre-populated malformed wires on the propagation entry path fail explicitly without stranding a task; cancel clears stale selection; defined cancel/budget pin behavior | No worker handlers installed; T02 installs them. No language logic, no C chips, no compiler |
 
-Test evidence (2026-10-05): `c01_arena` 6, `c02_target` 7, `c03_task` 22, `c04_manifest` 11, `c05_codec` 14, `c06_routing` 10, `c07_limits` 11, `freeze` 5, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
+Test evidence (2026-10-05, `/6`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `freeze` 7, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
 
 Full test commands and results are in `compiler/README.md`.

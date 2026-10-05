@@ -1,7 +1,8 @@
 # M1 Part A Contract Proposal: Typed Record Materialization for the Frontend + IR
 
-Status: **DRAFT — not accepted/frozen.** This proposal is **not freeze-ready**;
-no owner sign-off has been obtained and no owner approval may be inferred from
+Status: **DRAFT — not accepted/frozen as an application.** The `/6` contract
+itself is frozen (see rev 41): no owner sign-off has been obtained for the
+application direction and no owner approval may be inferred from
 this document. Every reviewer listed in §15.3 remains **conditional**.
 
 This document is a proposal. It does **not** freeze any interface, does **not**
@@ -546,6 +547,10 @@ What revision 22 integrates (summary; the point-by-point ledger is §17):
   (T08 computes the `ConstRecord` value, T09 emits the IR `Constant`; the
   `folded_int5_part_a_producer` name is retired for `folded_int5_ir_constant`,
   rev 23 H7); `Constant` missing-immediate vs missing-result precedence is stated.
+  **[Rev-49 note (user-accepted recommendation; T01/T09 co-freeze pending; not a
+  `/6` freeze; no code): the marker-family residual in the T09 bullet above is
+  superseded for the operative direction by the rev-49 `FunctionEnd`-
+  terminal-result reuse (no new marker family); history preserved. See §18.8.]**
 - **T02/T13 pipeline + ADR-0002 (current status; see §4 H6/H9 below for the
   historical rev-23 framing):** CT07 needs a committed decision carrier and is not
   decorative; **H9:** the user accepts **removing `max_inflight_total`** from the
@@ -581,6 +586,9 @@ What revision 22 integrates (summary; the point-by-point ledger is §17):
   marker family/schema unresolved"); exact hash/inventory claims are prospective
   only; T13 is a pending amendment; `M1AppendSchema` rows mark proposed vs
   unresolved distinctly.
+  **[Rev-49 note: the row-H marker wording above is superseded for the operative
+  direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new marker
+  family); history preserved. See §18.8.]**
 
 What revision 23 integrates (summary; the point-by-point ledger is §18):
 
@@ -611,6 +619,13 @@ What revision 23 integrates (summary; the point-by-point ledger is §18):
   the whole no-`Running`/terminal diagnostic **implementation** is **BLOCKED**
   pending T01 integrator approval and only the invariant is stated (§7, T02,
   ADR-0002 §6, CDR §A).
+  **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a `/6`
+  freeze; no code): the "implementation BLOCKED" framing above is qualified by
+  the rev-42 selected quota>1-capable bounded recovery mechanism to be frozen in
+  `/6` (H6 wording promoted to the rev-42 formula everywhere operative: pre-
+  dispatch errors leave tasks `Ready`; failed batch commits no semantic state;
+  dispatch-order `Failed` recovery; no N pre-reservation; `NONE` fallback; state
+  guard); exact atomic realization + fixtures remain open.]**
 - **H7 (doc):** `folded_int5_part_a_producer`/`ir.folded-int5-part-a-producer` is
   renamed to `folded_int5_ir_constant`/`ir.folded-int5-constant-emission`, with the
   T08-computes-`ConstRecord`-value / T09-emits-IR-`Constant` split (§5, §13, CDR §H).
@@ -645,6 +660,9 @@ What revision 23 integrates (summary; the point-by-point ledger is §18):
 - **H11 (doc):** "trigger fixed" becomes "**marker-based trigger direction
   selected; marker family/schema unresolved**" (CDR row H/§H1, M1 target §3.2,
   this proposal §5/§16).
+  **[Rev-49 note: the marker-family wording above is superseded for the operative
+  direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new marker
+  family); history preserved. See §18.8.]**
 
 What revision 21 corrects (summary; details inline):
 
@@ -2284,6 +2302,9 @@ pub struct PipelineMetrics {
   `DuplicateSelection`/`DispatchBudgetExceeded` are
   dispatcher/scheduling failures, not `CommitError`s; `StageUnassigned`/
   `StageLayerMismatch`/`StoreOwnerViolation` are `ManifestError`s.**
+  **[Rev-51/54 note: `DispatchBudgetExceeded` above is the historical rev-21/22
+  name, dropped from the candidate with `max_dispatches_per_tick` (sole bound
+  `max_inflight_per_tick`); see the rev-38 note below. Not a `/6` candidate.]**
   **Rev 38 (CDR rev 51 / ADR-0002 Revision 17 / T02 rev 31; §23.1):** the
   rev-21/22 candidate `max_dispatches_per_tick` bound (and its
   `DispatchBudgetExceeded`) is **dropped from the candidate limit inventory and
@@ -2459,6 +2480,7 @@ StageLayerMismatch { kind, stage, layer }
 # rev 51/54: `DispatchBudgetExceeded` is likewise DROPPED from the candidate
 # with `max_dispatches_per_tick` (`max_inflight_per_tick` is the sole per-tick
 # dispatch-count bound); retained here only as the historical rev-21/22 name.
+# HISTORICAL-ONLY (rev-51/54): the line below is not an operative candidate.
 DispatchBudgetExceeded { limit }
 DuplicateSelection { task }
 SelectionBatchOverflow { limit }
@@ -2927,6 +2949,12 @@ Properties:
   this completion guarantee is BLOCKED (H6):** the batch fan-out is not an
   established mechanism (see the one-transition property above), so no
   no-`Running`/non-stranded claim is made for the batch. `[audit3 BL2, finding 8; rev 26]`
+  **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a `/6`
+  freeze; no code): the "BLOCKED" framing above is qualified by the rev-42
+  selected quota>1-capable bounded recovery mechanism to be frozen in `/6`
+  (pre-dispatch errors leave tasks `Ready`; failed batch commits no semantic
+  state; dispatch-order `Failed` recovery; no N pre-reservation; `NONE`
+  fallback; state guard); exact atomic realization + fixtures remain open.]**
 - **Cross-task write conflicts (finding 9; rev 21 scope).** Two different
   dispatched tasks may write the same `WriteKey` only when the target field is
   declared append-only in `M1AppendSchema` and the appends are semantically
@@ -2984,6 +3012,13 @@ Properties:
   T01-approved atomic terminal path, e.g. reserve bounded terminal
   diagnostic slots before dispatch). No stale-`Running` guarantee is asserted for
   the batch. `[audit4 BLK-2, audit5 A, B, audit6 BLK-6.1..6.3; rev 26]`
+  **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a `/6`
+  freeze; no code): the "BLOCKED (H6, rev 25/26)" framing above is qualified by
+  the rev-42 selected quota>1-capable bounded recovery mechanism to be frozen
+  in `/6` (pre-dispatch errors leave tasks `Ready`; failed batch commits no
+  semantic state; dispatch-order `Failed` recovery; no N pre-reservation;
+  `NONE` fallback; state guard); exact atomic realization + fixtures remain
+  open.]**
 - **Bounded.** Batch size is bounded by the proposal budget; resolution is a flat
   single pass; record graphs are ID-valued and never recursive at commit.
 - **Apply order.** Phase 4 materializes every append body (and allocates every
@@ -3264,6 +3299,11 @@ Constraining facts (verified):
        `control.selected`/`tasks.active`/`tasks.in_flight` (it does **not** clear
        `wires.selection`/`wires.selected`); it makes **no** unsupported claim that
        no task remains `Running`.
+       **[Rev-42 note (user-accepted recommendation; T01 co-freeze pending; not a
+       `/6` freeze; no code): the "BLOCKED (H6, rev 25/26)" batch framing above
+       is qualified by the rev-42 selected quota>1-capable bounded recovery
+       mechanism to be frozen in `/6`; exact atomic realization + fixtures
+       remain open.]**
     6. **sole append site**: choose the tick outcome from the post-commit
        `job_state` — if the budget/cancel gate set `BudgetExhausted`/`Cancelled`
        preserve it; else `job_state == Finished` -> `Finished`,
@@ -3395,7 +3435,7 @@ Constraining facts (verified):
 | Worker/control invocation | `CompilerBackend` + `ProjectedChip` | tick GUARD_LAYER + only the routed worker layer (one chip per layer), `dispatch_cursor` per task |
 | Typed proposal build | `ChipAdapter::commit` | writes `wires.proposals` only |
 | Proposal commit | `CompilerBackend` | `commit_proposals` (subsumes ProposalValidate/TaskCommit) |
-| Failure resolution | `CompilerBackend` (`fail_selected`) | **quota 1 (verified `/5`):** the single task **always** becomes `TaskState::Failed` — a committed `DiagnosticId` when capacity allows, else the `TaskState::Failed(DiagnosticId::NONE)` sentinel (never stranded). **quota `> 1`:** the batch fan-out ("fail every dispatched task once; clear in-flight") is **BLOCKED** (H6) — clearing the in-flight set does not clear `TaskState`; alternatives (generalize the deterministic all-dispatched fail transition with the same optional-diagnostic/sentinel semantics, or another T01-approved atomic terminal path) in §7/§10.5. Keeps `wires.selection` |
+| Failure resolution | `CompilerBackend` (`fail_selected`) | **quota 1 (verified `/5`):** the single task **always** becomes `TaskState::Failed` — a committed `DiagnosticId` when capacity allows, else the `TaskState::Failed(DiagnosticId::NONE)` sentinel (never stranded). **quota `> 1`:** the batch fan-out ("fail every dispatched task once; clear in-flight") is **BLOCKED** (H6) — clearing the in-flight set does not clear `TaskState`; alternatives (generalize the deterministic all-dispatched fail transition with the same optional-diagnostic/sentinel semantics, or another T01-approved atomic terminal path) in §7/§10.5. Keeps `wires.selection` **[Rev-42 note: "BLOCKED" qualified by the rev-42 selected quota>1-capable bounded recovery mechanism to be frozen in `/6` (user-accepted recommendation; T01 co-freeze pending; not a `/6` freeze; no code)]** |
 | Report/trace | `CompilerBackend` + `CompilerDriver::step` | canonical `bus.report` with ordered `dispatched`; `len <= max_ticks + 1` (one terminal); snapshot-encoded |
 | Latch / tick advance | root `Motherboard` | `clock_tick` phase 2 |
 
@@ -4155,7 +4195,8 @@ and the **canonical semantic comparison projection** (not a byte-identical
 snapshot) equals the rev-18 single-active-task result; the new scheduler snapshot
 is separately replay-identical run-to-run; at quota `> 1`
 the ordered dispatched set, in-flight bound, per-stage queue bound
-(`BackpressureCapacity`), dispatch budget (`DispatchBudgetExceeded`, **dropped by
+(`BackpressureCapacity`), dispatch budget (sole bound `SelectionBatchOverflow`;
+`DispatchBudgetExceeded` **dropped by
 the rev-51/54 candidate**), and
 `ManifestError::StageUnassigned`/`StageLayerMismatch` are enforced before
 mutation; a same-tick cross-task **write** conflict is rejected pre-apply in
@@ -4429,7 +4470,7 @@ remain `/6` blockers.
 | T06 | **`Identifier`-leaf `decl`** (identity/diagnostic; visibility from the complete declarator, DOC-12); active-scope-chain lookup + tie rule; `ScopeDraft` cardinality + File-Enter policy + **Block-node boundary `at`** + `ScopeEventId` order; namespace miss≠conflict; symbol-error classification; chip-id-keyed `int` ownership + reuse; TY08 non-M1; no compatibility model | §5 `SymbolRecord`/`ScopeEventRecord`/`TypeRecord`; §7 phase 2b; §8 chip-id allowlist; §12.17; §13 named tests | **conditional** — lifecycle/field encodings, char representation, enum variants, and allowlist seed are `/6` blockers |
 | T07 | `ConversionRole` field; **T07-owned committed `SemRecord` carrier for `Return`/`FunctionDefinition` (no T09 `FunctionRecord` cycle)**; one shared `ConversionPlan` with explicit `sext`/`zext`/`trunc`; pinned `(NodeKind, role, op)` VF06 matrix; split `const.literal-decode`/`const.evaluate`; `EffectMask` claims | §5 `ConversionRole`/`SemRecord`/`EffectMask`; §6.1 `links()`; §6.4 `EffectMaskUnsupported`; §9/§13 | **conditional** — exact carrier shape / `FunctionContextId` choice, conversion-op set, and const-request vocabulary are hard `/6` blockers |
 | T08 | `ConstOverflow`/`ConstUnsupported` are chip diagnostics (not `CommitError`); `max_const_bits = 128` + signed-range formula/hash/test; canonical signed value; no `/7`; `M1-CL-02`=`CL03`/`M1-NEG-16`=`CL03`; T04 handoff representable (**H1 allocation accepted in principle**; exact shapes pending); itemized `constants.records` owner | §5 `ConstRecord`/`LiteralRecord`; §6.4 classification; §7 (no const commit check); §8 single-writer; §11 F5 | **conditional** — exact codes/enforcement, the **H1 carrier field shapes**, and T04→T08 request shape are `/6` blockers; shared writer not selected |
-| T09 | op semantics in `M1AppendSchema`/`NORMATIVE_RULES` (**prospective `/6`**); **marker-based `TerminatorMissing` trigger direction (family/schema unresolved, H11)**; `Constant` immediate = result type; rule id per rejection (**alias pairs unresolved, H8**); `UnsupportedNode` chip diagnostic; committed-vs-terminated cumulative; T08/T09 folded-5 ownership split (`folded_int5_ir_constant`, H7); `scope_events` inventory; VF12 correction | §5 op table/terminators; §6.4 classification; §11 F5/F6; §12.4; §13 named tests | **conditional** — exact marker record shape, op table, and IR fields are `/6` blockers |
+| T09 | op semantics in `M1AppendSchema`/`NORMATIVE_RULES` (**prospective `/6`**); `TerminatorMissing` reuses the committed IR28 `FunctionEnd` terminal result + T01-owned typed phase-2b hook (rev 49 operative direction, no new marker family; exact hook contract open); `Constant` immediate = result type; rule id per rejection (**alias pairs unresolved, H8**); `UnsupportedNode` chip diagnostic; committed-vs-terminated cumulative; T08/T09 folded-5 ownership split (`folded_int5_ir_constant`, H7); `scope_events` inventory; VF12 correction | §5 op table/terminators; §6.4 classification; §11 F5/F6; §12.4; §13 named tests | **conditional** — exact hook contract, op table, and IR fields are `/6` blockers |
 | Pipeline (user) | staged pipelines; own-batch + committed cross-tick join; bounded quota `> 1`; quota-1 **canonical projection** baseline (in principle); ordered single commit; canonical stage queues; **single writer per wire**; selection errors not `CommitError`; inert until `/6` | §3.12, §6.2.1/§6.2.2, §6.3, §7, §10.5, §11, §12.18, §13; ADR-0002 | **PROPOSED design / conditional** — pipeline `/6` amendments and T02/T13 batch changes must be frozen before any chip wave; quota `> 1` requires measurement + integrator acceptance |
 
 ### 15.4 Remaining blocking questions (not safely defaultable)
@@ -4697,6 +4738,7 @@ canonical-projection quota-1 baseline and a measured bounded quota `> 1`
 | 2026-10-05 | **Rev 37 (DRAFT, no code/commit/push; not a freeze; docs-only mirror of the explicit CDR rev 42–50 decisions; no new user decision, no acceptance, no `/6` change).** Records in this proposal the authority decisions already recorded in the [CDR](CONTRACT_CHANGE_REQUEST_M1_PIPELINE_AND_PART_A_SCHEMA.md) rev 42–50 (plus the owner-package syncs), as a proposal-side ledger (`§22`) and header/current-state update, without changing any accepted decision or inventing schema. **(1) User-accepted selected subdecisions rev 42–46 (per-subdecision only; overall bundles A/C/D/E/F/G PENDING):** A/T02/T13/T01 H6 scope+mechanism (retain H6; **freeze a quota>1-capable bounded recovery mechanism in `/6`**, rejecting the §9B row-A deferral; pre-dispatch errors leave tasks `Ready`; a failed semantic batch commit mutates no semantic state; deterministic bounded recovery transitions dispatched tasks once in dispatch order to `Failed`; no pre-reservation of N diagnostics; per-task diagnostic attempt with `DiagnosticId::NONE` fallback; state guard against duplicate); D/T02/T05/T01 join = **commit-apply invariant, no new CT07 committed carrier/family**, **await-all**; D/T05 the `ContinuationRecord` exact ordered fields (**no `awaited`**) and the formal `/6` T01 §4 `WaitSet`-only supersession (**no `/5` edit**); D/T01/T05 the exact OwnBatch pre-apply validation; F/T06/T07/T09/T01 **no `FunctionContextId`**, `SemRecord` = committed `CheckedNode` materialization one per `NodeId` with an explicit committed typed link consumed by T09; F/T07 `ValueCategory {Lvalue=0,NonLvalue=1,FunctionDesignator=2,Void=3}` (M1 `NonLvalue`) and M1-only `EffectMask(0)`; F/T07/T13/T01 VF06 `TypedAstInvariant` **in M1** (exact registration open) and the **M1-minimal conversion scope**; E/T06/T01 deterministic bounded committed-`types.records` lowest-`TypeId` scan (no hidden cache) and the File `Enter` `parse.TranslationUnit → symbol_type.scope-enter` stage edge after the committed TU (no job-bootstrap); C/G **`max_const_bits`** hashed-`Limits` origin (cap 128, config rejects `>128`, task-input projection), `required_kind` = per-use constant-expression requirement, `legality` = result payload field, total eight-`ArtifactKind` map rule (M1 scope only single-source `Normalized`), exact ordered `LiteralRecord` fields + `LiteralKind`/`LiteralSuffix`/radix scope, `RequiredKind` = `IntegerConstantExpression`, `ConstLegality` ∈ {`Legal`,`NotConstantExpression`,`Unsupported`}, mandatory artifact-map invariants. **(2) Rev 47 user-delegated candidate defaults** (optional-`ArtifactKind` map policy; T05 parse-depth; T06 namespace/lookup; T09 shorter rule aliases + immediate-before-result + target type = result `ValueRecord.ty`) recorded as **selected under user-delegated integration default, clearly labeled NOT owner or T01 `[INT]` signoff** (not owner acceptance, not T01 `[INT]`, not a freeze). **(3) Rev 48 code audit discrepancy + unresolved hash conflict as it existed then:** `/5` code facts **24** `RECORD_KINDS` / **24** `RecordRef` variants (tags 0–23), `RecordFamily` **absent**; draft 19/27/27 counts **proposed/unverified**; the `CONTRACT_VERSION`/`contract.rs`/`README.md` vs `COMPILER_SFL_MANIFEST.md` §4 hash-scope conflict **real and unresolved**, three options then unselected/unrecommended. **(4) Rev 49 user H11/T09/T01 direction + H9 read-only audit:** `TerminatorMissing` reuses the committed IR28 `FunctionEnd` terminal result (`TaskState::Completed(ResultId)`, task kind `FunctionEnd`) with a **T01-owned typed phase-2b commit-apply validation hook**; **no** new marker family/ID/arena/`RecordRef` tag/`RecordFamily` ordinal/snapshot encoder/`ResultValue` variant (**not a frozen `/6` hook, no code**); the earlier `CompletedFunction` new-marker direction is **superseded for the operative direction, preserved as history**; H9 residual blockers (quota>1 pipeline unimplemented; `Ready→Running`/`in_flight`-vs-commit relationship, `in_flight` clear ownership/order, all-paths no-`Running` proof open; `max_dispatches_per_tick`-vs-`max_inflight_per_tick` limit conflict deferred to `/6`; fan-out fixtures + T13 VF02/VF03/VF04/VF13 pending). **(5) Rev 50 two-tier hash scope:** the user accepts `StoreSchema::foundation + M1AppendSchema` as the **frozen `/6` seed participating in the `/6` contract hash**, with **post-seed runtime `declare()` extensions hash-excluded** (runtime snapshot/schema capture/validation); at `/6` T01 must **atomically** update the manifest §4 wording, the `hash_excludes` semantic token (**post-seed runtime declarations**), and `FrozenSchema::encode`/contract code plus the freeze test, **preserving the frozen `/5` hash/history** — **no exact `M1AppendSchema` contents/counts accepted, nothing frozen, no `/5` change, no code**; numeric inventory and freeze-test remain pending; T01 still co-freezes the M1 seed values after the owners. Present status reflected: `/5` current, `/6` **unfrozen**, M1 **DRAFT**, **no code**, owners' bundles incomplete + T01 co-freeze pending, **no Part B substrate**; old marker-family direction historical/superseded; `quota > 1` **not** the M1 baseline; Part A symbolic model probe-independent. Every current-state M1 pointer/range advances from **rev 21–35** to the current **rev 21–36** (this header/§16/§18.7 H10/§19.6 F6/§20.6 Finding 6/§21; the CDR is at rev 50, ADR-0002 §1.1 stays **Revision 16**, and T02 is at rev 30). No schema, interface, field, enum, rule, task-kind, chip, or `/6` change; the historical rev 21–36 ledger is preserved verbatim; no acceptance status changes; the CDR, ADR, task packages, and code are not edited | M1 rev-37 docs-integration subagent (DeepSeek doc integrator) |
 | 2026-10-05 | **Rev 38 (DRAFT, no code/commit/push; not a freeze; docs-only integration of the current companion state — CDR rev 51, ADR-0002 Revision 17, updated T02–T09/T13, M1 vertical/target acceptance; no new user decision, no acceptance, no `/6` change).** Records, via a new `§23` ledger and this row, the current relevant status and exact latest items without inventing schema or freezing. **(1) CDR rev 51 delegated candidate** (mirrored by ADR-0002 Revision 17 and T02 rev 31): `max_inflight_per_tick`/quota is the **sole per-tick dispatch-count bound** and the redundant `max_dispatches_per_tick` (with its `DispatchBudgetExceeded`) is **dropped from the candidate limit inventory and validation** — a **delegated candidate default, not** an owner/T01 `[INT]` signoff, **not** a schema freeze; the H9 mutation boundary / `in_flight` clear order / residual no-`Running` proof remain **open**, and the H6 mechanism is unchanged. **(2) Delegated ParseContext 10-member candidate** (`TranslationUnit, ExternalDecl, Specifier, Declarator, ParameterList, Block, Expression, Assignment, Unary, Primary`), recorded in the T05 package; `context` is **semantically distinct** from `production: TaskKind`; mapping/discriminants **open**. **(3) T04 `LiteralRecord.token` delegated candidate:** `Some(committed TokenId)` for a single committed source token (M1 `2`/`3`), `None` for an explicitly synthesized no-single-token literal; same-batch relation uses the generic typed `RecordLink`/append-ref (not `ContinuationRef::OwnBatch`/`ChildRef::OwnBatch`); exact mechanism **open**. **(4) T08 opening payload aligned** to `ConstantRequest { literal: RecordRef::Literal, node, required_kind }` → `ConstantResult { value: RecordRef::Const, legality }`, with the sem→T08 const→T09 IR order corrected; exact payload/encoding/tag/typing/codes **open**. **(5) M1 vertical acceptance artifact scope corrected** — the exercised artifact-map path is **only** single-source `Normalized`; the other map-mandatory kinds are schema-declared but **not produced/asserted**; source-provenance/equality **deferred**; an audit-identified mismatch is resolved at the document level, with the `raw_offsets` semantics / token linkage / candidate closed set still **open T03/T04/T01 blockers** (not all resolved). **(6) M1 target acceptance rev 29** aligns the IR28 committed `FunctionEnd` terminal result + T01 phase-2b hook with the rev-50 two-tier hash scope; **Part B remains unavailable**. **(7) T01 readiness audit summarized in `§23`** as an ordered freeze-blocker/dependency checklist (owner-signed schemas/payloads/manifests; families/tags/ordinals/canonical encoder; T05 TU/context; T06 lifecycle/allowlist; T07 `SemRecord`/VF06; T08 const; T09 hook; pipeline H6/H9; hash/snapshot tests). The rev-50 two-tier hash scope and rev-49 H11/T09/T01 direction remain current. Every current-state M1 pointer/range advances from **rev 21–36** to the current **rev 21–37** (this header/§16/§18.7 H10/§19.6 F6/§20.6 Finding 6/§21; the CDR is at rev 51, ADR-0002 §1.1 at **Revision 17 / rev 21–36**, T02 at rev 31, M1 target at rev 29, M1 vertical at rev 27). No schema, interface, field, enum, rule, task-kind, chip, or `/6` change; the historical rev 21–37 ledger is preserved verbatim; no acceptance status changes; the CDR, ADR, task packages, and code are not edited. | M1 rev-38 docs-integration subagent (DeepSeek doc integrator) |
 | 2026-10-05 | **Rev 39 (DRAFT, no code/commit/push; not a freeze; docs-only integration of the current companion state — CDR rev 53, ADR-0002 Revision 17, newly updated T02 rev 32 / T03 rev 53–54 / T04 rev 47 / T05–T09 / T13 packages, M1 vertical rev 27 / target rev 29 acceptance; no new user decision, no acceptance, no `/6` change).** Records, via a new `§24` ledger and this row, the newest candidate status and open audit findings without inventing schema or freezing. **(1) CDR rev 53 delegated candidate:** for the exercised M1 literal subset the `Lx08CandidateType` M1 vocabulary is the **closed one-member set `{ Int }`**, M1 literals `2`/`3` = **target-independent `Int` with no bit width**; forms outside the exercised subset must **not silently default to `Int`** and are **explicitly unsupported/deferred**; future categories **append without reinterpretation** — a delegated candidate default, **not** an owner/T04 or T01 `[INT]` signoff, **not** a `/6` freeze, no numeric tags; complete member set/encodings **open** (T04 rev 47; T08 rev-2 cross-reference). **(2) T03 rev 53–54:** the delegated M1 single-source `Normalized` **`raw_offsets` boundary map** (primary location map, not complete provenance; error codes open) and the new **M1 PP01 producer/consumer contract candidate**; both candidates only. **(3) T05/T06 TU carrier + exactly-once still open:** the committed TU `NodeId` is supplied by the existing generic `ResultValue::Record(RecordRef::Node(root_node_id))` of the committed `TaskState::Completed(ResultId)` — no new typed result/family, no task-kind-only derivation — and the **exactly-once delivery claim is not established by `Completed(ResultId)` alone**; the candidate requires result-consumption + enqueue in one commit-visible unit or a **T01-defined equivalent persistent delivery claim**, with consume/enqueue envelope, retry/error recovery, and T06 enqueue-payload task typing **open** T05/T01/T06 co-freeze. **(4) Newest T07/T08/T09/T13 candidate sections:** T07 `SemRecord` field-set checklist + M1-only constant evaluator; T08 H1-aligned payload + M1-only evaluator; T09 M1-only IR-shape checklist + delegated rev-47 rule defaults; T13 M1 fixture/registration checklist + explicit H6/H9 verification matrix (H6-M01..H6-M16, required pending fixtures — **same-rev-39 correction: this row initially read H6-M12; T13 rev 5 already extends the matrix through H6-M16**) — all candidate/prospective `/6`, none frozen. **(5) T02 rev 32 H6/H9 checklist:** a proposed remaining co-freeze contract checklist (H6.1–H6.6, H9.1–H9.4) stating each open point as an exact question + testable invariant, **proposed, not signoff/freeze**, four T01 architecture-critical items left to T01. **(6) Audit findings recorded as open in `§24`:** the T04 **reciprocal token↔literal `RecordLink` cycle** requires **pre-reserved IDs before links resolve** (open T04/T01 `/6` blocker); the T08 **`§G2` signed-range overflow formula** remains an **unselected draft proposal/reference**; the M1 **`PP-08` exact-map/failure semantics** (mandatory-map invariants; missing-source/bad-map rejected pre-mutation; classification/codes open); and the **H9 clearing conflict + T13 no-residual evidence gap** (the `in_flight` clear ownership/order and the all-paths no-`Running`/no-residual proof remain open; the T13 matrix rows are **required pending fixtures, not a proof**). Every current-state M1 pointer/range advances from **rev 21–37** to the current **rev 21–38** (this header/§16/§18.7 H10/§19.6 F6/§20.6 Finding 6/§21; the CDR is at **rev 53**, ADR-0002 §1.1 stays **Revision 17 / rev 21–36**, T02 at **rev 32**, M1 target at rev 29, M1 vertical at rev 27). No schema, interface, field, enum, rule, task-kind, chip, or `/6` change; the historical rev 21–38 ledger is preserved verbatim; no acceptance status changes; the CDR, ADR, task packages, and code are not edited. | M1 rev-39 docs-integration subagent (DeepSeek doc integrator) |
+| 2026-10-05 | **Rev 41 (`/6` freeze execution; user-confirmed 2026-10-05; code + contract + tests, no language chips).** Freezes `t01-c01-c06/6` (hash `60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8`): RecordRef 24–26, RecordFamily 27 ordinals, Proposal +3 wire tags 5–7 (`ResultValue` unchanged), `StoreId::Names`, 9-field continuation, `ChildRef`/`ContinuationRef`, 4 scheduler limits + `try_new`, 6 `ConfigError` codes, `StoreOwnerViolation` + allowlist skeleton, span-u64, tags/arms/`encode_*` + round-trip decode, new reserved arenas + `in_flight` + `report` snapshot coverage, `Task.progress_count/ordinal` persisted with exceedance-to-`Fail`, commit-apply join/host-join/reservation core, quota dispatcher + cancel precedence + bounded recovery, `m1-append/1` seed, 16 new rule IDs (64 total), two-tier token. T01/owner co-freeze signatures still pending; numerics/spellings/encodings from the UNDECIDED lists deferred to named follow-ups; `SelectionBatchOverflow` stays on `CommitError` (carrier open); records-track typed apply explicitly rejected pending; `new()` stays `pub`. M1 application stays DRAFT; no language chips authorized. | `/6` freeze (user confirmation 2026-10-05) |
 | 2026-10-05 | **Rev 40 (DRAFT, no code/commit/push; not a `/6` contract freeze; docs-only OPEN-03 fix / T01/T07/T08 co-freeze).** Closes the documentation-review OPEN-03 gap and the `§24.10`/OB-9 open item: the M1 committed constant-expression **input path** and the `ConstantRequest`/`ConstantResult` M1 **variants** are **selected and frozen for the M1 `/6` co-freeze** — the sem-stage per-use `const.evaluate` request covers the leaf-literal use (`ConstantRequest::Literal { literal, node, required_kind }`) and the binary additive use (`ConstantRequest::Binary { node, op: ConstExprOp, lhs, rhs, required_kind }`) with the committed `BinaryExpression` `NodeId`, T07's checked operator (`Add` in M1), and the committed T04 `LiteralRecord` refs; T08 commits **exactly one** `ConstRecord` for the folded result; T09 consumes the same committed `RecordRef::Const` and does not re-fold. A real T07→T08→T09 fixture (`M1-CL-05`, M1 frontend acceptance rev 31) replaces the hand-built-`5` evidence path; `M1-CL-03` is clarified as a conversion-unit fixture only. Still open: the result envelope (`ResultValue` carrier, OB-6), non-legal coupling (OB-7), `ConstRecord` identity/reuse (OB-8), and the exact wire tags/payload-variant spellings/task-kind spellings/numeric codes. Companion edits: T07 rev 4, T08 task-package revision 5, T09 rev 49, and M1 frontend acceptance rev 31. No ADR/T01/manifest/compiler/test edit by this revision (the CDR records the same co-freeze as rev 55); `/5` current; `/6` unfrozen; M1 DRAFT; no code. | OPEN-03 fix (documentation review 2026-10-05); T01/T07/T08 co-freeze |
 
 ---
@@ -4909,6 +4951,9 @@ ADR-0002 stays **PROPOSED**, and the T01 integrator plus every owner remain
   left an explicit blocker rather than inventing a family; the phase-2b wording is
   restated as **marker-triggered, but as a selected *direction* only** (rev 23
   **H11**: the marker family/schema is unresolved — do not read "trigger fixed").
+  **[Rev-49 note: the marker-family residual above is superseded for the
+  operative direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new
+  marker family); history preserved. See §18.8.]**
 - **T09-2 — rejection→rule-id list vs `NORMATIVE_RULES`:** `RESOLVED-DOC`
   (missing `ir.terminator-missing` added; missing comma/stray paren fixed in
   §12.12) + `BLOCKED` (rev 23 **H8**: **both** `ir.op-immediate-type` and
@@ -4984,6 +5029,9 @@ ADR-0002 stays **PROPOSED**, and the T01 integrator plus every owner remain
   unresolved encodings (rule-id aliases / immediate-vs-result precedence)
   preserved; row C records the **H1 allocation as accepted in principle
   (2026-10-04)**.
+  **[Rev-49 note: the row-H marker wording above is superseded for the operative
+  direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new marker
+  family); history preserved. See §18.8.]**
 - **G-2 — T13 pending amendment:** `RESOLVED-DOC` (added to CDR §13; **T13 is not
   edited**, rev 23 H10).
 - **G-3 — exact hash/inventory claims prospective only; no `/6` hashed claim:**
@@ -5928,6 +5976,9 @@ plus every owner remain **pending**.
   `Constant` validates the **immediate before the result** when both are missing; the
   target type equals the result `ValueRecord.ty`; all prospective `/6`, and the
   `CompletedFunction` marker family stays unresolved with no family invented).
+  **[Rev-49 note: the marker-family residual above is superseded for the
+  operative direction by the rev-49 `FunctionEnd`-terminal-result reuse (no new
+  marker family); history preserved. The rev-47 default itself is unchanged.]**
   Overall rows C/D/E/H remain **PENDING**; all public/shared schema awaits owner/T01
   co-freeze; no conflicting user-selected rev 42–46 decision is overridden.
 
@@ -6405,11 +6456,23 @@ remain **pending**.
 - **Finding.** The CDR `§G2` signed-range overflow formula
   `-(2^(max_const_bits-1)) <= v <= 2^(max_const_bits-1)-1` was, in an earlier draft,
   phrased as if it were an operative selected step. The T08 package (task-package
-  revision 3, with a **same-revision correction note and no new revision**) records
-  that this was a **wording error**: the only `max_const_bits` claim the M1-only
-  evaluator candidate makes is that the exercised M1 results (`2`, `3`, `5`) are
-  **representable for every accepted valid `max_const_bits` value** (any cap `<= 128`,
-  including the default `128`). The candidate settles **neither** the general overflow
+  revision 3, with a **same-revision correction note and no new revision**) recorded
+  that phrasing as a **wording error**; that same-revision note is preserved as
+  history, but its own `max_const_bits` sentence — that the exercised M1 results
+  (`2`, `3`, `5`) are **representable for every accepted valid `max_const_bits`
+  value** (any cap `<= 128`, including the default `128`) — was itself overbroad
+  and is **superseded** (review
+  [DOC-14](../reviews/2026-10-05_DOCUMENTATION_REVIEW.md); T08 task-package
+  revision 4). At a budget of `1` the magnitude `2` already needs two bits and `5`
+  needs three, before any sign representation, so those values cannot be
+  representable there. **Corrected position (DOC-14; no acceptance change, no
+  freeze, no code):** M1 **success acceptance is limited to a sufficient
+  budget** (e.g. the default `128`); an **insufficient budget** must produce a
+  **typed overflow/capacity result** — the accepted `ConstOverflow`
+  chip-diagnostic classification, whose exact trigger formula remains open —
+  **not** a `Legal` success or a committed `ConstRecord`. The configuration
+  range and minimum are **unchanged**: valid values `<= 128` remain valid and
+  **no minimum is raised**. The candidate settles **neither** the general overflow
   bound formula, **nor** the signed/unsigned representation, **nor** the
   representation carrier, **nor** the chip-vs-commit enforcement. The `§G2` formula
   and the `ConstRecord { ty, value: i128 }` carrier are retained **only as unselected
@@ -6499,7 +6562,19 @@ the post-rev-39 Host/bootstrap, M1AppendSchema, metrics, acceptance-traceability
 kind-inventory, `/5`-contract, relocation-protocol, package-status,
 conversion-scope, and pointer audits. The fifth batch (OB-53) records the
 documentation-review OPEN-01 TU-root/scope startup-order candidate (§24.14;
-still `OPEN`).
+still `OPEN`). See §24.15 for the Group A (scheduler/commit boundary)
+user-accepted recommendations (2026-10-05), which dispose OB-1/2/3/5/26/28/29/39/40/41/44 as recommendations only.
+See §24.16 for the Group B (result/diagnostic carriers) user-accepted
+recommendations (2026-10-05), which dispose OB-4/6/7/8/27/30/31/50 as
+recommendations only. See §24.17 for the Group C (records/links/schema/hash)
+user-accepted recommendations (2026-10-05), which dispose
+OB-10/12/13/14/15/19/20/21/22/23/24/32/34/42/43/48/49/52 as recommendations only.
+See §24.18 for the Group D/E/F (semantics/host/acceptance/limits) user-accepted
+recommendations (2026-10-05), which dispose
+OB-11/16/33/35/36/37/38/45/51/52/53 as recommendations only (OB-52 narrows the
+§24.17 hygiene entry; OB-11 follows the Group B OB-50 direction).
+See §24.19 for the OB-17/OB-18 user-accepted recommendations (2026-10-05),
+which dispose OB-17/OB-18 as recommendations only.
 
 | # | Blocker | Owner / co-freeze | Where |
 |---|---|---|---|
@@ -6723,3 +6798,429 @@ still `OPEN`).
   This entry is a delegated candidate default, not a T05/T06 owner signoff, not
   T01 `[INT]` acceptance, and not a `/6` freeze. `/5` remains current, M1 remains
   DRAFT, ADR-0002 remains PROPOSED, and no code is authorized.
+
+### 24.15 Group A (scheduler/commit boundary) user-accepted recommendations (2026-10-05)
+
+- **Group A scope (docs-only; no code, no commit, no freeze).** This subsection
+  records 11 user-accepted Group A (scheduler/commit boundary) recommendations
+  accepted 2026-10-05. Each is a **user-accepted recommendation; T01 co-freeze
+  pending; not a `/6` freeze; no code**. None changes `/5`, none freezes `/6`,
+  none authorizes code, and all OB rows and historical text above remain
+  verbatim except the §24.11 pointer sentence.
+- **OB-1 — dispatcher pre-worker mutation vs semantic commit; `in_flight` clear
+  ownership (user-accepted recommendation; T01 co-freeze pending; not a `/6`
+  freeze; no code):** the dispatcher's per-batch `Ready→Running` transition plus
+  in-flight population stays a distinct pre-worker mutation outside the semantic
+  commit; the sole clear owner is the dispatcher/backend clearing `in_flight`
+  at latch after H6 recovery; rationale: this keeps the scheduling mutation
+  boundary explicit so the one ordered atomic semantic commit is never conflated
+  with dispatch, and the clear is not itself a transition.
+- **OB-2 — empty-proposal outcome (user-accepted recommendation; T01 co-freeze
+  pending; not a `/6` freeze; no code):** a dispatched task with an empty
+  proposal vector gets a per-task `Fail` with a diagnostic; rationale: this
+  rules out silent `Completed` and rules out leaving the task `Running`.
+- **OB-3 — cancel vs tick-budget precedence (user-accepted recommendation; T01
+  co-freeze pending; not a `/6` freeze; no code):** cancel takes precedence
+  over tick-budget; the cancel tick performs no new
+  selection/dispatch/commit, tasks are otherwise untouched, repeated cancel is
+  idempotent, and exactly one terminal report record is emitted; rationale: this
+  gives cancel a single deterministic tick semantic with no new work admitted
+  on the cancel path.
+- **OB-5 — `Progress` reinsert vs `max_task_progress` exceedance (user-accepted
+  recommendation; T01 co-freeze pending; not a `/6` freeze; no code):**
+  `max_task_progress` exceedance is a per-task `Fail` (chip-level diagnostic);
+  `Progress` reinsert is exactly-once into the task's own stage queue with
+  `ready_tick = tick + 1`, mutually exclusive with `Fail`; rationale: this
+  separates the per-task quota breach from the requeue path so a task never
+  both requeues and fails on the same tick.
+- **OB-26 — `FunctionEnd` phase-2b hook failure vs H6 (user-accepted
+  recommendation; T01 co-freeze pending; not a `/6` freeze; no code):** a
+  `FunctionEnd` phase-2b hook failure rejects the whole batch as a
+  `TerminatorMissing` `CommitError`, then H6 recovery applies; the
+  "already-committed" phrasing is corrected to "proposed completion inside the
+  failing batch"; rationale: this resolves the rollback contradiction — there
+  is no durable completion fact when the batch that proposed it is rejected.
+- **OB-28 — "phase 2b" label collision rename (user-accepted recommendation;
+  T01 co-freeze pending; not a `/6` freeze; no code):** rename the colliding
+  "phase 2b" labels to P1 structural-refs (including a frozen P1.0 per-task
+  inventory sub-pass producing own `AppendRecords` ranges + `Enqueue` counts),
+  P2a–2d resolve, P2E cumulative-semantic, and P2F completion-hook, preserving
+  rev-43 semantics; rationale: this removes the cross-reference collision while
+  making the per-task inventory sub-pass explicit.
+- **OB-29 — `ChildRef::Committed` predicate + error name (user-accepted
+  recommendation; T01 co-freeze pending; not a `/6` freeze; no code):** the
+  `ChildRef::Committed` predicate is: `TaskId` exists AND a committed `Enqueue`
+  record shows `parent == this task` AND live; committed-child failures map to
+  `AwaitChildrenRefInvalid` (payload extended to carry the reference);
+  rationale: this gives the predicate an auditable committed-parent link plus
+  liveness, with one named error carrying the offending reference.
+- **OB-39 — job bootstrap `Idle→Running` ownership (user-accepted
+  recommendation; T01 co-freeze pending; not a `/6` freeze; no code):** a
+  CT01-owned explicit `Idle→Running` transition exactly once (duplicate start is
+  a diagnostic); `Finished` stays CT14-owned; rationale: this names the missing
+  bootstrap transition and its owner without moving terminal-job ownership.
+- **OB-40 — source-import satisfaction bit (user-accepted recommendation; T01
+  co-freeze pending; not a `/6` freeze; no code):** the commit-apply import path
+  validates `HostResponse.request` against the committed request ID, appends
+  `sources` records, and flips `satisfied := true` in the same atomic commit;
+  duplicates/out-of-order get a named diagnostic; rationale: this binds the
+  satisfaction flag to the committed request inside the atomic commit so the
+  flag can never be set without the matching response.
+- **OB-41 — host-wait exit / host join (user-accepted recommendation; T01
+  co-freeze pending; not a `/6` freeze; no code):** a commit-apply host-join
+  mirroring CT07 — CT02/CT08 decision-only; commit-apply observes committed
+  `satisfied` + response, transitions `Waiting(host)→Ready` exactly once and
+  reinserts into `stage_queues[stage_of(task.kind)]`; cancel winds down via the
+  CT13 path; rationale: this keeps the wait exit single-owner and exactly-once
+  while leaving cancel on its existing wind-down path.
+- **OB-44 — `PipelineMetrics` deferral (user-accepted recommendation; T01
+  co-freeze pending; not a `/6` freeze; no code):** defer full
+  `PipelineMetrics` to Part B / post-`/6`; `/6` freezes only
+  `TickRecord.dispatched` + `selected` as canonical scheduler-observable facts,
+  and §6.2.1 is amended accordingly with a re-entry criterion; rationale: this
+  keeps `/6` to the two scheduler facts needed for replay/observability while
+  the full metrics writer/encoding set waits for Part B.
+
+### 24.16 Group B (result/diagnostic carriers) user-accepted recommendations (2026-10-05)
+
+- **Group B scope (docs-only; no code, no commit, no freeze).** This subsection
+  records 8 user-accepted Group B (result/diagnostic carriers) recommendations
+  accepted 2026-10-05. Each is a **user-accepted recommendation; T01/owner
+  co-freeze pending; not a `/6` freeze; no code**. None changes `/5`, none
+  freezes `/6`, none authorizes code, and all OB rows and historical text above
+  remain verbatim except the §24.11 pointer sentence.
+- **OB-4 — join decides child terminal state only and consumes nothing
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** the join decides child terminal state only and consumes
+  nothing (parent-owns-consumption); under await-all the parent stays `Waiting`
+  until all committed children are terminal; non-terminal siblings are waited
+  on, not cancelled (the fail-fast framing stays superseded); rationale: this
+  keeps result consumption with the parent's own atomic commit so the join never
+  needs a durable parent-side handoff, and await-all waits out slow siblings
+  instead of cancelling them.
+- **OB-50 — File-Enter structural exactly-once vs `consumed`-bool hand-offs
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** the File-Enter edge uses structural exactly-once
+  (committed TU-root append cardinality, no result consumed); other
+  completion-triggered hand-offs reuse the `ResultRecord.consumed` bool with
+  per-result-kind consumer fencing (edge-scoped consumption, whole-value clone
+  acceptable); rationale: this keeps the File-Enter edge free of result
+  consumption while giving the remaining hand-offs one durable claim bit with
+  per-kind fencing instead of a new claim mechanism.
+- **OB-6 — `ConstantResult` carrier, no new variant (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  no new `ResultValue` variant; Legal constant results complete with
+  `Record(RecordRef::Const)`; this explicitly amends the rev-44 "legality as
+  result payload field" selection to outcome-carried legality; rationale: this
+  reuses the existing generic record carrier for the Legal path and moves
+  legality out of the payload into the completion outcome.
+- **OB-7 — non-legal constant coupling (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** value absent on
+  non-legal outcomes; no `ConstRecord` is committed for non-legal results;
+  non-legal outcomes `Fail` with the accepted chip diagnostics
+  (`ConstUnsupported`/`ConstOverflow` and a `NotConstantExpression`-family code
+  to be named); T09 refuses non-legal constants by the missing-`ConstId` rule
+  plus its existing immediate/`ty` checks; rationale: this keeps non-constant
+  or unsupported evaluations from materializing a value record while giving T09
+  a structural refusal (no `ConstId`) layered on its existing checks.
+- **OB-8 — `ConstRecord` identity, one per request (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  one `ConstRecord` per successful `const.evaluate` request (no dedup, no
+  literal/node back-link in M1); provenance stays in the `ConstantRequest`;
+  rationale: this keeps the M1 identity rule trivially auditable (request count
+  equals committed value count) and leaves dedup and back-links out of M1.
+- **OB-27 — nonzero `EffectMask` carrier (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** nonzero
+  `EffectMask` is a chip `DiagnosticDraft` via `Fail` (CDR-rev-46-literal), not
+  a `CommitError` and not VF06-only; gives VF06 a committed negative case to
+  verify; rationale: this classifies unexpected effects as a semantic chip
+  diagnostic on the failing task while supplying the committed negative fixture
+  VF06 needs.
+- **OB-30 — parse `next_cursor` reuses `ContinuationDraft.cursor`
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** parse `next_cursor` reuses `ContinuationDraft.cursor`
+  (no new `ResultValue` variant); T05 must specify the continuation read path,
+  manifest scope, and the rule for tasks completing without an appended
+  continuation; rationale: this avoids a new result-variant family for the
+  cursor while leaving the read path, manifest ownership, and the
+  no-continuation completion rule as explicit T05 co-freeze items.
+- **OB-31 — T01 §4 continuation supersession entry (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  a formal `/6` supersession entry replacing the T01 §4 continuation sentence
+  (`operands` superseded by `partial_children`/`next_child_ordinal`; `awaited`
+  superseded by `WaitSet`-only); all pre-rev-42 fail-fast/sibling-cancellation
+  sentences labeled superseded history; rationale: this retires the stale T01
+  §4 sentence and the stale fail-fast/sibling-cancellation framing in one
+  catalogued supersession instead of silent edits.
+
+### 24.17 Group C (records/links/schema/hash) user-accepted recommendations (2026-10-05)
+
+- **Group C scope (docs-only; no code, no commit, no freeze).** This subsection
+  records 17 user-accepted Group C (records/links/schema/hash) recommendations
+  accepted 2026-10-05. Each is a **user-accepted recommendation; T01/owner
+  co-freeze pending; not a `/6` freeze; no code**. None changes `/5`, none
+  freezes `/6`, none authorizes code, and all OB rows and historical text above
+  remain verbatim except the §24.11 pointer sentence.
+- **OB-10/OB-49 — T01 reserved-ID protocol generalizing the T04-rev-2 condition
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** generalize the T04-rev-2 condition to a T01 reserved-ID
+  protocol — whole-batch stable-ID pre-reservation/prediction (P1.0 per-task
+  inventory, 2a name plan, 2b predicted `RecordRef` per family) before any typed
+  `RecordLink` validation/resolution, then resolve; rationale: the reciprocal
+  token↔literal cycle resolves without topological order once every ID in the
+  batch is predicted before any link is checked.
+- **OB-12 — append-family owners + allowlist mechanism first, per-chip splits
+  wave-gated (user-accepted recommendation; T01/owner co-freeze pending; not a
+  `/6` freeze; no code):** freeze append-family owners (§8) + the allowlist
+  mechanism first; per-chip field splits land wave-gated with their tests under
+  an explicit "group-owner-only, no chip dispatch" interim gate; rationale: the
+  owner + mechanism freeze unblocks integration while per-chip splits stay
+  gated to their own waves with tests instead of blocking the seed.
+- **OB-32 — `DiagnosticDraft` name fix + M1-exercised manifests only
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** fix the diagnostic name once as `DiagnosticDraft` (update
+  T01 §5 and T02 CT11 references); write field-level manifests only for
+  M1-exercised chips, all others OUT-OF-M1 with explicit gap gates; rationale:
+  one naming fix removes the `DiagnosticDraft` vs `DiagnosticProposal` split
+  while the manifest scope stays proportional to what M1 exercises.
+- **OB-48 — `StoreOwnerViolation` + allowlist rows as written (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  implement as written — new `ManifestError::StoreOwnerViolation` (+ stage
+  errors), (`ChipId`,`StoreId`,field,kind) allowlist rows with seed/signature
+  in the `M1AppendSchema` hash; `tasks.ready` gets zero allowlisted chip
+  writers; rationale: the allowlist becomes hash-pinned seed with a named
+  violation while the ready queue stays free of chip writers.
+- **OB-13 — single-freeze closed inventory (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** single-freeze
+  closed inventory — all families, tags+ordinals, stores, and the mapping table
+  frozen byte-for-byte with a seed-equality test; rationale: one atomic freeze
+  keeps the family/tag/store/map inventories from drifting across partial
+  freezes, with the equality test as the gate.
+- **OB-14 — two-tier minimal seed (user-accepted recommendation; T01/owner
+  co-freeze pending; not a `/6` freeze; no code):** two-tier minimal seed —
+  inventories + `TickRecord.dispatched`/`selected` + encode presence; full
+  metrics/report bodies deferred to Part B with re-entry criterion (aligned with
+  the OB-44 deferral); rationale: `/6` pins only the minimal
+  scheduler-observable seed while the full metrics/report bodies wait for Part B
+  under the same deferral.
+- **OB-34 — atomic manifest-§4/token fix + numeric-symbolic carve-out +
+  round-trip gate (user-accepted recommendation; T01/owner co-freeze pending;
+  not a `/6` freeze; no code):** fix the manifest-§4/token contradiction
+  atomically at `/6`; numeric-symbolic carve-out (enum names + field order
+  hashed, magnitudes/widths excluded until probe-gated Part B); snapshot
+  `encode_*` implemented with round-trip tests now, hash covers inventories +
+  encoder names; rationale: the contradiction is repaired in one atomic update
+  while round-trip (decode + re-encode identity) gates the encoders and
+  unverified magnitudes stay out of the hash until the probe gates Part B.
+- **OB-42 — Group-B reuse for `ResultValue` wires (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  adopt Group-B reuse — drop `DraftRecords` from `M1AppendSchema`;
+  Legal=`Record`, multi=`Records`, non-legal=`Fail`, cursor via continuation;
+  retract §6.3/§12.1 candidate text accordingly; rationale: the result-wire set
+  reuses the accepted Group-B carriers instead of hashing a new `DraftRecords`
+  variant, with the stale candidate text retracted.
+- **OB-43 — explicit wire-inventory item + supersession catalog (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  append an explicit wire-inventory item (`PROPOSAL_NAMES` 8 entries +
+  coexistence rule ids + wire tags + `push_wires` arms) plus the T01 §4/§7.1
+  supersession catalog entries; rationale: the `AppendRecords`/`Progress`/
+  `AwaitChildren` wire additions are pinned as an inventoried set with their
+  supersession entries instead of unlisted prose.
+- **OB-15 — `SpanRecord.start/end` `u64` widening (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  widen `SpanRecord.start/end` to `u64` with fixed little-endian u64 snapshot
+  encoding; byte-compat break handled by `/6` version bump + migration test;
+  rationale: the widened span bounds get one fixed encoding while the compat
+  break is handled explicitly by version + migration instead of silent
+  reinterpretation.
+- **OB-19 — `SemId` + `sem.records` family/arena + `RecordRef::Sem`
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** new `SemId` + `sem.records` family/arena +
+  `RecordRef::Sem` (uniform record/link/encoder treatment, explicit T09 link
+  target); rationale: sem records get the same family/arena/ref/link/encoder
+  standing as every other family with T09 consuming the typed link.
+- **OB-20 — `SemRecord` shape + `TypeId` reuse scan + scope-event order +
+  allowlist rows (user-accepted recommendation; T01/owner co-freeze pending;
+  not a `/6` freeze; no code):** `SemRecord` keeps `ty` carrying the signature
+  plus a separate plan-holder field; `TypeId` reuse =
+  structural-equality-on-`TypeKind` scan of all committed `types.records`,
+  lowest-id wins, no cache; scope events field order (`scope`,`kind`,`at`) with
+  `ChipId`-keyed allowlist rows in the seed; T09 typed link targets
+  `RecordRef::Sem`; rationale: the sem shape, the cache-free canonical-reuse
+  scan, the fixed scope-event order, and the typed T09 link are pinned together
+  so none drifts independently.
+- **OB-21 — committed-or-same-batch wording + file-Exit reason (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  committed-or-same-batch wording; file-Exit is a `ScopeLifecycleViolation`
+  reason (single rule covers intra-batch doubles); rationale: one wording
+  covers the same-batch scope-event case while one violation reason covers
+  both inter- and intra-batch file-Exit doubles.
+- **OB-22 — `i128` carrier with sufficient-budget representability only
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** `i128` carrier for M1 with "sufficient-budget
+  representability" only; general formula, BigInt, enforcement split, and
+  symbolic-vs-probe gating deferred post-M1; rationale: M1 commits to the
+  carrier plus the minimal representability claim while the formula/general
+  carrier/enforcement/gating questions stay post-M1.
+- **OB-23 — VF06 fails only missing M1-minimal required conversions
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** VF06 fails only missing M1-minimal required conversions;
+  non-M1 conversions are chip unsupported diagnostics outside VF06; rationale:
+  the VF06 completeness domain stays exactly the M1-minimal required set while
+  non-M1 conversions remain explicitly unsupported rather than VF06 failures.
+- **OB-24 — split PP01/PP04 commits + continuation-carried chunk cursor +
+  `max_source_bytes` scope (user-accepted recommendation; T01/owner co-freeze
+  pending; not a `/6` freeze; no code):** split commits (PP01 commits
+  artifact/spans, PP04 commits tokens in later ticks with committed-span refs);
+  chunk cursor carried in the continuation (no new bus field);
+  `max_source_bytes` bounds source bytes and artifact bytes as stated;
+  rationale: the commit split keeps span refs committed before tokens use them,
+  the cursor needs no new bus field, and the byte bound keeps its stated scope.
+- **OB-52 hygiene — reconcile E-bootstrap pointer staleness (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  reconcile the E-bootstrap pointer staleness when touching those paragraphs
+  (only "bootstrap wiring beyond the stage edge" stays open); rationale: the
+  accepted File `Enter` stage edge replaces the stale bootstrap-order wording
+  so only the wiring beyond the edge remains open.
+
+### 24.18 Group D/E/F (semantics/host/acceptance/limits) user-accepted recommendations (2026-10-05)
+
+- **Group D/E/F scope (docs-only; no code, no commit, no freeze).** This
+  subsection records 11 user-accepted Group D/E/F (semantics/host/acceptance/
+  limits) recommendations accepted 2026-10-05. Each is a **user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code**.
+  None changes `/5`, none freezes `/6`, none authorizes code, and all OB rows
+  and historical text above remain verbatim except the §24.11 pointer sentence.
+- **OB-51 — TY25–TY27 admitted as identity-only in M1 (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  admit TY25–TY27 as identity-only in M1 (the int→int no-op corner); the
+  rev-46 "integer promotions deferred" means non-identity promotions, not the
+  int→int row; use one consistent scope phrase across §9, §22.1, CDR row
+  F/§F2–F3, the T06 qualifier, T07-S5, the T09 scope bullet, and T13 VF06
+  items 3/6; VF06 missing-conversion negatives stay synthetic (per OB-23);
+  rationale: this resolves the rev-46/M1-fixture contradiction without
+  widening the M1 conversion scope, keeping the exercised set exactly the
+  identity corner while non-identity promotions stay deferred and VF06
+  negatives stay synthetic.
+- **OB-11 — structural File-Enter + `consumed`-bool hand-offs (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  structural File-Enter (committed TU-root append cardinality, no result
+  consumed) + other completion-triggered hand-offs reuse
+  `ResultRecord.consumed` with per-kind consumer fencing (Group B OB-50
+  direction); rationale: this keeps the File-Enter edge free of result
+  consumption while giving the remaining hand-offs one durable claim bit with
+  per-kind fencing instead of a new claim mechanism.
+- **OB-35 — Host/task taxonomy layer split (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** layer split —
+  group-1 `TaskKind`s name schedulable T02-owned units (CT08 family),
+  `HostRequestKind` names wire-protocol payloads; freeze an explicit
+  kind↔request mapping table with disambiguated names plus the
+  CT14→CT08→Host chain and the exactly-once request rule; rationale: this
+  separates the schedulable-unit namespace from the wire-protocol namespace so
+  no chip owner is invented for Host payloads and the finalization chain has
+  one stated path with one request rule.
+- **OB-36 — CT14 as M1 terminal gate only (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** CT14 in M1 as
+  terminal gate only — validates no-incomplete + fragments present, emits the
+  `WriteArtifact` Host request proposal, never writes files; `Finished` is
+  observed via the Group A host-join; Part A `--emit-*` are
+  Host-materialized snapshots/traces, Part B `-S -o` is the Host write after
+  CT14; freeze which fragments are mandatory in M1; rationale: this keeps
+  file writes on the Host side with CT14 as a gate, so M1 needs no chip-owned
+  file scope while the mandatory-fragment list stays explicit.
+- **OB-37 — minimal split-label docs-only (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** minimal
+  split-label docs-only — prerequisite as two bullets (identity frozen per
+  T01 §6 vs values UNVERIFIED per §7.1 C02 + probe), wave rows keep the
+  Part-B tag, vertical CG list labeled M1-path subset non-exhaustive with the
+  T11 catalog authoritative; rationale: this stops the identity/values
+  conflation at the prerequisite while keeping the wave/CG labels honest
+  about Part-B scope.
+- **OB-38 — narrow cross-reference retarget (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** retarget
+  narrowly — corpus/target-identity cites point at T01 §6 (identity) +
+  §7.1 C02 (UNVERIFIED/attest status), suite list at T00 §1 items 1–3; keep
+  the "vertical = frontend half, end-to-end = target doc" alias line;
+  rationale: the cites point at the exact identity vs values sources so the
+  alias line no longer papers over the split.
+- **OB-45 — M1-UNS `Chip(s)`/`Gate` columns (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** add
+  `Chip(s)`|`Gate` columns to the M1-UNS table with explicit TBD (T01
+  co-freeze) where unknown; Gate = G8 (+G12 for concrete-value assertions,
+  +mode/policy for UNS-05/08); no invented ownership; rationale: the table
+  gains the same chip/gate traceability as the other fixture tables while
+  unknowns stay explicit TBDs instead of invented owners.
+- **OB-52 — narrow reword preserving history (user-accepted recommendation;
+  T01/owner co-freeze pending; not a `/6` freeze; no code):** narrow reword
+  preserving history — File-Enter edge accepted (rev 43, no job-bootstrap);
+  only bootstrap wiring beyond the edge + T05 TU carrier + kind/stage remain
+  open; close the header/CDR-pointer leg as superseded by the rev-40
+  correction (narrowing the §24.17 OB-52 hygiene entry); rationale: this keeps
+  the accepted edge while shrinking the open set to the wiring beyond it,
+  retiring the already-corrected pointer leg instead of re-litigating it.
+- **OB-53 — registration/mechanism split for M1-START-01 (user-accepted
+  recommendation; T01/owner co-freeze pending; not a `/6` freeze; no code):**
+  split registration from mechanism — register the M1-START-01
+  shape/asserts with T13/vertical now as test design only; edge realization
+  + payload + range invariant + bootstrap kind/stage stay T01/T05/T06 `/6`
+  items; rationale: test design (shape/asserts/registration) lands now while
+  the mechanism stays co-freeze, so fixture design neither blocks on nor
+  pre-empts the edge realization.
+- **OB-16/OB-33 — limits shape/`try_new` skeleton now, numerics deferred
+  (user-accepted recommendation; T01/owner co-freeze pending; not a `/6`
+  freeze; no code):** freeze the shape/`try_new` skeleton now — field names,
+  defaults (`max_inflight_per_tick=1`), bound-check phases (pre-dispatch vs
+  pre-apply), checked-arithmetic requirement, sole-bound/
+  `BackpressureCapacity`/per-task-`Fail` architecture; retire stale
+  `max_dispatches_per_tick` lines to history; defer numeric `ConfigError`
+  codes, `total_drafts` definition, Q-scaling, and the const trigger formula
+  to a named follow-up co-freeze; rationale: the skeleton
+  (names/defaults/phases/arithmetic/architecture) freezes now while numerics
+  and derived definitions wait for the named follow-up, and stale
+  sole-bound-violating lines become history instead of operative text.
+
+### 24.19 OB-17/OB-18 user-accepted recommendations (2026-10-05)
+
+- **Scope (docs-only; no code, no commit, no freeze).** This subsection records
+  the user-accepted OB-17/OB-18 recommendations accepted 2026-10-05. Each is a
+  **user-accepted recommendation; T01/integrator co-freeze pending; not a `/6`
+  freeze; no code**. None changes `/5`, none freezes `/6`, none authorizes
+  code, and all OB rows and historical text above remain verbatim except the
+  §24.11 pointer sentence.
+- **OB-17 — mechanical cleanup per checklist C17-1..C17-9 (user-accepted
+  recommendation; T01/integrator co-freeze pending; not a `/6` freeze; no
+  code):** (a) qualify/remove stale `DispatchBudgetExceeded` operative lines
+  to history-with-rev-51/54-notes (M1 §6/§6.4/§13, CDR §A9/§I3, ADR-0002 §6;
+  sole per-tick bound `max_inflight_per_tick`/quota via
+  `SelectionBatchOverflow`); (b) promote H6 wording to the rev-42 formula
+  everywhere operative (pre-dispatch errors leave tasks `Ready`; a failed
+  semantic batch commit commits no semantic state; deterministic bounded
+  recovery processes dispatched tasks once in dispatch order to `Failed`; no
+  pre-reservation of N diagnostics; per-task `DiagnosticId::NONE` fallback;
+  state guard); (c) attach rev-49 supersession pointers to marker-family
+  residual sentences (operative direction: reuse the committed IR28
+  `FunctionEnd` terminal result with a T01-owned typed phase-2b commit-apply
+  validation hook; no new marker family); (d) dispatcher-failure carrier/code
+  inventory: the classification is fixed (`CommitError` vs
+  dispatcher/scheduling failure vs `ManifestError`) but the carrier
+  type/family/numeric codes stay open — recorded as an open T01/integrator
+  inventory item to be added at `/6` co-freeze; rationale: stale operative
+  lines become qualified history, one H6 formula reads operative everywhere,
+  marker residuals point at the rev-49 direction, and the failure vehicle has
+  one open inventory slot instead of an implied carrier.
+- **OB-18 — `/6` supersession catalog seed per checklist C18-1..C18-5
+  (user-accepted recommendation; T01/integrator co-freeze pending; not a `/6`
+  freeze; no code):** extend CDR §I4 with entries S1–S12 (S1 continuation
+  fields; S2 dispatch ordering; S3 commit order; S4 `Proposal`/`ResultValue`
+  deltas; S5 consume envelope; S6 queue membership; S7 latch/in-flight clear;
+  S8 five-outcome set + T01 §7.1 C03 update; S9 reserved-ID protocol; S10
+  `Fault` representation; S11 Group A/B/C decided entries; S12 mis-attribution
+  fix); apply the Group A/B/C decided entries as the first catalogued
+  supersessions; fix the §3-vs-§4 mis-attribution (the symbolic-width citation
+  belongs to **T01 §3:59-60**, not T01 §4); resolve the S4 `DraftRecords`
+  conflict against the OB-42 Group-B reuse direction (Legal=`Record`,
+  multi=`Records`, non-legal=`Fail`, cursor via continuation) before freezing
+  the seed list; rationale: the §I4 catalog becomes a seeded, ordered,
+  attributable list whose first supersessions are the already-decided Group
+  A/B/C entries, with the citation and the wire-conflict settled before any
+  seed freeze.

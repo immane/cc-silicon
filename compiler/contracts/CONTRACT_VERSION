@@ -1,12 +1,12 @@
 # Frozen T01 compiler contract artifact (C01-C06).
 # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md
-version=t01-c01-c06/5
-hash=61877601386166eea24b469ad382cff354f8e3bf31a6665f2cd16c287af63bb5
+version=t01-c01-c06/6
+hash=60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)
 corpus_fetch=on-demand hash-locked
 reference_baseline=authorized, not available, not candidate evidence
 hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)
-hash_excludes=runtime-registrations, routing-content, group-declared-store-fields, chip-logic
+hash_excludes=runtime-registrations, routing-content, post-seed-declarations, chip-logic
 verified_state=private-VerifiedState; attest validates caller-supplied report data and hash, not authenticity or physical provenance
