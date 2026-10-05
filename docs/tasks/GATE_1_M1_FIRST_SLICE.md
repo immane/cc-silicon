@@ -2,11 +2,26 @@
 
 | Field | Value |
 |---|---|
-| Status | **PROPOSED** — a work list, not a freeze and not code authorization |
+| Status | **EXECUTED 2026-10-06** — frozen as `t01-c01-c06/7` (hash `a56de65b…89d5c`); branch `feat/gate1-const-fold` |
 | Scope | Compiler application (`compiler/`); root framework untouched |
 | Authority | Each item names its decider; only the named authority signs |
-| Depends on | [T01](T01_COMPILER_CONTRACT.md) §7.1 (`/6` foundation), [M1 Part A proposal rev 40](M1_PART_A_CONTRACT_PROPOSAL.md), [CDR rev 56](CONTRACT_CHANGE_REQUEST_M1_PIPELINE_AND_PART_A_SCHEMA.md) |
+| Depends on | [T01](T01_COMPILER_CONTRACT.md) §7.1 (`/6` foundation + `/7` delta), [M1 Part A proposal rev 40](M1_PART_A_CONTRACT_PROPOSAL.md), [CDR rev 56](CONTRACT_CHANGE_REQUEST_M1_PIPELINE_AND_PART_A_SCHEMA.md) |
 | Non-goal | Parse/return chain, Part B, quota>1, full C vocabularies |
+
+## 0. Decision record (user, 2026-10-06)
+
+- **Version:** new amendment `/7` (hash move can never stay `/6`).
+- **`ConstRecord` carrier:** magnitude bytes (`value: Vec<u8>` big-endian
+  + `negative: bool`), mirroring `LiteralRecord`.
+- **`Lx08CandidateType`:** M1-closed enum (`{Int}`); future categories
+  append members (and bump the version).
+- **Envelope (T01 integration):** no new `ResultValue` variant —
+  `Legal` completes with `Record`, non-legal fails with a structured
+  diagnostic (implements the already-hashed `/6` rules
+  `const.legal-completes-record`, `const.non-legal-fails-no-record`,
+  `const.one-record-per-request`).
+- **`required_kind`/`op`:** implied by the M1 slice kinds, zero wire
+  bytes; future purposes need new kinds/variants.
 
 ## 1. What Gate 1 is
 
@@ -76,3 +91,37 @@ decision belongs to the user on T01's proposal.
 All G1-1–G1-10 accepted and signed, version bumped if the hash moved,
 and the `G1-CL-01` fixture runs end-to-end on frozen types. Only then do
 the slice chips get dispatched to Wave 1 authors.
+
+## 6. Execution record (2026-10-06)
+
+All items executed by the T01 integrator on branch
+`feat/gate1-const-fold`, verified by `compiler/tests/c08_gate1.rs`
+(11 tests: G1-CL-01 chain, decode/routing conventions, materialization
+negatives, capacity, stage/allowlist/layer gates, snapshot replay,
+schema/hash presence):
+
+- G1-1–G1-5: `LiteralRecord`/`ConstRecord` typed arenas in `bus.rs`;
+  M1-closed enums (`LiteralKind`, `LiteralSuffix`, `{Int}`, `{Add}`,
+  `{IntegerConstantExpression}`, `ConstLegality`); `ConstantRequest`
+  decode + `ConstantResult::route` in `task.rs`; `G1DraftBody` in
+  `records.rs`; body encoders in `snapshot.rs`.
+- G1-6: three slice kinds (`semantic.const_eval_literal`,
+  `semantic.const_eval_binary`, `constant_layout_init.const_fold`),
+  all `Frozen`, in `TaskKindRegistry::m1_slice()`.
+- G1-7: `STAGE_ASSIGNMENT` (control 0, request 1, fold 2);
+  `check_stage_assignment` enforces every claimed kind;
+  `check_stage_layer_agreement` covers routed kinds.
+- G1-8: one allowlist row (`G1_FOLD_CHIP`, `Constants/records`,
+  `const_fold`); enforcement wave-gated to slice kinds.
+- G1-9: `AppendRecords` materializes `Literal`/`Const` bodies 1:1
+  with handles (M1-subset enforced, other families keep the explicit
+  rejection); per-arena capacity preflight; infallible apply with
+  `CommitReport::appended`.
+- G1-10: `StoreSchema::m1_slice()`, snapshot bodies, freeze-test
+  inventory pins.
+- Version: `t01-c01-c06/7`, hash
+  `a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c`
+  (`compiler/contracts/CONTRACT_VERSION`).
+
+Wave 1 (slice chips per `TASK_TEMPLATE`) is unblocked on these types;
+`M1-CL-05` on real upstream artifacts remains the Wave-2 acceptance.

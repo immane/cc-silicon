@@ -12,10 +12,13 @@
 // table, committed patches, and per-store versions are encoded. Reserved
 // language stores have no frozen record schema yet, so the snapshot encodes
 // their allocated live IDs only; their record bodies remain reserved until the
-// owning task group freezes them.
+// owning task group freezes them. Gate 1 (`/7`) types the `literals` and
+// `consts` arenas, whose bodies are encoded in full below.
 // ============================================================================
 
-use crate::bus::{ArtifactKind, ArtifactRecord, CompilerBus, SpanRecord};
+use crate::bus::{
+    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, SpanRecord,
+};
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
 use crate::ids::{
@@ -685,11 +688,14 @@ impl Snapshot {
             bus.arenas.nodes.allocated(),
             bus.arenas.nodes.live_ids(),
         );
-        push_reserved(
-            &mut w,
-            bus.arenas.consts.allocated(),
-            bus.arenas.consts.live_ids(),
-        );
+        // Gate 1 (`/7`) typed constants: allocated count plus per-record
+        // bodies in ascending ID order (tombstones stay visible as gaps,
+        // same convention as the typed continuations above).
+        w.u64(bus.arenas.consts.allocated() as u64);
+        for (id, constant) in bus.arenas.consts.iter() {
+            w.u32(id.index());
+            w.raw(&encode_const(constant));
+        }
         push_reserved(
             &mut w,
             bus.arenas.layouts.allocated(),
@@ -725,12 +731,13 @@ impl Snapshot {
             bus.arenas.vregs.allocated(),
             bus.arenas.vregs.live_ids(),
         );
-        // `/6` reserved language families: ID-only, same convention.
-        push_reserved(
-            &mut w,
-            bus.arenas.literals.allocated(),
-            bus.arenas.literals.live_ids(),
-        );
+        // Gate 1 (`/7`) typed literals: allocated count plus per-record
+        // bodies in ascending ID order (same convention as constants).
+        w.u64(bus.arenas.literals.allocated() as u64);
+        for (id, literal) in bus.arenas.literals.iter() {
+            w.u32(id.index());
+            w.raw(&encode_literal_record(literal));
+        }
         push_reserved(
             &mut w,
             bus.arenas.sem.allocated(),
@@ -1364,6 +1371,57 @@ pub fn decode_literal(bytes: &[u8]) -> Result<LiteralRecordView, CodecError> {
         spelling,
         candidate_type,
     })
+}
+
+/// Canonical encoding of one committed [`LiteralRecord`].
+///
+/// The body layout reuses [`encode_literal`] through the view projection;
+/// the token is its arena index.
+pub fn encode_literal_record(record: &LiteralRecord) -> Vec<u8> {
+    encode_literal(&LiteralRecordView {
+        token: record.token.map(|token| token.index()),
+        kind: record.kind,
+        radix: record.radix,
+        suffix: record.suffix,
+        value: record.value.clone(),
+        negative: record.negative,
+        spelling: record.spelling.clone(),
+        candidate_type: record.candidate_type,
+    })
+}
+
+/// Decode one committed [`LiteralRecord`]; consumes the whole input.
+pub fn decode_literal_record(bytes: &[u8]) -> Result<LiteralRecord, CodecError> {
+    let view = decode_literal(bytes)?;
+    Ok(LiteralRecord {
+        token: view.token.map(crate::ids::TokenId::from_index),
+        kind: view.kind,
+        radix: view.radix,
+        suffix: view.suffix,
+        value: view.value,
+        negative: view.negative,
+        spelling: view.spelling,
+        candidate_type: view.candidate_type,
+    })
+}
+
+/// Canonical encoding of one committed [`ConstRecord`].
+///
+/// Byte layout (fixed field order): value bytes | negative bool.
+pub fn encode_const(record: &ConstRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.bytes(&record.value);
+    w.bool(record.negative);
+    w.finish()
+}
+
+/// Decode one committed [`ConstRecord`]; consumes the whole input.
+pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let value = r.bytes()?;
+    let negative = r.bool()?;
+    r.finish()?;
+    Ok(ConstRecord { value, negative })
 }
 
 /// Hash-relevant symbolic projection of a literal.

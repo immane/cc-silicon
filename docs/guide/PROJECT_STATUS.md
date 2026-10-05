@@ -9,8 +9,8 @@ places to re-verify.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 compile-fail doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`, C01–C06) | **Implemented, frozen `/6`** | 147 integration tests + doctests; identity and hash in `contracts/CONTRACT_VERSION` |
-| C language chips (T02–T13, 331 planned tasks) | **Not implemented** | Task descriptions only; no chip source exists |
+| Compiler contract foundation (`compiler/`, C01–C06 + M1 Gate 1) | **Implemented, frozen `/7`** | 158 integration tests + doctests; identity and hash in `contracts/CONTRACT_VERSION` |
+| C language chips (T02–T13, 331 planned tasks) | **Not implemented, except the Gate 1 types are ready** | Task descriptions only; Wave 1 slice chips (T07 request, T08 fold) unblocked on the frozen `/7` const-fold types; no chip source exists yet |
 | AArch64 target values | **Unverified** | Identity frozen; probe never run |
 | ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
@@ -20,13 +20,13 @@ No compiler capability, target verification result, or GCC pass rate
 is claimed anywhere in this repository — and this page claims none
 either.
 
-## What "frozen /6" does and does not mean
+## What "frozen /7" does and does not mean
 
-The frozen artifact is `t01-c01-c06/6`:
+The frozen artifact is `t01-c01-c06/7` (`/6` preserved as history):
 
 ```text
-version=t01-c01-c06/6
-hash=60935783b7b46cc62fc6fff64c532e840e7019a544055c594093d72dce0bf6d8
+version=t01-c01-c06/7
+hash=a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -47,10 +47,11 @@ target_verification=unverified
 - That the frozen shapes are proven correct. The hash is a fingerprint
   of names and shapes, not a semantic proof; chip logic can change
   without changing the hash.
-- That every future chip interface is frozen. Only the foundation
-  (C01–C06) is frozen; per-language record schemas, group task kinds,
-  worker routing, and stage queues are still ahead (see
-  [Roadmap](ROADMAP.md)).
+- That every future chip interface is frozen. The `/7` addition covers
+  only the Gate 1 const-fold slice (literal/const schemas, three task
+  kinds, chain-order stages, one allowlist row); all other
+  per-language record schemas, group task kinds, worker routing, and
+  stage queues are still ahead (see [Roadmap](ROADMAP.md)).
 
 ## Test inventory (so numbers are checkable, not slogans)
 
@@ -65,6 +66,7 @@ Compiler foundation integration tests by file:
 | `c05_codec.rs` | 21 | Canonical snapshot/trace encoding |
 | `c06_routing.rs` | 15 | Dispatcher, budgets, recovery |
 | `c07_limits.rs` | 18 | Configuration limits |
+| `c08_gate1.rs` | 11 | M1 Gate 1 const-fold slice (G1-CL-01 chain + gates) |
 | `freeze.rs` | 14 | Hash recomputation + inventory consistency |
 
 Framework: `tests/paradigm.rs` (15 tests) plus 6 doctests, including

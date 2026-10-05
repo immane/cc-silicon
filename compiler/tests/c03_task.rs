@@ -846,6 +846,7 @@ fn proposal_transitions_and_wire_tags_are_frozen() {
         task,
         batch: AppendBatch {
             records: Vec::new(),
+            bodies: Vec::new(),
         },
     };
     assert_eq!(append.wire_tag(), 5);

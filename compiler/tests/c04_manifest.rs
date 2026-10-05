@@ -235,9 +235,18 @@ fn names_store_entry_resolves_for_group_manifests() {
 }
 
 #[test]
-fn store_owner_allowlist_seed_is_empty_with_zero_ready_writers() {
-    // Mechanism frozen, seed pending: per-chip rows land wave-gated at /6.
-    assert!(STORE_OWNER_ALLOWLIST.is_empty());
+fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
+    use cc_silicon_compiler::manifest::G1_FOLD_CHIP;
+    // Gate 1 (`/7`) seed: exactly the T08 fold-chip row.
+    assert_eq!(
+        STORE_OWNER_ALLOWLIST,
+        &[(
+            G1_FOLD_CHIP,
+            StoreId::Constants,
+            "records",
+            TaskKind::CONSTANT_CONST_FOLD
+        )]
+    );
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(
@@ -249,11 +258,12 @@ fn store_owner_allowlist_seed_is_empty_with_zero_ready_writers() {
 }
 
 #[test]
-fn register_accepts_valid_manifests_while_the_allowlist_seed_is_empty() {
+fn register_accepts_valid_manifests_outside_the_gate1_wave() {
     let schema = StoreSchema::foundation();
     let kinds = TaskKindRegistry::foundation();
     let mut registry = ManifestRegistry::new();
-    // The dormant allowlist skeleton must not break existing validation.
+    // Wave-gated enforcement: manifests that claim no Gate 1 slice kind
+    // pass untouched, so the seeded row breaks no existing validation.
     registry.register(base_manifest(), &schema, &kinds).unwrap();
 }
 
