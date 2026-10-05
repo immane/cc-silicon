@@ -301,6 +301,12 @@ impl TaskKind {
     /// product).
     pub const PREPROCESS_DIAGNOSTIC: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 2 (`/22`) PP-conditional-slice kind: conditional-inclusion task
+    /// (payload: all committed pp-token refs; tracks the conditional stack
+    /// with a chip-local PP-int evaluator and completes `Records` of the
+    /// active-line refs, active directive lines included).
+    pub const PREPROCESS_CONDITIONAL: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 22);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -481,6 +487,20 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/22`) PP-conditional-slice registry: the PP-directive
+    /// slice plus the frozen conditional kind (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 23).
+    pub fn pp_conditional_slice() -> Self {
+        let mut registry = Self::pp_directive_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_CONDITIONAL, "preprocess.conditional")];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

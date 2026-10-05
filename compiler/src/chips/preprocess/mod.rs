@@ -4,6 +4,7 @@
 //! chip (`<group>/<snake_name>.rs`); the integrator owns this `mod.rs`.
 
 mod pp_comment;
+mod pp_conditional;
 mod pp_diagnostic;
 mod pp_directive;
 mod pp_normalize;
@@ -12,6 +13,9 @@ mod pp_splice;
 
 pub use self::pp_comment::{
     project_pp_comment_input, replace_comments, PpCommentChip, PpCommentInput,
+};
+pub use self::pp_conditional::{
+    project_pp_conditional_input, PpConditionalChip, PpConditionalInput,
 };
 pub use self::pp_diagnostic::{project_pp_diagnostic_input, PpDiagnosticChip, PpDiagnosticInput};
 pub use self::pp_directive::{project_pp_directive_input, PpDirectiveChip, PpDirectiveInput};
