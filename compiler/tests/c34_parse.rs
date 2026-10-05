@@ -22,8 +22,8 @@ use cc_silicon_compiler::chips::{
     DeclaratorError, DeclaratorToken, ExternalDeclKind, ExternalToken, PaBlockChip, PaBlockInput,
     PaDeclaratorChip, PaDeclaratorInput, PaDeclaratorProjectedToken, PaExternalChip,
     PaExternalInput, PaReturnInput, PaSpecifierChip, PaSpecifierInput, ProjectedBlockToken,
-    ProjectedSpecifierToken, Worker, WorkerRegistry, PA02_TASK_KIND, PA03_TASK_KIND, PA05_TASK_KIND,
-    PA28_TASK_KIND, PA32_TASK_KIND,
+    ProjectedSpecifierToken, Worker, WorkerRegistry, PA02_TASK_KIND, PA03_TASK_KIND,
+    PA05_TASK_KIND, PA28_TASK_KIND, PA32_TASK_KIND,
 };
 use cc_silicon_compiler::diagnostic::DiagGroup;
 use cc_silicon_compiler::ids::{ChipId, NameId, RecordRef, TaskId, TokenId};
@@ -73,7 +73,8 @@ fn install_pa_decl(bus: &mut CompilerBus) {
     bus.routing
         .register(TaskKind::PARSE_DECLARATOR, PA05_CHIP, 2)
         .unwrap();
-    bus.routing.register(TaskKind::PARSE_BLOCK, PA28_CHIP, 2)
+    bus.routing
+        .register(TaskKind::PARSE_BLOCK, PA28_CHIP, 2)
         .unwrap();
     bus.routing
         .register(TaskKind::PARSE_RETURN, PA28_CHIP, 2)
@@ -239,7 +240,10 @@ fn block_shapes(
     kinds: &[TokenKind],
     return_at: usize,
     int_at: &[usize],
-) -> (Vec<TokenId>, std::collections::BTreeMap<TokenId, ProjectedBlockToken>) {
+) -> (
+    Vec<TokenId>,
+    std::collections::BTreeMap<TokenId, ProjectedBlockToken>,
+) {
     let mut tokens = Vec::new();
     let mut bodies = std::collections::BTreeMap::new();
     for (index, kind) in kinds.iter().enumerate() {
@@ -250,7 +254,13 @@ fn block_shapes(
         } else {
             Vec::new()
         };
-        bodies.insert(id, ProjectedBlockToken { kind: *kind, spelling });
+        bodies.insert(
+            id,
+            ProjectedBlockToken {
+                kind: *kind,
+                spelling,
+            },
+        );
     }
     let _ = int_at;
     (tokens, bodies)
@@ -337,7 +347,7 @@ fn decl_kinds_stage_registry_manifest_frozen() {
     assert!(!is_pa_decl_slice_kind(TaskKind::CONTROL_NOOP));
     assert!(!is_pa_decl_slice_kind(TaskKind::PARSE_TU));
     // The decl registry extends the `/33` head linearly; `PARSE` owners
-    // start new codes at local 22.
+    // start new codes at local 25 after the `/35` expr slice.
     assert_eq!(TaskKindRegistry::pa_slice().len(), 12);
     assert_eq!(TaskKindRegistry::lx_string_slice().len(), 53);
     let registry = TaskKindRegistry::pa_decl_slice();
@@ -351,7 +361,7 @@ fn decl_kinds_stage_registry_manifest_frozen() {
     ] {
         assert_eq!(registry.lookup(kind).unwrap().name, name);
     }
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 22).unwrap()), None);
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 25).unwrap()), None);
     // All four chips are Ack-only: zero writes, no allowlist rows.
     assert_eq!(PA02_CHIP, cc_silicon_compiler::ids::ChipId(44));
     assert_eq!(PA03_CHIP, cc_silicon_compiler::ids::ChipId(45));
@@ -711,7 +721,9 @@ fn seed_literal(bus: &mut CompilerBus, token: TokenId, spelling: &[u8], value: u
 /// source order; returns the token IDs.
 fn seed_m1_prefix(bus: &mut CompilerBus) -> Vec<TokenId> {
     let file = bus.intern_name(b"m1.c").unwrap();
-    let source = bus.alloc_source(file, b"int main(void){return 2+3;}".to_vec()).unwrap();
+    let source = bus
+        .alloc_source(file, b"int main(void){return 2+3;}".to_vec())
+        .unwrap();
     let int = bus.intern_name(b"int").unwrap();
     let main = bus.intern_name(b"main").unwrap();
     let void = bus.intern_name(b"void").unwrap();
@@ -778,10 +790,30 @@ fn run_scenario() -> (Vec<u8>, usize, usize) {
         Payload::empty(),
         Some(continuation),
     );
-    bootstrap(&mut bus, TaskKind::PARSE_SPECIFIERS, PA03_CHIP, refs(&tokens[0..1]));
-    bootstrap(&mut bus, TaskKind::PARSE_DECLARATOR, PA05_CHIP, refs(&tokens[1..5]));
-    bootstrap(&mut bus, TaskKind::PARSE_BLOCK, PA28_CHIP, refs(&tokens[5..12]));
-    bootstrap(&mut bus, TaskKind::PARSE_RETURN, PA28_CHIP, refs(&tokens[6..11]));
+    bootstrap(
+        &mut bus,
+        TaskKind::PARSE_SPECIFIERS,
+        PA03_CHIP,
+        refs(&tokens[0..1]),
+    );
+    bootstrap(
+        &mut bus,
+        TaskKind::PARSE_DECLARATOR,
+        PA05_CHIP,
+        refs(&tokens[1..5]),
+    );
+    bootstrap(
+        &mut bus,
+        TaskKind::PARSE_BLOCK,
+        PA28_CHIP,
+        refs(&tokens[5..12]),
+    );
+    bootstrap(
+        &mut bus,
+        TaskKind::PARSE_RETURN,
+        PA28_CHIP,
+        refs(&tokens[6..11]),
+    );
     let mut completed = 0;
     let mut failed = 0;
     for _ in 0..8 {

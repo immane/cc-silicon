@@ -1,7 +1,7 @@
 # Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PP slice).
 # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md
-version=t01-c01-c06/34
-hash=229ae1a73717515670eecf4d9c3dbb713fb05dfccd0308769d2cbd3cb169be74
+version=t01-c01-c06/35
+hash=88107dd33033b854c9b98c9aac5db36446786ed067c944049100622a687f8983
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)

@@ -590,7 +590,7 @@ fn append_enforces_per_arena_capacity() {
 #[test]
 fn stage_assignment_covers_foundation_and_slice() {
     use cc_silicon_compiler::manifest::check_stage_layer_agreement;
-    assert_eq!(STAGE_ASSIGNMENT.len(), 58);
+    assert_eq!(STAGE_ASSIGNMENT.len(), 61);
     for (kind, stage) in STAGE_ASSIGNMENT {
         assert_eq!(stage_of(*kind), Some(*stage));
         assert!((*stage as usize) < Limits::fixture().stage_queue_bound.len());
@@ -676,11 +676,10 @@ fn allowlist_authorizes_fold_chip_only() {
     // `tasks.ready` stays writer-free. Later slices append their rows
     // (LX/PA/TY/SE/IR/PP/SPAN kinds through `/22`, macro rows in `/23`,
     // expansion rows in `/24`, the variadic row in `/26`, the builtin row
-    // in `/27`, the emit row in `/31`, the LX char/string rows in `/33`,
-    // and the five PA decl rows in `/34`
+    // in `/27`, the emit row in `/31`, the LX char/string rows in `/33`
     // (LX12/LX13 `lex.literals` writers; `/25` and the Ack-only line (`/28`), pragma (`/29`),
-    // expansion-map (`/30`), LX float (`/32`), LX escape (`/33`), and PA
-    // decl (`/34`) slices add no rows).
+    // expansion-map (`/30`), LX float (`/32`), LX escape (`/33`), PA
+    // decl (`/34`), and PA expr (`/35`) slices add no rows).
     assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
     assert!(!STORE_OWNER_ALLOWLIST
         .iter()
@@ -823,7 +822,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/34");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/35");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -867,7 +866,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/34",
+        "t01-c01-c06/35",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",

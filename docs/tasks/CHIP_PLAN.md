@@ -123,7 +123,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX17 TokenPublishChip (sole ordered publisher) | ✅ PARTIAL (`/11` deterministic append/dispatch order; orchestrator fan-in deferred) | 2
 - LX18 LexErrorChip (finite advance) | diagnostic codes | 2
 
-### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`)
+### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`) + expr slice (`/35`)
 
 - PA01 TranslationUnitChip | TU carrier, File-Enter edge | 2 FIRST
 - PA02 ExternalDeclarationChip | ✅ DONE (`/34` PaExternalChip, `c34_parse` 12 tests shared; `{`-vs-`;` dispatch at continuation cursor, third token loud, Ack-only) | 2
@@ -138,11 +138,11 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PA13 MemberDeclarationChip | kinds | 3
 - PA14 DeclarationFinishChip | POD protocol | 2
 - PA15 InitializerParseChip | init-tree schema | 2–3
-- PA16 PrimaryExpressionChip | kinds | 2
+- PA16 PrimaryExpressionChip | ✅ DONE (`/35` PaBinaryChip fused PA16/22, `c35_expr` 10 tests shared; one integer constant backed by one literal, Ack-only) | 2
 - PA17/18/19 Postfix/Call/MemberSubscript | kinds | 2
-- PA20 UnaryExpressionChip | kinds | 2
+- PA20 UnaryExpressionChip | ✅ DONE (`/35` PaUnaryChip, `c35_expr`; `+<int>` / `-<int>` only, Ack-only) | 2
 - PA21 CastExpressionChip | kinds | 2
-- PA22 BinaryExpressionChip (precedence climb) | kinds | 2 FIRST
+- PA22 BinaryExpressionChip (precedence climb) | ✅ DONE (`/35` PaBinaryChip fused PA16/22, `c35_expr`; single `<int> + <int>` step at `min_bp = 0`, 4-token `2 + +3` rejected, Ack-only) | 2 FIRST
 - PA23 ConditionalExpressionChip | kinds | 2
 - PA24 AssignmentExpressionChip | kinds | 2
 - PA25 CommaExpressionChip | kinds | 2

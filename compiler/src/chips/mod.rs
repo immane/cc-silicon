@@ -65,15 +65,19 @@ pub use self::lex::{
     LX09_TASK_KIND, LX10_TASK_KIND, LX11_TASK_KIND, LX12_TASK_KIND, LX13_TASK_KIND,
 };
 pub use self::parse::{
-    project_pa_block_input, project_pa_declarator_input, project_pa_external_input,
-    project_pa_return_input, project_pa_specifier_input, project_pa_tu_input, external_decl_kind,
-    parse_block, parse_declarator, parse_direct_declarator, parse_parameter_list, parse_return,
-    parse_specifier, DeclaratorError, DeclaratorToken, DeclaratorTree, ExternalDeclKind,
-    ExternalToken, LocalNodeShape, PaBlockChip, PaBlockInput, PaBlockProduction, PaDeclaratorChip,
-    PaDeclaratorInput, PaDeclaratorProjectedToken, PaExternalChip, PaExternalInput, PaReturnInput,
-    PaSpecifierChip, PaSpecifierInput, PaTuChip, PaTuInput, ProjectedBlockToken,
-    ProjectedSpecifierToken, SpecifierRecordShape, ParamList, PA02_TASK_KIND, PA03_TASK_KIND,
-    PA05_TASK_KIND, PA28_TASK_KIND, PA32_TASK_KIND,
+    binary_precedence, external_decl_kind, parse_binary_expression, parse_block, parse_declarator,
+    parse_direct_declarator, parse_parameter_list, parse_primary, parse_return, parse_specifier,
+    parse_unary, project_pa_binary_input, project_pa_block_input, project_pa_declarator_input,
+    project_pa_external_input, project_pa_primary_input, project_pa_return_input,
+    project_pa_specifier_input, project_pa_tu_input, project_pa_unary_input, BinaryError,
+    DeclaratorError, DeclaratorToken, DeclaratorTree, ExprNodeShape, ExternalDeclKind,
+    ExternalToken, LocalNodeShape, PaBinaryChip, PaBinaryInput, PaBinaryProduction, PaBlockChip,
+    PaBlockInput, PaBlockProduction, PaDeclaratorChip, PaDeclaratorInput,
+    PaDeclaratorProjectedToken, PaExternalChip, PaExternalInput, PaPrimaryInput, PaReturnInput,
+    PaSpecifierChip, PaSpecifierInput, PaTuChip, PaTuInput, PaUnaryChip, PaUnaryInput, ParamList,
+    ProjectedBlockToken, ProjectedExprToken, ProjectedSpecifierToken, ProjectedUnaryToken,
+    SpecifierRecordShape, UnaryError, UnaryNodeShape, UnaryOp, PA02_TASK_KIND, PA03_TASK_KIND,
+    PA05_TASK_KIND, PA16_TASK_KIND, PA20_TASK_KIND, PA22_TASK_KIND, PA28_TASK_KIND, PA32_TASK_KIND,
 };
 pub use self::preprocess::{
     classify_directive_params, classify_operator_text, compose_map, decode_pragma_string,

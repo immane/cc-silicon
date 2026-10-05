@@ -437,14 +437,12 @@ impl TaskKind {
     /// (payload: exactly one committed `Token`; accepts Keyword `int`
     /// alone; completes `Ack`, appends nothing; cursor advance stays
     /// caller-held).
-    pub const PARSE_SPECIFIERS: Self =
-        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 18);
+    pub const PARSE_SPECIFIERS: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 18);
     /// Wave 3 (`/34`) PA-decl-slice kind: declarator task (payload: the
     /// declarator token refs in source order; accepts `main(void)` only —
     /// the fused PA05/PA07/PA09 M1 scope; completes `Ack`, appends
     /// nothing; the empty `()` shape fails as a typed DEFECT).
-    pub const PARSE_DECLARATOR: Self =
-        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 19);
+    pub const PARSE_DECLARATOR: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 19);
     /// Wave 3 (`/34`) PA-decl-slice kind: compound-statement task
     /// (payload: exactly the 7 M1 block tokens
     /// `{ return <int> + <int> ; }`; completes `Ack`, appends nothing).
@@ -453,6 +451,19 @@ impl TaskKind {
     /// exactly the 5 M1 return tokens `return <int> + <int> ;`;
     /// completes `Ack`, appends nothing).
     pub const PARSE_RETURN: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 3 (`/35`) PA-expr-slice kind: primary-expression task
+    /// (payload: exactly one committed `Token`; accepts an integer
+    /// constant backed by one committed literal; completes `Ack`,
+    /// appends nothing; cursor advance stays caller-held).
+    pub const PARSE_PRIMARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 3 (`/35`) PA-expr-slice kind: binary-expression task
+    /// (payload: exactly three committed `Token` refs in source order,
+    /// `<int> + <int>` for M1; completes `Ack`, appends nothing).
+    pub const PARSE_BINARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 3 (`/35`) PA-expr-slice kind: unary-expression task
+    /// (payload: exactly two committed `Token` refs in source order,
+    /// `+<int>` / `-<int>` for M1; completes `Ack`, appends nothing).
+    pub const PARSE_UNARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 24);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -657,6 +668,23 @@ impl TaskKindRegistry {
         registry
     }
 
+    /// The Wave 3 (`/35`) PA-expr-slice registry: the PA-decl slice
+    /// plus the frozen primary, binary, and unary kinds (all `Frozen`;
+    /// `PARSE` owners start new codes at local 25).
+    pub fn pa_expr_slice() -> Self {
+        let mut registry = Self::pa_decl_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PARSE_PRIMARY, "parse.primary"),
+            (TaskKind::PARSE_BINARY, "parse.binary"),
+            (TaskKind::PARSE_UNARY, "parse.unary"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
     /// The Wave 3 (`/34`) PA-decl-slice registry: the LX-string slice
     /// plus the frozen external-decl, specifiers, declarator, block, and
     /// return kinds (all `Frozen`; `PARSE` owners start new codes at
@@ -664,10 +692,7 @@ impl TaskKindRegistry {
     pub fn pa_decl_slice() -> Self {
         let mut registry = Self::lx_string_slice();
         let slice: &[(TaskKind, &str)] = &[
-            (
-                TaskKind::PARSE_EXTERNAL_DECL,
-                "parse.external_declaration",
-            ),
+            (TaskKind::PARSE_EXTERNAL_DECL, "parse.external_declaration"),
             (TaskKind::PARSE_SPECIFIERS, "parse.specifiers"),
             (TaskKind::PARSE_DECLARATOR, "parse.declarator"),
             (TaskKind::PARSE_BLOCK, "parse.block"),

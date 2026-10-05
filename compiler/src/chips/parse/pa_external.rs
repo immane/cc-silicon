@@ -33,9 +33,7 @@ use crate::bus::TokenKind;
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{ScopeId, TaskId, TokenId};
-use crate::manifest::{
-    BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PA02_CHIP,
-};
+use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PA02_CHIP};
 use crate::task::{ParseContext, Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
 
 /// Frozen task kind served by the PA02 worker.

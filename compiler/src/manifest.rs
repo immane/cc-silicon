@@ -1118,6 +1118,14 @@ pub const PA05_CHIP: ChipId = ChipId(46);
 /// scope: the 7-token block and the 5-token return shapes, Ack-only).
 pub const PA28_CHIP: ChipId = ChipId(47);
 
+/// Wave 3 (`/35`) PA primary/binary chip reservation (fused PA16/PA22
+/// scope: the 1-token integer primary and the 3-token `<int> + <int>`
+/// shapes, Ack-only).
+pub const PA16_CHIP: ChipId = ChipId(48);
+/// Wave 3 (`/35`) PA unary-expression chip reservation (PA20 scope:
+/// the 2-token `+<int>` / `-<int>` shapes, Ack-only).
+pub const PA20_CHIP: ChipId = ChipId(49);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1148,6 +1156,14 @@ pub const fn is_lx_string_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::LEX_ESCAPE_DECODE.raw()
         || kind.raw() == TaskKind::LEX_CHAR_DECODE.raw()
         || kind.raw() == TaskKind::LEX_STRING_DECODE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/35`) PA expr slice
+/// (primary-expression, binary-expression, unary-expression).
+pub const fn is_pa_expr_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_PRIMARY.raw()
+        || kind.raw() == TaskKind::PARSE_BINARY.raw()
+        || kind.raw() == TaskKind::PARSE_UNARY.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/34`) PA decl slice
@@ -1312,6 +1328,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_lx_float_slice_kind(kind)
             || is_lx_string_slice_kind(kind)
             || is_pa_decl_slice_kind(kind)
+            || is_pa_expr_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1406,6 +1423,9 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PARSE_DECLARATOR, 2),
     (TaskKind::PARSE_BLOCK, 2),
     (TaskKind::PARSE_RETURN, 2),
+    (TaskKind::PARSE_PRIMARY, 2),
+    (TaskKind::PARSE_BINARY, 2),
+    (TaskKind::PARSE_UNARY, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),
