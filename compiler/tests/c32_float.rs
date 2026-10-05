@@ -180,10 +180,11 @@ fn float_kinds_stage_registry_manifest_frozen() {
     );
     assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 24).unwrap()), None);
     // Ack-only manifests: zero writes. The allowlist grows only with
-    // `lex.literals` writers: LX12/LX13 add two rows in `/33`.
+    // `lex.literals` writers: LX12/LX13 add two rows in `/33`, and the
+    // SE29 `sem.records` writer adds one row in `/39`.
     assert_eq!(LX09_CHIP, ChipId(39));
     assert_eq!(LX10_CHIP, ChipId(40));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
     for manifest in [LxFloatSyntaxChip.manifest(), LxFloatValueChip.manifest()] {
         assert!(manifest.writes.is_empty());
         assert!(manifest.deterministic);

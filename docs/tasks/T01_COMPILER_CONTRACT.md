@@ -843,6 +843,34 @@ New hashed rules `vf.evidence-complete`, `vf.evidence-stage`,
 (`f18068f9…0d83`); acceptance `compiler/tests/c38_vf14.rs`
 (10 tests); item list in [VF_EVIDENCE_SLICE.md](VF_EVIDENCE_SLICE.md).
 
+`/39` amendment — Wave 3 slice 14, SE29 function-definition (R1
+auto-bump; `/38` preserved as history): one semantic worker checking
+the M1 function definition (T07 SE29 scope). `SeFuncChip` (chip 57)
+reads one committed `FunctionDefinition` node, checks the M1
+`(void)`-only declarator shape (any identifier list is an old-style
+K&R parameter list, explicit `Unsupported`), the single committed
+TY17 `int(void)` signature (zero is missing input, more than one is
+an ambiguous-handoff DEFECT, a non-`(void)` shape is `Unsupported`),
+the declared `main` symbol (missing or untyped is a loud failure, a
+divergently-typed symbol is `Unsupported` as prototype-inconsistent),
+and the committed `Return` child fact (missing is a loud failure, a
+mistyped one is `Unsupported`, a nonzero effect mask is a typed
+failure; the `Return` node owns the return-role facts). It then
+appends one signature-carrying `SemRecord` (no `Return`-role plan) or
+reuses the committed one (exactly-one per node). The delivered draft
+defined a file-local chip const plus a `semantic_function_def_kind()`
+helper; the integrator verified the `/38` head (no `SEMANTIC` local
+past 20, chip 57 free after `VF14_CHIP = ChipId(56)`) and froze
+`function_def` (local 21), stage 4, layer 4,
+`se_function_slice()` registry (69 entries, cumulative over
+`vf_evidence_slice()`); no schema change (SE-slice reuse); one
+allowlist row (`SE_FUNC_CHIP` → `sem.records` for
+`SEMANTIC_FUNCTION_DEF`, 32 → 33 rows).
+New hashed rules `se.function-signature`,
+`se.function-body-checked`. New artifact `t01-c01-c06/39`
+(`07f4eade…f224`); acceptance `compiler/tests/c39_sefunc.rs`
+(8 tests); item list in [SE_FUNC_SLICE.md](SE_FUNC_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

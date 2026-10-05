@@ -206,7 +206,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - SE22 LoopJumpChip / SE23 SwitchCaseChip / SE24 LabelGotoChip / SE25 ConditionStatementChip | kinds | 2–3
 - SE26 EffectSequencingChip (stable order, UB not defined away) | effect schemas | 2–3
 - SE27 VolatileAccessChip / SE28 AtomicAccessChip | effect schemas | 2–3
-- SE29 FunctionDefinitionChip (signature carrier, no Return-role) | kinds | 2
+- SE29 FunctionDefinitionChip (signature carrier, no Return-role) | ✅ DONE (`/39` SeFuncChip, `c39_sefunc` 8 tests; M1 `(void)`-only check with K&R/mismatch `Unsupported`, reuse, stage 4) | 2
 - SE30 AlignmentSpecifierChip | layout protocol | 3
 - All (except SE02/SE07): `SemRecord` carrier/link encoding + conversion matrix.
 

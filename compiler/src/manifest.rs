@@ -868,6 +868,12 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         TaskKind::SEMANTIC_RETURN_STMT,
     ),
     (
+        SE_FUNC_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_FUNCTION_DEF,
+    ),
+    (
         IR_FUNCTION_CHIP,
         StoreId::Ir,
         "functions",
@@ -1153,6 +1159,13 @@ pub const CL07_ASSERT_CHIP: ChipId = ChipId(55);
 /// classified over the complete compile/link/run/check vector; PASS
 /// completes `Ack`, every other verdict is exactly one typed `Fail`).
 pub const VF14_CHIP: ChipId = ChipId(56);
+/// Wave 3 (`/39`) T07 function-definition chip reservation (SE29 scope:
+/// one committed `FunctionDefinition` node checked against the M1
+/// `(void)`-only declarator shape, the single committed TY17
+/// `int(void)` signature, the declared `main` symbol, and the
+/// committed `Return` child fact; appends one signature-carrying
+/// `SemRecord` or reuses the committed one).
+pub const SE_FUNC_CHIP: ChipId = ChipId(57);
 
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
@@ -1193,6 +1206,13 @@ pub const fn is_const_branch_slice_kind(kind: TaskKind) -> bool {
         || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_OR.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_COND.raw()
         || kind.raw() == TaskKind::CONSTANT_CONST_STATIC_ASSERT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/39`) SE function
+/// slice (function-definition signature check over the committed M1
+/// declarator, signature, symbol, and return-child facts).
+pub const fn is_se_function_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SEMANTIC_FUNCTION_DEF.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/38`) VF14 evidence
@@ -1382,6 +1402,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pa_recovery_slice_kind(kind)
             || is_const_branch_slice_kind(kind)
             || is_vf_evidence_slice_kind(kind)
+            || is_se_function_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1486,6 +1507,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONSTANT_CONST_BRANCH_COND, 2),
     (TaskKind::CONSTANT_CONST_STATIC_ASSERT, 2),
     (TaskKind::VERIFICATION_EVIDENCE_CLASSIFY, 6),
+    (TaskKind::SEMANTIC_FUNCTION_DEF, 4),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

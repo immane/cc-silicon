@@ -240,12 +240,13 @@ fn branch_kinds_stage_registry_manifest_frozen() {
         stage_of(TaskKind::new(TaskGroup::CONSTANT_LAYOUT_INIT, 21).unwrap()),
         None
     );
-    // All four chips are Ack-only: zero writes, no allowlist rows.
+    // All four chips are Ack-only: zero writes, no allowlist rows
+    // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(CL04_AND_CHIP, ChipId(52));
     assert_eq!(CL04_OR_CHIP, ChipId(53));
     assert_eq!(CL04_COND_CHIP, ChipId(54));
     assert_eq!(CL07_ASSERT_CHIP, ChipId(55));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
     for chip in [
         CL04_AND_CHIP,
         CL04_OR_CHIP,

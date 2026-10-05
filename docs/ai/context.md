@@ -1,7 +1,7 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/38` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/39` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/37` with `/38` implemented and test-green
+> 2026-10-06 after landing `/38` with `/39` implemented and test-green
 > but NOT yet fully verified or committed.
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
@@ -9,16 +9,16 @@
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/37` (T08 const-branch), hash
-  `59721bd8870722785e43ed48680d818ca1d913641009fab8e8a8a503b562fc8c`.
-- In worktree, UNCOMMITTED: `/38` VF14 evidence-classify (T13
-  evidence-classify verifier; delivered draft `vf_evidence.rs` was a
-  file-local candidate — arbitrated to local 20 + chip 56),
-  contract already bumped to `t01-c01-c06/38`, hash recomputed
-  (`f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83`).
-  `c38_vf14` green (10 tests), but the final full-suite (§5) run
+- Committed: `t01-c01-c06/38` (VF14 evidence-classify), hash
+  `f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83`.
+- In worktree, UNCOMMITTED: `/39` SE29 function-definition (T07
+  function-definition worker; delivered draft `se_function.rs` was
+  unwired — arbitrated to SEMANTIC local 21 + chip 57),
+  contract already bumped to `t01-c01-c06/39`, hash recomputed
+  (`07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24`).
+  `c39_sefunc` green (8 tests), but the final full-suite (§5) run
   is still pending — run §5 fully, then commit as
-  `feat: add VF14 evidence slice as t01-c01-c06/38`.
+  `feat: add SE29 function slice as t01-c01-c06/39`.
 - Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
   H04) is MERGED; `/20`–`/32` are committed locally,
   UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
@@ -67,7 +67,8 @@
 | `/35` | PA expr | `parse/{pa_binary,pa_unary}.rs` | `c35_expr` 10 |
 | `/36` | PA recovery | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
 | `/37` | T08 const-branch | `constant_layout_init/fold_branch.rs` | `c37_const_branch` 10 |
-| `/38` | VF14 evidence-classify (UNCOMMITTED) | `verify/vf_evidence.rs` | `c38_vf14` 10 |
+| `/38` | VF14 evidence-classify | `verify/vf_evidence.rs` | `c38_vf14` 10 |
+| `/39` | SE29 function-definition (UNCOMMITTED) | `semantic/se_function.rs` | `c39_sefunc` 8 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
@@ -163,7 +164,7 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/38` (run §5 first), then PP remainder in pipeline
+- NEXT UP: commit `/39` (run §5 first), then PP remainder in pipeline
   order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +

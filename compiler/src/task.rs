@@ -263,6 +263,14 @@ impl TaskKind {
     /// `Record`).
     pub const SEMANTIC_RETURN_STMT: Self =
         Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/39`) SE-function-slice kind: function-definition check
+    /// (payload: exactly one `FunctionDefinition` node; checks the M1
+    /// `(void)`-only declarator shape, the single committed TY17
+    /// `int(void)` signature, the declared `main` symbol, and the
+    /// committed `Return` child fact; appends one signature-carrying
+    /// `SemRecord` or reuses the committed one; completes `Record`).
+    pub const SEMANTIC_FUNCTION_DEF: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 21);
     /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
@@ -704,6 +712,20 @@ impl TaskKindRegistry {
             (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
             (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
         ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/39`) SE-function-slice registry: the VF14
+    /// evidence slice plus the frozen function-definition kind (all
+    /// `Frozen`; `SEMANTIC` owners start new codes at local 22).
+    pub fn se_function_slice() -> Self {
+        let mut registry = Self::vf_evidence_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::SEMANTIC_FUNCTION_DEF, "semantic.function_def")];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

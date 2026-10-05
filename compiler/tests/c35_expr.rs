@@ -242,10 +242,11 @@ fn expr_kinds_stage_registry_manifest_frozen() {
         assert_eq!(registry.lookup(kind).unwrap().name, name);
     }
     assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 27).unwrap()), None);
-    // Both chips are Ack-only: zero writes, no allowlist rows.
+    // Both chips are Ack-only: zero writes, no allowlist rows
+    // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(PA16_CHIP, cc_silicon_compiler::ids::ChipId(48));
     assert_eq!(PA20_CHIP, cc_silicon_compiler::ids::ChipId(49));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
     for chip in [PA16_CHIP, PA20_CHIP] {
         assert!(
             !STORE_OWNER_ALLOWLIST

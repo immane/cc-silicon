@@ -246,11 +246,12 @@ fn string_kinds_stage_registry_manifest_frozen() {
     );
     assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 24).unwrap()), None);
     // LX11 is Ack-only (zero writes, no allowlist row); LX12/LX13 each
-    // append `lex.literals` with one allowlist row.
+    // append `lex.literals` with one allowlist row; `/39` adds the SE29
+    // `sem.records` row.
     assert_eq!(LX11_CHIP, ChipId(41));
     assert_eq!(LX12_CHIP, ChipId(42));
     assert_eq!(LX13_CHIP, ChipId(43));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
     assert!(
         STORE_OWNER_ALLOWLIST
             .iter()

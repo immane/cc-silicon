@@ -153,7 +153,7 @@ fn candidate_models_m1_return_5() {
         .expect("candidate runs");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8 evidence");
-    assert!(stdout.contains("candidate evidence (t01-c01-c06/38)"));
+    assert!(stdout.contains("candidate evidence (t01-c01-c06/39)"));
     assert!(stdout.contains("interpret: value=05 negative=false"));
     assert!(stdout.contains("snapshot: "));
     assert!(stdout.contains("trace: "));
