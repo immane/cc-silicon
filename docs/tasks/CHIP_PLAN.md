@@ -77,7 +77,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP02 LineSpliceChip: Normalized → Spliced | ✅ DONE (`/16` PpSpliceChip, real splice with composed maps) | 2
 - PP03 CommentReplaceChip: Spliced → CommentFree | ✅ DONE (`/16` M1 scope + `/20` literal/header-name protection, shared predicate with PP04) | 2
 - PP04 PpTokenScanChip: stream → PpToken | ✅ DONE (`/16` M1 subset + `/20` full C11 table, literals, header names) | 2
-- PP05 DirectiveDispatchChip: line tokens → DirectiveTask | kinds | 2–3
+- PP05 DirectiveDispatchChip: line tokens → DirectiveTask | ✅ DONE (`/21` PpDirectiveChip, `c21_directive` 8 tests; raw walk-back recognition, fan-out + await-all, frozen taxonomy) | 2–3
+- PP26 PpDiagnosticChip | ✅ DONE (`/21` PpDiagnosticChip; `#error` fails with the joined message, negative-only by design) | 2
 - PP06 MacroDefinitionChip → MacroDef | kinds | 3
 - PP07 MacroRedefinitionChip | kinds | 3
 - PP08 MacroUndefChip | kinds | 3
@@ -98,7 +99,6 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP23 LineDirectiveChip | kinds | 3
 - PP24 BuiltinMacroChip | frozen-target macros | 3
 - PP25 PragmaDispatchChip | kinds | 3
-- PP26 PpDiagnosticChip | kinds | 3
 - PP27 ExpansionSourceMapChip | origin-chain carrier | 3
 - PP28 PreprocessedEmitChip | kinds | 3
 

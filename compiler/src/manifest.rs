@@ -967,6 +967,12 @@ pub const VF05_CHIP: ChipId = ChipId(21);
 /// Wave 2 (`/19`) VF01 store-invariant chip reservation.
 pub const VF01_CHIP: ChipId = ChipId(22);
 
+/// Wave 2 (`/21`) PP directive-dispatch chip reservation.
+pub const PP05_CHIP: ChipId = ChipId(23);
+
+/// Wave 2 (`/21`) PP directive-diagnostic chip reservation.
+pub const PP26_CHIP: ChipId = ChipId(24);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -989,6 +995,12 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/21`) PP directive slice.
+pub const fn is_pp_directive_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_DIRECTIVE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_DIAGNOSTIC.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/19`) VF01 slice.
@@ -1063,6 +1075,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_vf12_slice_kind(kind)
             || is_vf05_slice_kind(kind)
             || is_vf01_slice_kind(kind)
+            || is_pp_directive_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1131,6 +1144,8 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::VERIFICATION_IR_INTERPRET, 6),
     (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, 2),
     (TaskKind::VERIFICATION_STORE_INVARIANT, 6),
+    (TaskKind::PREPROCESS_DIRECTIVE, 1),
+    (TaskKind::PREPROCESS_DIAGNOSTIC, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

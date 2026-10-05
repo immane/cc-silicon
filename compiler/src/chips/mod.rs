@@ -58,7 +58,8 @@ pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use self::preprocess::{
     compose_map, normalize, project_pp_comment_input, project_pp_input, project_pp_scan_input,
     project_pp_splice_input, replace_comments, scan, splice, PpCommentChip, PpCommentInput,
-    PpInput, PpNormalizeChip, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, ScannedToken,
+    PpDiagnosticChip, PpDiagnosticInput, PpDirectiveChip, PpDirectiveInput, PpInput,
+    PpNormalizeChip, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, ScannedToken,
     M1_PUNCTUATORS,
 };
 pub use self::semantic::{

@@ -401,6 +401,24 @@ New hashed rules `pp.comment-literal-aware`,
 to the superseded expectations); item list in
 [PP_FULL_SCAN_SLICE.md](PP_FULL_SCAN_SLICE.md).
 
+`/21` amendment — Wave 2 slice 12, PP directive dispatch (R1 auto-bump;
+`/20` preserved as history): new `PpDirectiveChip` (chip 23) grouping the
+committed pp-token stream into raw lines, classifying directive lines by
+raw walk-back (comment-killed and mid-line `#` stay dead; same-line block
+comments skipped; bare `#` is an explicit no-op), fanning out one PP26
+child per `#error` line with await-all and failing fast as explicit
+`Unsupported` on the frozen diagnostic taxonomy otherwise; new
+`PpDiagnosticChip` (chip 24) failing every `#error` line with its joined
+message (negative-only by design; the frozen join reuses the first failed
+child's diagnostic, so no aggregate record is minted).
+`preprocess.directive` (local 20) + `preprocess.diagnostic` (local 21),
+stage 1, layers 1, `pp_directive_slice()` registry (34 entries, cumulative
+over `vf01_slice()`); no schema change; no writes. New hashed rules
+`pp.directive-dispatch-lines`, `pp.error-fails-message`,
+`pp.diagnostic-taxonomy-frozen`. New artifact `t01-c01-c06/21`
+(`fba01a2b…754b5`); acceptance `compiler/tests/c21_directive.rs`
+(8 tests); item list in [PP_DIRECTIVE_SLICE.md](PP_DIRECTIVE_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

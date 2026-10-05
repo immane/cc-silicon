@@ -1,14 +1,14 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/20`)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/21`)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after the Wave 2 slice 11 (`/20`) freeze. The frozen contract
+> 2026-10-06 after the Wave 2 slice 12 (`/21`) freeze. The frozen contract
 > (`compiler/contracts/CONTRACT_VERSION`) plus `docs/tasks/T01_COMPILER_CONTRACT.md`
 > §7.1 remain authoritative; this file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/20`, hash
-  `e56005645e5051ba5ab0e422ee245f7f4566a7b7289d18ae8f25789404f97c8b`.
+- Frozen artifact: `t01-c01-c06/21`, hash
+  `fba01a2b34fe7eb12527a2c1a6a08980d8015b61b725c1d9e43af300a72754b5`.
 - Branch: `initial-compiler-development` (PR #13 targets `main`).
 - The M1 C frontend is **closed end-to-end, symbolically modeled,
   syntax-checked, and store-checked**: seeded source bytes flow
@@ -39,6 +39,7 @@
 | `/18` | VF05 token-AST invariant | `verify/vf_syntax.rs` | `c18_vf05` 6 |
 | `/19` | VF01 store invariant | `verify/vf_store.rs` | `c19_vf01` 7 |
 | `/20` | PP full-token scan | `preprocess/{pp_comment,pp_scan}.rs` (amended) | `c20_ppscan` 8 |
+| `/21` | PP directive dispatch + diagnostic | `preprocess/{pp_directive,pp_diagnostic}.rs` | `c21_directive` 8 |
 
 ## 3. Patterns every new slice must follow
 

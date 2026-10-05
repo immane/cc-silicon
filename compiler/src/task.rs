@@ -288,6 +288,19 @@ impl TaskKind {
     /// completes `Records`).
     pub const PREPROCESS_SCAN: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/21`) PP-directive-slice kind: directive-dispatch task
+    /// (payload: all committed pp-token refs; groups lines, fans out one
+    /// diagnostic child per `#error` line and awaits them; any other
+    /// directive fails fast as explicit `Unsupported`; completes `Ack`
+    /// when no directive line exists).
+    pub const PREPROCESS_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/21`) PP-directive-slice kind: directive-diagnostic task
+    /// (payload: one post-`#` directive line's refs; `#error` lines only;
+    /// always fails with the joined message — the diagnostic is the
+    /// product).
+    pub const PREPROCESS_DIAGNOSTIC: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 21);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -468,6 +481,22 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/21`) PP-directive-slice registry: the VF01 slice plus
+    /// the frozen directive/diagnostic kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 22).
+    pub fn pp_directive_slice() -> Self {
+        let mut registry = Self::vf01_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_DIRECTIVE, "preprocess.directive"),
+            (TaskKind::PREPROCESS_DIAGNOSTIC, "preprocess.diagnostic"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

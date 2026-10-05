@@ -19,9 +19,9 @@
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
-    PaTuChip, PpCommentChip, PpNormalizeChip, PpScanChip, PpSpliceChip, SeBinChip, SeLitChip,
-    SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip,
-    Vf12Chip, Worker, WorkerRegistry,
+    PaTuChip, PpCommentChip, PpDiagnosticChip, PpDirectiveChip, PpNormalizeChip, PpScanChip,
+    PpSpliceChip, SeBinChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip,
+    TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -29,9 +29,9 @@ use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP,
-    SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP,
-    VF06_CHIP, VF12_CHIP,
+    PP01_CHIP, PP05_CHIP, PP26_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP,
+    SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP,
+    VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -153,7 +153,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::vf01_slice();
+    bus.kinds = TaskKindRegistry::pp_directive_slice();
     bus.schema = StoreSchema::pp_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
@@ -163,6 +163,8 @@ fn install(bus: &mut CompilerBus) {
         &PpSpliceChip,
         &PpCommentChip,
         &PpScanChip,
+        &PpDirectiveChip,
+        &PpDiagnosticChip,
         &LxInternChip,
         &LxClassifyChip,
         &LxDecodeLiteralChip,
@@ -189,6 +191,8 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_SPLICE, PP_SPLICE_CHIP, 1),
         (TaskKind::PREPROCESS_COMMENT, PP_COMMENT_CHIP, 1),
         (TaskKind::PREPROCESS_SCAN, PP_SCAN_CHIP, 1),
+        (TaskKind::PREPROCESS_DIRECTIVE, PP05_CHIP, 1),
+        (TaskKind::PREPROCESS_DIAGNOSTIC, PP26_CHIP, 1),
         (TaskKind::LEX_INTERN, LX_INTERN_CHIP, 2),
         (TaskKind::LEX_CLASSIFY, LX_CLASSIFY_CHIP, 2),
         (TaskKind::LEX_DECODE_LITERAL, LX_DECODE_CHIP, 2),
@@ -332,6 +336,12 @@ fn run(input: &str) -> Result<Evidence, String> {
             .register(PpScanChip)
             .map_err(|error| format!("worker registration failed: {error}"))?;
         workers
+            .register(PpDirectiveChip)
+            .map_err(|error| format!("worker registration failed: {error}"))?;
+        workers
+            .register(PpDiagnosticChip)
+            .map_err(|error| format!("worker registration failed: {error}"))?;
+        workers
             .register(LxInternChip)
             .map_err(|error| format!("worker registration failed: {error}"))?;
         workers
@@ -437,6 +447,16 @@ fn run(input: &str) -> Result<Evidence, String> {
         ResultValue::Records(refs) => refs,
         other => return Err(format!("expected pp-token refs, got {other:?}")),
     };
+    // Directive dispatch over every scanned pp-token (M1 sources carry no
+    // directives and acknowledge here; `#error` fails with its message).
+    step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::PREPROCESS_DIRECTIVE,
+        PP05_CHIP,
+        Payload::from_refs(pp_tokens.clone()),
+    )?;
     // Lex over every scanned pp-token (no fixed positions).
     step(
         &mut bus,
