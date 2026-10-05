@@ -21,6 +21,8 @@
 pub mod arena;
 /// The `CompilerBus` storage profile (C01/C03).
 pub mod bus;
+/// Host-driven worker chips and driver (Wave 1 template).
+pub mod chips;
 /// Deterministic serialization and SHA-256 (C05).
 pub mod codec;
 /// Staged patch commit and task/result protocol (C03/C06).
