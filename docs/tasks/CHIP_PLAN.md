@@ -114,9 +114,9 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX08 IntegerTypeSelectChip → `Int` only | ✅ DONE (`/11` Int-only in decode) | 2
 - LX09 FloatSyntaxChip | ✅ DONE (`/32` LxFloatSyntaxChip, `c32_float` 12 tests shared with LX10; decimal/hex exponent, point, `f`/`F`/`l`/`L` suffix lexing, integer/GNU shapes fail loud, Ack-only) | 3
 - LX10 FloatValueChip (correct rounding) | ✅ DONE (`/32` LxFloatValueChip, `c32_float`; RNE binary32/binary64 over integer arithmetic, halfway-even/`0.1`/overflow-inf/subnormal oracle bits, `l` binary128 deferred `Unsupported`, range-as-flags Ack-only) | 3–4
-- LX11 EscapeDecodeChip | — | 3
-- LX12 CharacterLiteralChip | char schemas | 3
-- LX13 StringLiteralChip | string schemas | 3
+- LX11 EscapeDecodeChip | ✅ DONE (`/33` LxEscapeChip, `c33_string` 14 tests shared with LX12/LX13; simple/octal-3/greedy-hex/UCN validation, Ack-only, no carrier) | 3
+- LX12 CharacterLiteralChip | ✅ DONE (`/33` LxCharChip, `c33_string`; none/L/u/U prefixes, multichar truncation policy, `Character` record radix 16 + token back-link) | 3
+- LX13 StringLiteralChip | ✅ DONE (`/33` LxStringChip, `c33_string`; single terminator, embedded NUL preserved, narrow/UTF-16-surrogate/UTF-32/wchar widths, `String` record radix 0 + back-link) | 3
 - LX14 AdjacentStringChip | provenance carrier (T03/T04) | 3
 - LX15 LiteralExtensionChip | GNU modes | 3–5
 - LX16 TokenLocationChip | ✅ DONE (`/11` committed-span reuse, no T04 span writes) | 2

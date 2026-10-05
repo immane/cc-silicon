@@ -29,14 +29,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), the Wave 2 TY slice
 /// (`/13`), and the Wave 2 SE/IR/PP/VF slices through the Wave 3 PP
-/// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/32";
+/// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`) and the
+/// Wave 3 LX string slice (`/33`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/33";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "0dd8da06535af8cf4ffef87ccbf45b9529c6c3e77e1f283f028c46de4a6e1167";
+pub const CONTRACT_HASH: &str = "e8400eb144907abf7932342dbe07b82803d2a5127454d864f5afdcddd1eef455";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -214,6 +215,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "lx.float-syntax",
     "lx.float-value-rounding",
     "lx.float-overflow",
+    "lx.escape-decode",
+    "lx.char-typed",
+    "lx.string-record",
 ];
 
 /// The `TaskState` variant names, in encoding order.

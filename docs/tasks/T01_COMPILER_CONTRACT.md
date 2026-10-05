@@ -658,6 +658,36 @@ New hashed rules `lx.float-syntax`, `lx.float-value-rounding`,
 (`0dd8da06…4a6e1167`); acceptance `compiler/tests/c32_float.rs`
 (12 tests); item list in [LX_FLOAT_SLICE.md](LX_FLOAT_SLICE.md).
 
+`/33` amendment — Wave 3 slice 8, LX string (R1 auto-bump; `/32`
+preserved as history): three workers closing the escape/char/string USE
+(T04:19–21). `LxEscapeChip` (chip 41, LX11) validates one literal body
+against the frozen escape rule (simple/octal-3/greedy-hex/UCN with
+scalar-range checks) and completes `Ack`, appending nothing (no
+`CodeUnits` carrier frozen yet); `LxCharChip` (chip 42, LX12) decodes
+one `prefix'body'` spelling to its typed value with the frozen
+multicharacter policy (prefix-width masking, big-endian concatenation,
+low 32 bits) and appends one `Character` `LiteralRecord` (radix `16`,
+suffix `None`, `Int` candidate, publish-time token back-link);
+`LxStringChip` (chip 43, LX13) decodes one `prefix"body"` spelling to
+code units plus exactly one terminating zero with the frozen
+element-type/width rule (narrow 1, `u` UTF-16 with surrogate pairs, `U`
+UTF-32, `L` from the frozen `wchar_t` width) and appends one `String`
+`LiteralRecord` (radix `0` non-numeric marker, suffix `None`, `Int`
+candidate, back-link). All three read the committed PP spelling/kind
+(payload `[Token, PpToken]`, the `/11` precedent); escapes fail loud,
+empty chars fail, `""` decodes to `[0]`, embedded NULs are preserved.
+The three escape copies stay chip-local by the `compose_map` copy
+precedent (convergence deferred; deltas pinned loud). The commit
+`Literal` gate admits exactly the M1 integer shape plus the two `/33`
+shapes. `lex.escape_decode` (local 21), `lex.char_decode` (22),
+`lex.string_decode` (23), stage 2, layer 2, `lx_string_slice()`
+registry (53 entries, cumulative over `lx_float_slice()`); no schema
+change; two allowlist rows (LX12/LX13 `lex.literals`; LX11 Ack-only).
+New hashed rules `lx.escape-decode`, `lx.char-typed`,
+`lx.string-record`. New artifact `t01-c01-c06/33`
+(`e8400eb1…eef455`); acceptance `compiler/tests/c33_string.rs`
+(14 tests); item list in [LX_STRING_SLICE.md](LX_STRING_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

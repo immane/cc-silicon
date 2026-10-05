@@ -50,14 +50,19 @@ pub use self::constant_layout_init::{
 };
 pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
 pub use self::lex::{
-    convert_float_parts, decimal_magnitude, is_keyword, parse_float_parts,
-    project_lx_classify_input, project_lx_decode_input, project_lx_float_syntax_input,
-    project_lx_float_value_input, project_lx_intern_input, spelling_to_value_parts,
-    FloatConvertOutcome, FloatSyntaxError, FloatValueError, LxClassifyChip, LxClassifyInput,
-    LxDecodeInput, LxDecodeLiteralChip, LxFloatSyntaxChip, LxFloatSyntaxExponent,
-    LxFloatSyntaxInput, LxFloatSyntaxParts, LxFloatSyntaxSuffix, LxFloatValueChip,
-    LxFloatValueInput, LxFloatValueParts, LxFloatValueSuffix, LxInternChip, LxInternInput,
-    C11_KEYWORDS, LX09_TASK_KIND, LX10_TASK_KIND,
+    convert_float_parts, decimal_magnitude, decode_char_units, decode_escape_body,
+    decode_string_body, element_for_prefix, encode_units_le, fold_char_value, is_keyword,
+    parse_float_parts, project_lx_char_input, project_lx_classify_input, project_lx_decode_input,
+    project_lx_escape_input, project_lx_float_syntax_input, project_lx_float_value_input,
+    project_lx_intern_input, project_lx_string_input, spelling_to_value_parts, split_char_spelling,
+    split_literal_body, split_string_prefix, u32_magnitude, CharPrefix, CodeUnits, EscapeError,
+    FloatConvertOutcome, FloatSyntaxError, FloatValueError, LxCharChip, LxCharInput,
+    LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip, LxEscapeChip,
+    LxEscapeInput, LxFloatSyntaxChip, LxFloatSyntaxExponent, LxFloatSyntaxInput,
+    LxFloatSyntaxParts, LxFloatSyntaxSuffix, LxFloatValueChip, LxFloatValueInput,
+    LxFloatValueParts, LxFloatValueSuffix, LxInternChip, LxInternInput, LxStringChip,
+    LxStringInput, StringElementType, StringError, StringPrefix, StringRecord, C11_KEYWORDS,
+    LX09_TASK_KIND, LX10_TASK_KIND, LX11_TASK_KIND, LX12_TASK_KIND, LX13_TASK_KIND,
 };
 pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use self::preprocess::{

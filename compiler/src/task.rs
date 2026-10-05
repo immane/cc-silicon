@@ -403,6 +403,29 @@ impl TaskKind {
     /// formats); appends nothing: the bits are certified by the pure
     /// core, and no `FloatBits` result carrier is frozen yet).
     pub const LEX_FLOAT_VALUE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/33`) LX-string-slice kind: escape-decode task (payload:
+    /// exactly `[Token, PpToken]` of kind `CharLiteral`/`StringLiteral`;
+    /// validates the literal body against the frozen escape rule — simple,
+    /// octal (at most 3 digits), greedy hex, `\u`/`\U` with scalar-range
+    /// checks — and completes `Ack` on a valid body or fails with a typed
+    /// `Invalid` diagnostic; appends nothing: the decoded units are
+    /// certified by the pure `decode_escape_body` core, and no `CodeUnits`
+    /// result carrier is frozen yet).
+    pub const LEX_ESCAPE_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 3 (`/33`) LX-string-slice kind: character-literal task
+    /// (payload: exactly `[Token, PpToken]` of kind `CharLiteral`;
+    /// decodes one `prefix'body'` spelling to its typed value with the
+    /// frozen multicharacter truncation policy and appends exactly one
+    /// `Character` `LiteralRecord` with the publish-time token back-link;
+    /// completes `Record`).
+    pub const LEX_CHAR_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 3 (`/33`) LX-string-slice kind: string-literal task (payload:
+    /// exactly `[Token, PpToken]` of kind `StringLiteral`; decodes one
+    /// `prefix"body"` spelling to code units plus exactly one terminating
+    /// zero with the frozen element-type/width rule and appends exactly
+    /// one `String` `LiteralRecord` with the publish-time token back-link;
+    /// completes `Record`).
+    pub const LEX_STRING_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 23);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -583,6 +606,23 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/33`) LX-string-slice registry: the LX-float slice
+    /// plus the frozen escape-decode, char-decode, and string-decode kinds
+    /// (all `Frozen`; `LEX` owners start new codes at local 24).
+    pub fn lx_string_slice() -> Self {
+        let mut registry = Self::lx_float_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_ESCAPE_DECODE, "lex.escape_decode"),
+            (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
+            (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

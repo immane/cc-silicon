@@ -957,6 +957,18 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "fragments",
         TaskKind::PREPROCESS_EMIT,
     ),
+    (
+        LX12_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_CHAR_DECODE,
+    ),
+    (
+        LX13_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_STRING_DECODE,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -1079,6 +1091,19 @@ pub const LX09_CHIP: ChipId = ChipId(39);
 /// Ack-only; binary128 and wider formats are explicit `Unsupported`).
 pub const LX10_CHIP: ChipId = ChipId(40);
 
+/// Wave 3 (`/33`) LX escape-decode chip reservation (LX11 scope:
+/// `LiteralBody → CodeUnits` validation, Ack-only; no `CodeUnits`
+/// result carrier is frozen yet).
+pub const LX11_CHIP: ChipId = ChipId(41);
+/// Wave 3 (`/33`) LX character-literal chip reservation (LX12 scope:
+/// `Prefix/body → TypedCharacter`, appends one `Character`
+/// `LiteralRecord`).
+pub const LX12_CHIP: ChipId = ChipId(42);
+/// Wave 3 (`/33`) LX string-literal chip reservation (LX13 scope:
+/// `Prefix/body → StringRecord`, appends one `String`
+/// `LiteralRecord`).
+pub const LX13_CHIP: ChipId = ChipId(43);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1101,6 +1126,14 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/33`) LX string slice
+/// (escape decode, char decode, string decode).
+pub const fn is_lx_string_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_ESCAPE_DECODE.raw()
+        || kind.raw() == TaskKind::LEX_CHAR_DECODE.raw()
+        || kind.raw() == TaskKind::LEX_STRING_DECODE.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/32`) LX float slice.
@@ -1252,6 +1285,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_expand_map_slice_kind(kind)
             || is_pp_emit_slice_kind(kind)
             || is_lx_float_slice_kind(kind)
+            || is_lx_string_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1338,6 +1372,9 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_EMIT, 1),
     (TaskKind::LEX_FLOAT_SYNTAX, 2),
     (TaskKind::LEX_FLOAT_VALUE, 2),
+    (TaskKind::LEX_ESCAPE_DECODE, 2),
+    (TaskKind::LEX_CHAR_DECODE, 2),
+    (TaskKind::LEX_STRING_DECODE, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

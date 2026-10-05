@@ -164,8 +164,8 @@ fn float_kinds_stage_registry_manifest_frozen() {
     assert!(!is_lx_float_slice_kind(TaskKind::LEX_DECODE_LITERAL));
     assert_eq!(stage_of(TaskKind::LEX_FLOAT_SYNTAX), Some(2));
     assert_eq!(stage_of(TaskKind::LEX_FLOAT_VALUE), Some(2));
-    // The float registry extends the `/31` head linearly; `LEX` owners
-    // start new codes at local 21.
+    // The float registry extends the `/31` head linearly (at `/32` time
+    // `LEX` owners started new codes at local 21; `/33` claims 21–23).
     let head = TaskKindRegistry::pp_emit_slice();
     assert_eq!(head.len(), 48);
     let registry = TaskKindRegistry::lx_float_slice();
@@ -178,11 +178,12 @@ fn float_kinds_stage_registry_manifest_frozen() {
         registry.lookup(TaskKind::LEX_FLOAT_VALUE).unwrap().name,
         "lex.float_value"
     );
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 21).unwrap()), None);
-    // Ack-only manifests: zero writes, so the allowlist is unchanged.
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 24).unwrap()), None);
+    // Ack-only manifests: zero writes. The allowlist grows only with
+    // `lex.literals` writers: LX12/LX13 add two rows in `/33`.
     assert_eq!(LX09_CHIP, ChipId(39));
     assert_eq!(LX10_CHIP, ChipId(40));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 30);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 32);
     for manifest in [LxFloatSyntaxChip.manifest(), LxFloatValueChip.manifest()] {
         assert!(manifest.writes.is_empty());
         assert!(manifest.deterministic);

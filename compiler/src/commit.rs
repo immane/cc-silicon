@@ -1036,11 +1036,27 @@ pub fn commit_proposals(
                     }
                     match body {
                         G1DraftBody::Literal(literal) => {
-                            if literal.kind != LiteralKind::Integer
-                                || literal.suffix != LiteralSuffix::None
-                                || literal.radix != 10
-                                || literal.candidate_type != Lx08CandidateType::Int
-                            {
+                            // `/11` M1 exercised subset (decimal integer)
+                            // plus the `/33` LX string-slice shapes: a
+                            // `Character` record carries radix 16 (code-unit
+                            // value, hex-natural) and a `String` record
+                            // carries radix 0 (explicit non-numeric marker,
+                            // never a base); both keep suffix `None` and the
+                            // explicit `Int` candidate placeholder. Anything
+                            // else stays explicit unsupported.
+                            let m1_integer = literal.kind == LiteralKind::Integer
+                                && literal.suffix == LiteralSuffix::None
+                                && literal.radix == 10
+                                && literal.candidate_type == Lx08CandidateType::Int;
+                            let lx12_character = literal.kind == LiteralKind::Character
+                                && literal.suffix == LiteralSuffix::None
+                                && literal.radix == 16
+                                && literal.candidate_type == Lx08CandidateType::Int;
+                            let lx13_string = literal.kind == LiteralKind::String
+                                && literal.suffix == LiteralSuffix::None
+                                && literal.radix == 0
+                                && literal.candidate_type == Lx08CandidateType::Int;
+                            if !(m1_integer || lx12_character || lx13_string) {
                                 return Err(CommitError::InvalidPatchShape {
                                     task: tagged.task,
                                     reason:
