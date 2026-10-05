@@ -324,6 +324,16 @@ impl TaskKind {
     /// acknowledges the ignore).
     pub const PREPROCESS_MACRO_UNDEF: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 25);
+    /// Wave 2 (`/24`) PP-expand-slice kind: macro-invocation task
+    /// (payload: all active pp-token refs; fans out one substitute child
+    /// per top-level invocation and stitches the expanded stream).
+    pub const PREPROCESS_MACRO_INVOKE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 26);
+    /// Wave 2 (`/24`) PP-expand-slice kind: macro-substitution task
+    /// (payload: one `Macro` def ref plus invocation refs; substitutes
+    /// with argument prescan, `#`/`##`, and blue-paint rescan).
+    pub const PREPROCESS_MACRO_SUBSTITUTE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 27);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -504,6 +514,25 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/24`) PP-expand-slice registry: the PP-macro
+    /// slice plus the frozen invoke/substitute kinds (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 28).
+    pub fn pp_expand_slice() -> Self {
+        let mut registry = Self::pp_macro_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_MACRO_INVOKE, "preprocess.macro_invoke"),
+            (
+                TaskKind::PREPROCESS_MACRO_SUBSTITUTE,
+                "preprocess.macro_substitute",
+            ),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/23";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/24";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "cf8f2194c9b599bfd822e685dbb791f3b2d44b550bc5536705972920785b1ca0";
+pub const CONTRACT_HASH: &str = "8f1ba4107a50648f126539e6ed3be6bdce720b77c60e1ccd3fa2db3026ffbf53";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -184,6 +184,11 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.redefine-benign-rule",
     "pp.undef-tombstone",
     "pp.defined-reads-table",
+    "pp.invoke-fanout-stitch",
+    "pp.substitute-rescan-loop",
+    "pp.stringify-paste-exact",
+    "pp.blue-paint-guard",
+    "pp.macro-function-flag",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -383,8 +388,14 @@ pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
 pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
 /// Frozen `/23` macro-record field inventory (hash-participating).
-pub const MACRO_RECORD_FIELDS: &[&str] =
-    &["spelling", "params", "variadic", "replacement", "undefined"];
+pub const MACRO_RECORD_FIELDS: &[&str] = &[
+    "spelling",
+    "params",
+    "function_like",
+    "variadic",
+    "replacement",
+    "undefined",
+];
 
 /// Frozen `/15` `BlockRecord` fields, in declaration order.
 pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];

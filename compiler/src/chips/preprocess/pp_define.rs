@@ -184,6 +184,8 @@ impl Worker for PpDefineChip {
 struct ParsedDefine {
     /// Macro name spelling (raw bytes).
     name: Vec<u8>,
+    /// Function-like (span-adjacent paren list present).
+    function_like: bool,
     /// Parameter spellings in order (`[]` for object-like).
     params: Vec<Vec<u8>>,
     /// Variadic (`...`/`__VA_ARGS__` present).
@@ -332,6 +334,7 @@ fn fresh_append(input: &PpDefineInput, parsed: &ParsedDefine) -> Vec<Proposal> {
                 bodies: vec![G1DraftBody::Macro(MacroRecord {
                     spelling: parsed.name.clone(),
                     params: parsed.params.clone(),
+                    function_like: parsed.function_like,
                     variadic: parsed.variadic,
                     replacement: parsed.replacement.clone(),
                     undefined: false,
@@ -468,6 +471,7 @@ fn parse_object_like(
     }
     Ok(ParsedDefine {
         name,
+        function_like: false,
         params: Vec::new(),
         variadic,
         replacement,
@@ -572,6 +576,7 @@ fn parse_function_like(
     }
     Ok(ParsedDefine {
         name,
+        function_like: true,
         params,
         variadic,
         replacement,

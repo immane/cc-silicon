@@ -237,6 +237,7 @@ impl PpUndefChip {
                             bodies: vec![G1DraftBody::Macro(MacroRecord {
                                 spelling,
                                 params: Vec::new(),
+                                function_like: false,
                                 variadic: false,
                                 replacement: Vec::new(),
                                 undefined: true,

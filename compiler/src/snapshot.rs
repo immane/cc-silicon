@@ -2079,6 +2079,7 @@ pub fn encode_macro(record: &MacroRecord) -> Vec<u8> {
     for param in &record.params {
         w.bytes(param);
     }
+    w.bool(record.function_like);
     w.bool(record.variadic);
     w.u64(record.replacement.len() as u64);
     for token in &record.replacement {
@@ -2098,6 +2099,7 @@ pub fn decode_macro(bytes: &[u8]) -> Result<MacroRecord, CodecError> {
     for _ in 0..params_len {
         params.push(r.bytes()?);
     }
+    let function_like = r.bool()?;
     let variadic = r.bool()?;
     let replacement_len = r.u64()? as usize;
     let mut replacement = Vec::with_capacity(replacement_len.min(1024));
@@ -2109,6 +2111,7 @@ pub fn decode_macro(bytes: &[u8]) -> Result<MacroRecord, CodecError> {
     Ok(MacroRecord {
         spelling,
         params,
+        function_like,
         variadic,
         replacement,
         undefined,

@@ -453,6 +453,27 @@ rows for the two writers. New hashed rules `pp.macrodef-record`,
 (`cf8f2194…5b1ca0`); acceptance `compiler/tests/c23_macro.rs`
 (10 tests); item list in [PP_MACRO_DEFINE_SLICE.md](PP_MACRO_DEFINE_SLICE.md).
 
+`/24` amendment — Wave 2 slice 15, PP macro expansion (R1 auto-bump;
+`/23` preserved as history): new `PpInvokeChip` (chip 29) fanning out
+one PP12 child per top-level invocation over the active stream
+(directive lines verbatim) and stitching the expanded stream, plus new
+`PpSubstituteChip` (chip 30) substituting with argument prescan (raw
+`#`/`##` bypass), exact `#`/`##` (frozen-scanner paste validation),
+recursive blue-paint rescan with a macro-count+2 breaker, and verbatim
+ID reuse; PP10/PP11/PP13/PP14/PP15 folded as pure helpers with
+promotion criteria. `preprocess.macro_invoke` (26) +
+`macro_substitute` (27), stage 1, layers 1, `pp_expand_slice()`
+registry (40 entries, cumulative over `pp_macro_slice()`); no new
+families; allowlist rows for both `Pp.tokens` writers. Record-level
+correction in the same slice: `MacroRecord.function_like` added
+(zero-param function-like must not expand bare) with rule
+`pp.macro-function-flag`. New hashed rules `pp.invoke-fanout-stitch`,
+`pp.substitute-rescan-loop`, `pp.stringify-paste-exact`,
+`pp.blue-paint-guard`, `pp.macro-function-flag`. New artifact
+`t01-c01-c06/24` (`8f1ba410…bfbf53`); acceptance
+`compiler/tests/c24_expand.rs` (12 tests); item list in
+[PP_EXPAND_SLICE.md](PP_EXPAND_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

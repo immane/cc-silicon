@@ -190,6 +190,9 @@ pub struct MacroRecord {
     pub spelling: Vec<u8>,
     /// Parameter spellings in order (`[]` for object-like).
     pub params: Vec<Vec<u8>>,
+    /// Function-like (`(` immediately followed the name; distinguishes a
+    /// zero-parameter function-like macro from object-like).
+    pub function_like: bool,
     /// Variadic (`...`/`__VA_ARGS__` present; use deferred to PP16).
     pub variadic: bool,
     /// Replacement list (committed pp-token IDs).

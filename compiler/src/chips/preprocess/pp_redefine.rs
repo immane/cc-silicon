@@ -193,6 +193,8 @@ impl Worker for PpRedefineChip {
 struct ParsedDefine {
     /// Macro name spelling.
     name: Vec<u8>,
+    /// Function-like (span-adjacent paren list present).
+    function_like: bool,
     /// Parameter spellings in order (`[]` for object-like).
     params: Vec<Vec<u8>>,
     /// Variadic (`...`/`__VA_ARGS__` present).
@@ -406,6 +408,7 @@ fn parse_define_line(
     }
     Ok(ParsedDefine {
         name,
+        function_like,
         params,
         variadic,
         replacement,
@@ -452,6 +455,15 @@ impl PpRedefineChip {
                 DiagnosticDraft::error(
                     DiagnosticCode::new(DiagGroup::Task, 4),
                     "redefine mismatch: params differ",
+                ),
+            )];
+        }
+        if parsed.function_like != input.incumbent.function_like {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    "redefine mismatch: function-like differs",
                 ),
             )];
         }

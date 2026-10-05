@@ -927,6 +927,18 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "macros",
         TaskKind::PREPROCESS_MACRO_UNDEF,
     ),
+    (
+        PP09_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_INVOKE,
+    ),
+    (
+        PP12_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_SUBSTITUTE,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -1011,6 +1023,12 @@ pub const PP07_CHIP: ChipId = ChipId(27);
 /// Wave 2 (`/23`) PP macro-undef chip reservation.
 pub const PP08_CHIP: ChipId = ChipId(28);
 
+/// Wave 2 (`/24`) PP macro-invocation chip reservation.
+pub const PP09_CHIP: ChipId = ChipId(29);
+
+/// Wave 2 (`/24`) PP macro-substitution chip reservation.
+pub const PP12_CHIP: ChipId = ChipId(30);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1033,6 +1051,12 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/24`) PP macro-expansion slice.
+pub const fn is_pp_expand_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_INVOKE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_SUBSTITUTE.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/23`) PP macro-definition slice.
@@ -1128,6 +1152,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_directive_slice_kind(kind)
             || is_pp_conditional_slice_kind(kind)
             || is_pp_macro_slice_kind(kind)
+            || is_pp_expand_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1202,6 +1227,8 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_MACRO_DEFINE, 1),
     (TaskKind::PREPROCESS_MACRO_REDEFINE, 1),
     (TaskKind::PREPROCESS_MACRO_UNDEF, 1),
+    (TaskKind::PREPROCESS_MACRO_INVOKE, 1),
+    (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),
