@@ -230,7 +230,7 @@ fn expr_kinds_stage_registry_manifest_frozen() {
     assert!(!is_pa_expr_slice_kind(TaskKind::PARSE_TU));
     assert!(!is_pa_expr_slice_kind(TaskKind::PARSE_RETURN));
     // The expr registry extends the `/34` head linearly; `PARSE` owners
-    // start new codes at local 25.
+    // start new codes at local 27 after the `/36` recovery slice.
     assert_eq!(TaskKindRegistry::pa_decl_slice().len(), 58);
     let registry = TaskKindRegistry::pa_expr_slice();
     assert_eq!(registry.len(), 61);
@@ -241,7 +241,7 @@ fn expr_kinds_stage_registry_manifest_frozen() {
     ] {
         assert_eq!(registry.lookup(kind).unwrap().name, name);
     }
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 25).unwrap()), None);
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 27).unwrap()), None);
     // Both chips are Ack-only: zero writes, no allowlist rows.
     assert_eq!(PA16_CHIP, cc_silicon_compiler::ids::ChipId(48));
     assert_eq!(PA20_CHIP, cc_silicon_compiler::ids::ChipId(49));

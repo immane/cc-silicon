@@ -123,7 +123,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX17 TokenPublishChip (sole ordered publisher) | ✅ PARTIAL (`/11` deterministic append/dispatch order; orchestrator fan-in deferred) | 2
 - LX18 LexErrorChip (finite advance) | diagnostic codes | 2
 
-### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`) + expr slice (`/35`)
+### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`) + expr slice (`/35`) + recovery slice (`/36`)
 
 - PA01 TranslationUnitChip | TU carrier, File-Enter edge | 2 FIRST
 - PA02 ExternalDeclarationChip | ✅ DONE (`/34` PaExternalChip, `c34_parse` 12 tests shared; `{`-vs-`;` dispatch at continuation cursor, third token loud, Ack-only) | 2
@@ -136,7 +136,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PA11 AggregateSpecifierChip | kinds | 2–3
 - PA12 EnumSpecifierChip | kinds | 2–3
 - PA13 MemberDeclarationChip | kinds | 3
-- PA14 DeclarationFinishChip | POD protocol | 2
+- PA14 DeclarationFinishChip | ✅ DONE (`/36` PaPodChip, `c36_recovery` 11 tests shared; `main(void);` with POD registration certified, comma/init deferred, missing `;` a defect, Ack-only) | 2
 - PA15 InitializerParseChip | init-tree schema | 2–3
 - PA16 PrimaryExpressionChip | ✅ DONE (`/35` PaBinaryChip fused PA16/22, `c35_expr` 10 tests shared; one integer constant backed by one literal, Ack-only) | 2
 - PA17/18/19 Postfix/Call/MemberSubscript | kinds | 2
@@ -158,7 +158,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PA35 StaticAssertParseChip | kinds | 2–3
 - PA36 AttributeParseChip | kinds | 3
 - PA37 ExtensionSyntaxDispatchChip → T12 | kinds | 3
-- PA38 ParseRecoveryChip (sync `;/)/}`, EOF) | kinds | 2
+- PA38 ParseRecoveryChip (sync `;/)/}`, EOF) | ✅ DONE (`/36` PaRecoveryChip, `c36_recovery`; `;` consumed, `)`/`}`/`{`-stop/EOF not consumed, finite advance `0 < index <= len`, Ack-only) | 2
 - All need: `NodeKind` + `NodeRecord` + request/result encoding + kind registrations (one serial freeze).
 
 ### T06 Symbol/Type (TY01–TY34) — Wave 2

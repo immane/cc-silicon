@@ -464,6 +464,17 @@ impl TaskKind {
     /// (payload: exactly two committed `Token` refs in source order,
     /// `+<int>` / `-<int>` for M1; completes `Ack`, appends nothing).
     pub const PARSE_UNARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 3 (`/36`) PA-recovery-slice kind: declaration-finish task
+    /// (payload: the declarator-finish token refs in source order —
+    /// exactly `[main, (, void, ), ;]` for M1; completes `Ack`, appends
+    /// nothing; cursor advance and the DeclNode append stay caller-held).
+    pub const PARSE_DECL_FINISH: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 25);
+    /// Wave 3 (`/36`) PA-recovery-slice kind: parse-recovery task
+    /// (payload: the unconsumed token suffix starting at the fault
+    /// cursor; synchronizes to an explicit `;`/`)`/`}`/`{`-stop/EOF;
+    /// completes `Ack`, appends nothing; caller holds the cursor).
+    pub const PARSE_RECOVERY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 26);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -660,6 +671,22 @@ impl TaskKindRegistry {
             (TaskKind::LEX_ESCAPE_DECODE, "lex.escape_decode"),
             (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
             (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/36`) PA-recovery-slice registry: the PA-expr slice
+    /// plus the frozen declaration-finish and recovery kinds (all
+    /// `Frozen`; `PARSE` owners start new codes at local 27).
+    pub fn pa_recovery_slice() -> Self {
+        let mut registry = Self::pa_expr_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PARSE_DECL_FINISH, "parse.decl_finish"),
+            (TaskKind::PARSE_RECOVERY, "parse.recovery"),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

@@ -347,7 +347,7 @@ fn decl_kinds_stage_registry_manifest_frozen() {
     assert!(!is_pa_decl_slice_kind(TaskKind::CONTROL_NOOP));
     assert!(!is_pa_decl_slice_kind(TaskKind::PARSE_TU));
     // The decl registry extends the `/33` head linearly; `PARSE` owners
-    // start new codes at local 25 after the `/35` expr slice.
+    // start new codes at local 27 after the `/36` recovery slice.
     assert_eq!(TaskKindRegistry::pa_slice().len(), 12);
     assert_eq!(TaskKindRegistry::lx_string_slice().len(), 53);
     let registry = TaskKindRegistry::pa_decl_slice();
@@ -361,7 +361,7 @@ fn decl_kinds_stage_registry_manifest_frozen() {
     ] {
         assert_eq!(registry.lookup(kind).unwrap().name, name);
     }
-    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 25).unwrap()), None);
+    assert_eq!(stage_of(TaskKind::new(TaskGroup::PARSE, 27).unwrap()), None);
     // All four chips are Ack-only: zero writes, no allowlist rows.
     assert_eq!(PA02_CHIP, cc_silicon_compiler::ids::ChipId(44));
     assert_eq!(PA03_CHIP, cc_silicon_compiler::ids::ChipId(45));

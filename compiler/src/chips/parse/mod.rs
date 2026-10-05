@@ -1,6 +1,7 @@
 //! T05 parse workers (Wave 2 slice 3: translation unit; Wave 3 slice 9:
 //! external-declaration dispatch, specifiers, declarator, block, return;
-//! Wave 3 slice 10: primary, binary, unary expressions).
+//! Wave 3 slice 10: primary, binary, unary expressions; Wave 3 slice 11:
+//! declaration finish, parse recovery).
 //!
 //! Group directory per `docs/tasks/PARALLEL_EXECUTION.md` §2: one file per
 //! chip (`<group>/<snake_name>.rs`); the integrator owns this `mod.rs`.
@@ -9,9 +10,22 @@ mod pa_binary;
 mod pa_block;
 mod pa_declarator;
 mod pa_external;
+mod pa_pod;
+mod pa_recovery;
 mod pa_specifier;
 mod pa_tu;
 mod pa_unary;
+
+pub use self::pa_pod::{
+    pa14_task_kind, parse_declaration_finish, project_pa_pod_input, PaPodChip, PaPodInput,
+    PodError, PodFinish, PodRegistrationShape, PodToken, ProjectedPodToken, PA14_CANDIDATE_CHIP,
+    PA14_CANDIDATE_LOCAL, PA14_TASK_KIND, PA14_TASK_KIND_CANDIDATE,
+};
+pub use self::pa_recovery::{
+    pa38_task_kind, project_pa_recovery_input, recover_cursor, PaRecoveryChip, PaRecoveryInput,
+    ProjectedRecoveryToken, RecoveredCursor, RecoveryError, SyncKind, PA38_CANDIDATE_CHIP,
+    PA38_LOCAL, PA38_TASK_KIND,
+};
 
 pub use self::pa_binary::{
     binary_precedence, parse_binary_expression, parse_primary, project_pa_binary_input,
