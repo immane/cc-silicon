@@ -1,8 +1,7 @@
 use cc_silicon_compiler::codec::sha256;
 use cc_silicon_compiler::contract::{
     compute_contract_hash, contract_version_file, FrozenSchema, CONTRACT_HASH, CONTRACT_VERSION,
-    M1_PROPOSAL_WIRE_TAGS, M1_SEED_VERSION, M1_STORE_FAMILY_ARENA, NORMATIVE_RULES,
-    PROPOSAL_NAMES,
+    M1_PROPOSAL_WIRE_TAGS, M1_SEED_VERSION, M1_STORE_FAMILY_ARENA, NORMATIVE_RULES, PROPOSAL_NAMES,
 };
 use cc_silicon_compiler::ids::RecordFamily;
 use cc_silicon_compiler::task::StoreId;

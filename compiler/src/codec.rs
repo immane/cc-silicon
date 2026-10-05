@@ -290,37 +290,25 @@ impl<'a> Reader<'a> {
 
     /// Read a little-endian `u16`.
     pub fn u16(&mut self) -> Result<u16, CodecError> {
-        let bytes: [u8; 2] = self
-            .raw(2)?
-            .try_into()
-            .map_err(|_| CodecError::Truncated)?;
+        let bytes: [u8; 2] = self.raw(2)?.try_into().map_err(|_| CodecError::Truncated)?;
         Ok(u16::from_le_bytes(bytes))
     }
 
     /// Read a little-endian `u32`.
     pub fn u32(&mut self) -> Result<u32, CodecError> {
-        let bytes: [u8; 4] = self
-            .raw(4)?
-            .try_into()
-            .map_err(|_| CodecError::Truncated)?;
+        let bytes: [u8; 4] = self.raw(4)?.try_into().map_err(|_| CodecError::Truncated)?;
         Ok(u32::from_le_bytes(bytes))
     }
 
     /// Read a little-endian `u64`.
     pub fn u64(&mut self) -> Result<u64, CodecError> {
-        let bytes: [u8; 8] = self
-            .raw(8)?
-            .try_into()
-            .map_err(|_| CodecError::Truncated)?;
+        let bytes: [u8; 8] = self.raw(8)?.try_into().map_err(|_| CodecError::Truncated)?;
         Ok(u64::from_le_bytes(bytes))
     }
 
     /// Read a little-endian `i64`.
     pub fn i64(&mut self) -> Result<i64, CodecError> {
-        let bytes: [u8; 8] = self
-            .raw(8)?
-            .try_into()
-            .map_err(|_| CodecError::Truncated)?;
+        let bytes: [u8; 8] = self.raw(8)?.try_into().map_err(|_| CodecError::Truncated)?;
         Ok(i64::from_le_bytes(bytes))
     }
 

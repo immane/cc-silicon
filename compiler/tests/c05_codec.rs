@@ -381,8 +381,8 @@ fn span_offsets_encode_as_fixed_u64_le() {
 #[test]
 fn record_ref_tags_24_26_are_literal_sem_scope_event() {
     use cc_silicon_compiler::snapshot::{
-        RECORD_REF_TAG_LITERAL, RECORD_REF_TAG_SCOPE_EVENT, RECORD_REF_TAG_SEM,
         decode_record_ref, decode_record_ref_raw, encode_record_ref, encode_record_ref_raw,
+        RECORD_REF_TAG_LITERAL, RECORD_REF_TAG_SCOPE_EVENT, RECORD_REF_TAG_SEM,
     };
     // Frozen assignment (authorizing freeze instruction + `RecordRef::wire_tag`):
     // Literal = 24, Sem = 25, ScopeEvent = 26.
@@ -403,24 +403,18 @@ fn record_ref_tags_24_26_are_literal_sem_scope_event() {
         cc_silicon_compiler::ids::RecordRef::Literal(
             cc_silicon_compiler::ids::LiteralId::from_index(2),
         ),
-        cc_silicon_compiler::ids::RecordRef::Sem(
-            cc_silicon_compiler::ids::SemId::from_index(4),
-        ),
+        cc_silicon_compiler::ids::RecordRef::Sem(cc_silicon_compiler::ids::SemId::from_index(4)),
         cc_silicon_compiler::ids::RecordRef::ScopeEvent(
             cc_silicon_compiler::ids::ScopeEventId::from_index(6),
         ),
         cc_silicon_compiler::ids::RecordRef::Source(
             cc_silicon_compiler::ids::SourceId::from_index(3),
         ),
-        cc_silicon_compiler::ids::RecordRef::Span(
-            cc_silicon_compiler::ids::SpanId::from_index(0),
-        ),
+        cc_silicon_compiler::ids::RecordRef::Span(cc_silicon_compiler::ids::SpanId::from_index(0)),
         cc_silicon_compiler::ids::RecordRef::Artifact(
             cc_silicon_compiler::ids::ArtifactId::from_index(9),
         ),
-        cc_silicon_compiler::ids::RecordRef::Task(
-            cc_silicon_compiler::ids::TaskId::from_index(1),
-        ),
+        cc_silicon_compiler::ids::RecordRef::Task(cc_silicon_compiler::ids::TaskId::from_index(1)),
     ] {
         let bytes = encode_record_ref(reference);
         assert_eq!(bytes[0], reference.wire_tag());
@@ -436,9 +430,8 @@ fn record_ref_tags_24_26_are_literal_sem_scope_event() {
 fn proposal_wire_tags_5_6_7_follow_declaration_order() {
     use cc_silicon_compiler::codec::CodecError;
     use cc_silicon_compiler::snapshot::{
-        PROPOSAL_WIRE_TAG_APPEND_RECORDS, PROPOSAL_WIRE_TAG_AWAIT_CHILDREN,
-        PROPOSAL_WIRE_TAG_PROGRESS, RESULT_VALUE_VARIANT_COUNT, proposal_wire_name,
-        proposal_wire_tag, result_value_tag,
+        proposal_wire_name, proposal_wire_tag, result_value_tag, PROPOSAL_WIRE_TAG_APPEND_RECORDS,
+        PROPOSAL_WIRE_TAG_AWAIT_CHILDREN, PROPOSAL_WIRE_TAG_PROGRESS, RESULT_VALUE_VARIANT_COUNT,
     };
     // Verified against `task.rs` declaration order: Enqueue 0, Complete 1,
     // Fail 2, AwaitHost 3, StorePatch 4; appends take 5, 6, 7.
@@ -471,10 +464,7 @@ fn proposal_wire_tags_5_6_7_follow_declaration_order() {
         0
     );
     assert_eq!(
-        proposal_wire_tag(&cc_silicon_compiler::task::Proposal::Progress {
-            task,
-            ordinal: 3,
-        }),
+        proposal_wire_tag(&cc_silicon_compiler::task::Proposal::Progress { task, ordinal: 3 }),
         PROPOSAL_WIRE_TAG_PROGRESS
     );
     assert_eq!(
@@ -507,15 +497,18 @@ fn proposal_wire_tags_5_6_7_follow_declaration_order() {
 fn per_encoder_round_trip_identity() {
     use cc_silicon_compiler::bus::ArtifactKind;
     use cc_silicon_compiler::snapshot::{
+        decode_artifact, decode_continuation, decode_literal, decode_scope_event, decode_span,
+        encode_artifact, encode_continuation, encode_literal, encode_scope_event, encode_span,
         LiteralKind, LiteralRecordView, LiteralSuffix, Lx08CandidateType, ScopeEventKind,
-        ScopeEventRecordView, decode_artifact, decode_continuation, decode_literal,
-        decode_scope_event, decode_span, encode_artifact, encode_continuation, encode_literal,
-        encode_scope_event, encode_span,
+        ScopeEventRecordView,
     };
     // Span.
     let span = encode_span(2, 100, 200, None);
     let back = decode_span(&span).unwrap();
-    assert_eq!(encode_span(back.source, back.start, back.end, back.expansion), span);
+    assert_eq!(
+        encode_span(back.source, back.start, back.end, back.expansion),
+        span
+    );
     // Literal.
     let literal = LiteralRecordView {
         token: Some(9),
@@ -578,18 +571,10 @@ fn new_wire_arms_encode_deterministically() {
     use cc_silicon_compiler::task::ChildRef;
     let task = cc_silicon_compiler::ids::TaskId::from_index(0);
     // Progress ordinals distinguish snapshots.
-    let progress_a = wire_bus(cc_silicon_compiler::task::Proposal::Progress {
-        task,
-        ordinal: 1,
-    });
-    let progress_b = wire_bus(cc_silicon_compiler::task::Proposal::Progress {
-        task,
-        ordinal: 2,
-    });
-    let progress_a_again = wire_bus(cc_silicon_compiler::task::Proposal::Progress {
-        task,
-        ordinal: 1,
-    });
+    let progress_a = wire_bus(cc_silicon_compiler::task::Proposal::Progress { task, ordinal: 1 });
+    let progress_b = wire_bus(cc_silicon_compiler::task::Proposal::Progress { task, ordinal: 2 });
+    let progress_a_again =
+        wire_bus(cc_silicon_compiler::task::Proposal::Progress { task, ordinal: 1 });
     assert_eq!(
         Snapshot::capture(&progress_a).hash(),
         Snapshot::capture(&progress_a_again).hash()
@@ -644,8 +629,8 @@ fn new_wire_arms_encode_deterministically() {
 #[test]
 fn literal_identity_key_excludes_magnitudes() {
     use cc_silicon_compiler::snapshot::{
-        LiteralKind, LiteralRecordView, LiteralSuffix, Lx08CandidateType, encode_literal,
-        literal_identity_key,
+        encode_literal, literal_identity_key, LiteralKind, LiteralRecordView, LiteralSuffix,
+        Lx08CandidateType,
     };
     let base = LiteralRecordView {
         token: Some(1),

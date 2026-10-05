@@ -16,19 +16,19 @@
 // ============================================================================
 
 use crate::bus::{ArtifactKind, ArtifactRecord, CompilerBus, SpanRecord};
-use crate::codec::{CodecError, Reader, hex32, sha256, Writer};
+use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
     HostRequestId, InitId, InstructionId, LayoutId, LiteralId, NameId, NodeId, PpTokenId,
-    RecordRef, ResultId, ScopeId, ScopeEventId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId,
+    RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId,
     TypeId, VRegId, ValueId,
 };
 use crate::routing::{Resolution, TickOutcome, TickReport};
 use crate::target::{CompilerConfig, VerificationState};
 use crate::task::{
     ChildRef, ContinuationRecord, HostRequestKind, ParseContext, PatchOp, Proposal, ResultRecord,
-    ResultValue, StoreId, TaskKind, TaskGroup, TaskState,
+    ResultValue, StoreId, TaskGroup, TaskKind, TaskState,
 };
 
 fn push_verification(w: &mut Writer, verification: VerificationState) {
@@ -1099,9 +1099,7 @@ pub fn decode_record_ref(bytes: &[u8]) -> Result<RecordRef, CodecError> {
         23 => Ok(RecordRef::Artifact(ArtifactId::from_index(index))),
         RECORD_REF_TAG_LITERAL => Ok(RecordRef::Literal(LiteralId::from_index(index))),
         RECORD_REF_TAG_SEM => Ok(RecordRef::Sem(SemId::from_index(index))),
-        RECORD_REF_TAG_SCOPE_EVENT => {
-            Ok(RecordRef::ScopeEvent(ScopeEventId::from_index(index)))
-        }
+        RECORD_REF_TAG_SCOPE_EVENT => Ok(RecordRef::ScopeEvent(ScopeEventId::from_index(index))),
         other => Err(CodecError::InvalidTag(other)),
     }
 }
@@ -1487,8 +1485,8 @@ fn parse_artifact_kind(name: &str) -> Option<ArtifactKind> {
 pub fn decode_artifact(bytes: &[u8]) -> Result<(ArtifactKind, Vec<u8>), CodecError> {
     let mut r = Reader::new(bytes);
     let name = r.string()?;
-    let kind = parse_artifact_kind(&name)
-        .ok_or(CodecError::Unsupported("unknown artifact kind name"))?;
+    let kind =
+        parse_artifact_kind(&name).ok_or(CodecError::Unsupported("unknown artifact kind name"))?;
     let data = r.bytes()?;
     r.finish()?;
     Ok((kind, data))
@@ -1554,8 +1552,7 @@ pub fn decode_continuation(bytes: &[u8]) -> Result<ContinuationRecord, CodecErro
     let mut r = Reader::new(bytes);
     let production_raw = r.u16()?;
     let group_byte = (production_raw >> TaskKind::LOCAL_BITS) as u8;
-    let group =
-        TaskGroup::from_raw(group_byte).ok_or(CodecError::InvalidTag(group_byte))?;
+    let group = TaskGroup::from_raw(group_byte).ok_or(CodecError::InvalidTag(group_byte))?;
     let production = TaskKind::new(group, production_raw & TaskKind::LOCAL_MASK)
         .ok_or(CodecError::InvalidTag(group_byte))?;
     let cursor = TokenId::from_index(r.u32()?);
@@ -1587,8 +1584,7 @@ pub fn decode_continuation(bytes: &[u8]) -> Result<ContinuationRecord, CodecErro
     // Bound the reservation by the bytes actually present so a corrupt count
     // cannot force a huge allocation; the loop below still fails fast with
     // `Truncated` on the first missing entry.
-    let mut partial_children =
-        Vec::with_capacity(child_count.min(r.remaining() / 4));
+    let mut partial_children = Vec::with_capacity(child_count.min(r.remaining() / 4));
     for _ in 0..child_count {
         partial_children.push(NodeId::from_index(r.u32()?));
     }

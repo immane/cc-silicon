@@ -918,18 +918,14 @@ pub fn commit_proposals(
                 // A validation-time ordinal/limit failure routes to the
                 // per-task `Fail` path instead, mutually exclusive with
                 // reinsert (never both, never stranded `Running`).
-                if let Some((_, error)) =
-                    progress_failed.iter().find(|(id, _)| id == task)
-                {
-                    let draft =
-                        DiagnosticDraft::error(error.code(), error.to_string());
+                if let Some((_, error)) = progress_failed.iter().find(|(id, _)| id == task) {
+                    let draft = DiagnosticDraft::error(error.code(), error.to_string());
                     try_fail_task(bus, *task, draft);
                     continue;
                 }
                 if let Ok(record) = bus.arenas.tasks.get_mut(*task) {
                     record.progress_ordinal = *ordinal;
-                    record.progress_count =
-                        record.progress_count.saturating_add(1);
+                    record.progress_count = record.progress_count.saturating_add(1);
                 }
                 reinsert_ready(bus, *task, ready_tick);
             }
