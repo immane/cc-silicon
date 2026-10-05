@@ -366,6 +366,14 @@ impl TaskKind {
     /// input fails as a typed `Invalid`).
     pub const PREPROCESS_LINE_DIRECTIVE: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 32);
+    /// Wave 3 (`/29`) PP-pragma-slice kind: pragma-dispatch task (payload:
+    /// exactly one pragma construct in payload order, either post-`#` refs
+    /// whose first token is Identifier `pragma`, or the four operator
+    /// tokens `_Pragma ( StringLiteral )`; classifies to `once` /
+    /// `pack(push|pop)` / opaque and completes `Ack`; malformed `_Pragma`
+    /// input fails as a typed `Invalid`).
+    pub const PREPROCESS_PRAGMA_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 33);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -545,6 +553,22 @@ impl TaskKindRegistry {
         let slice: &[(TaskKind, &str)] = &[(
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/29`) PP-pragma-slice registry: the PP-line
+    /// slice plus the frozen pragma-dispatch kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 34).
+    pub fn pp_pragma_slice() -> Self {
+        let mut registry = Self::pp_line_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_PRAGMA_DIRECTIVE,
+            "preprocess.pragma_directive",
         )];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

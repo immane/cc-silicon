@@ -98,7 +98,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP22 PpExpressionEvaluateChip (PP-int domain, never C evaluator) | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
 - PP23 LineDirectiveChip | ✅ DONE (`/28` PpLineChip, `c28_line` 10 tests; `#line` ± file, GNU markers, `2^31-1` boundary, zero/overflow/bad-escape `Fail`, physical-vs-logical, Ack-only read-only) | 3
 - PP24 BuiltinMacroChip | ✅ DONE (`/27` PpBuiltinChip, `c27_builtin` 9 tests; `__FILE__`/`__LINE__`/`__COUNTER__`(seed 0), frozen-target macros, `__DATE__`/`__TIME__`/unknown as explicit `Unsupported`) | 3
-- PP25 PragmaDispatchChip | kinds | 3
+- PP25 PragmaDispatchChip | ✅ DONE (`/29` PpPragmaChip, `c29_pragma` 9 tests; `once` flag, `pack` push/pop, unknown-pragma benign ignore per C11 6.10.6p1, malformed `_Pragma` typed `Fail`, `_Pragma` string decode, Ack-only read-only) | 3
 - PP27 ExpansionSourceMapChip | origin-chain carrier | 3
 - PP28 PreprocessedEmitChip | kinds | 3
 
