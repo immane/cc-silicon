@@ -16,8 +16,8 @@
 
 use crate::bus::{
     ArtifactRecord, BlockRecord, ConstRecord, FunctionRecord, InstructionRecord, LiteralRecord,
-    NodeRecord, ScopeEventRecord, ScopeRecord, SemRecord, SymbolRecord, TokenRecord, TypeRecord,
-    ValueRecord,
+    NodeRecord, PpTokenRecord, ScopeEventRecord, ScopeRecord, SemRecord, SpanRecord, SymbolRecord,
+    TokenRecord, TypeRecord, ValueRecord,
 };
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
@@ -40,7 +40,8 @@ pub struct RecordDraft {
 /// `Artifact` added at Wave 2 `/10` for the PP01 slice; `Token`/`Name`
 /// added at `/11` for the LX slice; `Node` added at `/12` for the PA slice;
 /// `Type`/`Symbol`/`Scope`/`ScopeEvent` added at `/13` for the TY slice;
-/// `Function`/`Block`/`Value`/`Instruction` added at `/15` for the IR slice).
+/// `Function`/`Block`/`Value`/`Instruction` added at `/15` for the IR slice;
+/// `Span`/`PpToken` added at `/16` for the PP slice).
 /// `Sem` added at `/14` for the SE slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
@@ -84,6 +85,10 @@ pub enum G1DraftBody {
     Value(ValueRecord),
     /// An IR instruction to append to the `instructions` arena (`/15`).
     Instruction(InstructionRecord),
+    /// A source span to append to the `spans` arena (`/16` PP slice).
+    Span(SpanRecord),
+    /// A preprocessing token to append to the `pp_tokens` arena (`/16`).
+    PpToken(PpTokenRecord),
 }
 
 impl G1DraftBody {
@@ -105,6 +110,8 @@ impl G1DraftBody {
             Self::Block(_) => RecordFamily::Block,
             Self::Value(_) => RecordFamily::Value,
             Self::Instruction(_) => RecordFamily::Instruction,
+            Self::Span(_) => RecordFamily::Span,
+            Self::PpToken(_) => RecordFamily::PpToken,
         }
     }
 }

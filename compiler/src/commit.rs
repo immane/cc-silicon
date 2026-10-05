@@ -608,6 +608,8 @@ pub fn commit_proposals(
     let mut new_blocks: u32 = 0;
     let mut new_values: u32 = 0;
     let mut new_instructions: u32 = 0;
+    let mut new_spans: u32 = 0;
+    let mut new_pptokens: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -632,6 +634,8 @@ pub fn commit_proposals(
     let blocks_base = bus.arenas.blocks.allocated();
     let values_base = bus.arenas.values.allocated();
     let instructions_base = bus.arenas.instructions.allocated();
+    let spans_base = bus.arenas.spans.allocated();
+    let pp_tokens_base = bus.arenas.pp_tokens.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -648,6 +652,7 @@ pub fn commit_proposals(
         let mut next_block = blocks_base;
         let mut next_value = values_base;
         let mut next_instruction = instructions_base;
+        let mut next_pptoken = pp_tokens_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -751,6 +756,18 @@ pub fn commit_proposals(
                                 next_instruction,
                             ));
                             next_instruction = next_instruction.saturating_add(1);
+                        }
+                        G1DraftBody::PpToken(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::PpToken,
+                                next_pptoken,
+                            ));
+                            next_pptoken = next_pptoken.saturating_add(1);
+                        }
+                        G1DraftBody::Span { .. } => {
+                            // Spans are referenced through token bodies, never
+                            // by a `Complete` carrier (same rule as `Name`).
                         }
                         G1DraftBody::ScopeEvent { .. } => {
                             // Scope events are observed via arena scan, never
@@ -895,6 +912,12 @@ pub fn commit_proposals(
                             }
                             RecordRef::Instruction(id) if id.index() >= instructions_base => {
                                 Some((tagged.task, RecordFamily::Instruction, id.index()))
+                            }
+                            RecordRef::PpToken(id) if id.index() >= pp_tokens_base => {
+                                Some((tagged.task, RecordFamily::PpToken, id.index()))
+                            }
+                            RecordRef::Span(id) if id.index() >= spans_base => {
+                                return Err(CommitError::UnpredictedRecord { task: tagged.task });
                             }
                             RecordRef::ScopeEvent(id) => {
                                 // Scope events are never completion carriers:
@@ -1048,6 +1071,12 @@ pub fn commit_proposals(
                         G1DraftBody::Instruction(_) => {
                             new_instructions = new_instructions.saturating_add(1);
                         }
+                        G1DraftBody::Span(_) => {
+                            new_spans = new_spans.saturating_add(1);
+                        }
+                        G1DraftBody::PpToken(_) => {
+                            new_pptokens = new_pptokens.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -1080,13 +1109,19 @@ pub fn commit_proposals(
                                     reason: "artifact map violates mandatory invariants",
                                 });
                             }
-                            // PP01 slice: only single-source `Normalized`
-                            // artifacts are produced. Other kinds stay
+                            // Map-mandatory kinds only (`/16`): the PP chain
+                            // produces `Normalized`/`Spliced`/`CommentFree`;
+                            // `Preprocessed` and map-optional kinds stay
                             // declared-but-unexercised.
-                            if artifact.kind != crate::bus::ArtifactKind::Normalized {
+                            if !matches!(
+                                artifact.kind,
+                                crate::bus::ArtifactKind::Normalized
+                                    | crate::bus::ArtifactKind::Spliced
+                                    | crate::bus::ArtifactKind::CommentFree
+                            ) {
                                 return Err(CommitError::InvalidPatchShape {
                                     task: tagged.task,
-                                    reason: "only Normalized artifacts are produced",
+                                    reason: "only map-mandatory artifacts are produced",
                                 });
                             }
                             new_artifacts = new_artifacts.saturating_add(1);
@@ -1117,6 +1152,8 @@ pub fn commit_proposals(
                         G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
                         G1DraftBody::Value(_) => (StoreId::Ir, "values"),
                         G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
+                        G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
+                        G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1343,6 +1380,8 @@ pub fn commit_proposals(
             new_blocks,
             new_values,
             new_instructions,
+            new_spans,
+            new_pptokens,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1541,6 +1580,19 @@ pub fn commit_proposals(
                             )));
                             report.appended.push((*task, RecordRef::Instruction(id)));
                         }
+                        G1DraftBody::Span(record) => {
+                            let id = bus.arenas.spans.push(*record);
+                            report.appended.push((*task, RecordRef::Span(id)));
+                        }
+                        G1DraftBody::PpToken(record) => {
+                            let id = bus.arenas.pp_tokens.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::PpToken,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::PpToken(id)));
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
                             // state): infallible here. Limits are immutable
@@ -1722,6 +1774,8 @@ fn validate_append_authorization(
             G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
             G1DraftBody::Value(_) => (StoreId::Ir, "values"),
             G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
+            G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
+            G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1861,6 +1915,10 @@ struct CapacityPlan {
     new_values: u32,
     /// New IR instruction records (Wave 2 `/15`).
     new_instructions: u32,
+    /// New source-span records (Wave 2 `/16` PP-slice materialization).
+    new_spans: u32,
+    /// New preprocessing-token records (Wave 2 `/16`).
+    new_pptokens: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1875,7 +1933,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 18] = [
+    let checks: [(u32, u32, &'static str); 20] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1922,6 +1980,12 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             plan.new_instructions,
             "instructions",
         ),
+        (bus.arenas.spans.allocated(), plan.new_spans, "spans"),
+        (
+            bus.arenas.pp_tokens.allocated(),
+            plan.new_pptokens,
+            "pp_tokens",
+        ),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1963,7 +2027,9 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_functions
         + plan.new_blocks
         + plan.new_values
-        + plan.new_instructions) as u64
+        + plan.new_instructions
+        + plan.new_spans
+        + plan.new_pptokens) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

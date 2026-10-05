@@ -272,7 +272,22 @@ impl TaskKind {
     /// `Block`, one `Value`, and two `Instruction`s in order; completes
     /// `Record` of the function).
     pub const IR_FUNCTION: Self = Self(((TaskGroup::IR_LOWER.0 as u16) << Self::LOCAL_BITS) | 16);
-
+    /// Wave 2 (`/16`) PP-slice kind: line-splice task (payload: exactly
+    /// one `Normalized` or `Spliced` artifact; appends one `Spliced`
+    /// artifact with the composed map; completes `Record`).
+    pub const PREPROCESS_SPLICE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 2 (`/16`) PP-slice kind: comment-replace task (payload: exactly
+    /// one `Spliced` artifact; appends one `CommentFree` artifact; inputs
+    /// containing string/character literals are explicit `Unsupported`;
+    /// completes `Record`).
+    pub const PREPROCESS_COMMENT: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/16`) PP-slice kind: token-scan task (payload: exactly one
+    /// `CommentFree` artifact; appends spans plus PP tokens in order;
+    /// completes `Records`).
+    pub const PREPROCESS_SCAN: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 19);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -391,6 +406,23 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/16`) PP-slice registry: the IR slice plus the three
+    /// frozen PP kinds (all `Frozen`; `PREPROCESS` owners start new codes
+    /// at local 20).
+    pub fn pp_slice() -> Self {
+        let mut registry = Self::ir_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_SPLICE, "preprocess.splice"),
+            (TaskKind::PREPROCESS_COMMENT, "preprocess.comment"),
+            (TaskKind::PREPROCESS_SCAN, "preprocess.scan"),
+        ];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

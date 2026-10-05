@@ -211,6 +211,21 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/16`) PP-slice field set: the IR slice plus the PP
+    /// scan append field (`sources.spans` for `SpanRecord`; `pp.tokens` and
+    /// `artifacts.fragments` are already declared). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model.
+    pub fn pp_slice() -> Self {
+        let mut schema = Self::ir_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Sources, "spans")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/15`) IR-slice field set: the SE slice plus the IR
     /// append fields (`ir.functions`, `ir.blocks`, `ir.values`,
     /// `ir.instructions`). Post-seed runtime declarations stay excluded
@@ -862,6 +877,30 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "instructions",
         TaskKind::IR_FUNCTION,
     ),
+    (
+        PP_SPLICE_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_SPLICE,
+    ),
+    (
+        PP_COMMENT_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_COMMENT,
+    ),
+    (
+        PP_SCAN_CHIP,
+        StoreId::Sources,
+        "spans",
+        TaskKind::PREPROCESS_SCAN,
+    ),
+    (
+        PP_SCAN_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_SCAN,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -912,6 +951,13 @@ pub const VF06_CHIP: ChipId = ChipId(15);
 /// Wave 2 (`/15`) IR function-lowering chip reservation.
 pub const IR_FUNCTION_CHIP: ChipId = ChipId(16);
 
+/// Wave 2 (`/16`) PP line-splice chip reservation.
+pub const PP_SPLICE_CHIP: ChipId = ChipId(17);
+/// Wave 2 (`/16`) PP comment-replace chip reservation.
+pub const PP_COMMENT_CHIP: ChipId = ChipId(18);
+/// Wave 2 (`/16`) PP token-scan chip reservation.
+pub const PP_SCAN_CHIP: ChipId = ChipId(19);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -934,6 +980,14 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/16`) PP slice
+/// (splice/comment/scan; PP01 lives in `is_pp01_slice_kind`).
+pub const fn is_pp_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_SPLICE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_COMMENT.raw()
+        || kind.raw() == TaskKind::PREPROCESS_SCAN.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/15`) IR slice.
@@ -981,6 +1035,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_ty_slice_kind(kind)
             || is_se_slice_kind(kind)
             || is_ir_slice_kind(kind)
+            || is_pp_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1043,6 +1098,9 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::SEMANTIC_RETURN_STMT, 4),
     (TaskKind::VERIFICATION_TYPED_INVARIANT, 4),
     (TaskKind::IR_FUNCTION, 5),
+    (TaskKind::PREPROCESS_SPLICE, 1),
+    (TaskKind::PREPROCESS_COMMENT, 1),
+    (TaskKind::PREPROCESS_SCAN, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

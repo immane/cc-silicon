@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/15";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/16";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "d6c06cc4d11bd52e9b86e8160baea575f65cbf162a535c77e692829af8e2ef05";
+pub const CONTRACT_HASH: &str = "04d8e4b404505e1343245ae1db86361866c2dbd1ddffc1cce8e1cd7dc40d9f10";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -160,6 +160,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
+    "pp.splice-exact-map",
+    "pp.comment-m1-scope",
+    "pp.scan-maximal-munch",
+    "commit.span-pptoken-materialized",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -356,6 +360,9 @@ pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];
 /// Frozen `/15` `ValueRecord` fields, in declaration order.
 pub const VALUE_RECORD_FIELDS: &[&str] = &["ty"];
 
+/// Frozen `/16` `SpanRecord` fields, in declaration order.
+pub const SPAN_RECORD_FIELDS: &[&str] = &["source", "start", "end", "expansion"];
+
 /// Frozen `/15` `InstructionRecord` fields, in declaration order.
 pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &["op", "block", "operands", "immediate", "result"];
 
@@ -477,6 +484,7 @@ impl FrozenSchema {
         push_str_list(&mut w, BLOCK_RECORD_FIELDS);
         push_str_list(&mut w, VALUE_RECORD_FIELDS);
         push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
+        push_str_list(&mut w, SPAN_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -684,7 +692,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 IR slice).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PP slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\
