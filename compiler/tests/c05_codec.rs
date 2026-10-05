@@ -1,4 +1,4 @@
-use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, TaggedProposal};
+use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, LiteralRecord, TaggedProposal};
 use cc_silicon_compiler::codec::{hex32, sha256, Writer};
 use cc_silicon_compiler::commit::consume_result;
 use cc_silicon_compiler::diagnostic::{
@@ -22,6 +22,22 @@ fn draft(kind: TaskKind) -> TaskDraft {
         owner: ChipId(7),
         parent: None,
         continuation: None,
+    }
+}
+
+/// A committed M1-subset literal fixture: decimal `Integer`, no suffix,
+/// magnitude `magnitude`, unsigned, spelled `spelling`, candidate `Int`.
+fn fixture_literal(magnitude: u8, spelling: &[u8]) -> LiteralRecord {
+    use cc_silicon_compiler::snapshot::{LiteralKind, LiteralSuffix, Lx08CandidateType};
+    LiteralRecord {
+        token: None,
+        kind: LiteralKind::Integer,
+        radix: 10,
+        suffix: LiteralSuffix::None,
+        value: vec![magnitude],
+        negative: false,
+        spelling: spelling.to_vec(),
+        candidate_type: Lx08CandidateType::Int,
     }
 }
 
@@ -667,7 +683,13 @@ fn snapshot_covers_new_reserved_arenas_in_flight_and_report() {
     use cc_silicon_compiler::ids::TaskId;
     let limits = Limits::fixture();
     let mut touched = CompilerBus::default();
-    touched.arenas.literals.alloc(&limits).unwrap();
+    // `literals` is Gate 1 typed: allocate a committed M1-subset record
+    // (the snapshot now carries bodies, not just IDs).
+    touched
+        .arenas
+        .literals
+        .alloc(fixture_literal(2, b"2"), &limits)
+        .unwrap();
     touched.arenas.sem.alloc(&limits).unwrap();
     touched.arenas.scope_events.alloc(&limits).unwrap();
     touched.tasks.in_flight.push(TaskId::from_index(3));

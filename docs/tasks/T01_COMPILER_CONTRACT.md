@@ -174,6 +174,23 @@ proposal §6.2.1 classifies dispatch-count failures as dispatcher failures
 `CompilerConfig::new`/`CompilerBus::new` stay `pub` (narrowing deferred);
 `CompilerBus::try_new` lives in `target.rs` pending relocation next to `new`.
 
+`/7` amendment — M1 Gate 1 const-fold slice (2026-10-06; user decisions:
+new amendment version, magnitude-bytes `ConstRecord` carrier, M1-closed
+`{Int}` enum; branch `feat/gate1-const-fold`; item list and execution
+record in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md)):
+`LiteralRecord`/`ConstRecord` typed arenas with snapshot bodies;
+M1-closed const enums plus `ConstantRequest` decode and
+`ConstantResult` legality routing (no new `ResultValue` variant);
+three frozen slice kinds in `TaskKindRegistry::m1_slice()`;
+`STAGE_ASSIGNMENT` with per-kind enforcement plus stage/layer
+agreement; one wave-gated allowlist row (fold chip,
+`Constants/records`); `AppendRecords` materialization for
+`Literal`/`Const` with 1:1 bodies, M1-subset gate, per-arena
+preflight, and infallible apply; `StoreSchema::m1_slice()`; new
+hashed rule IDs and enum/schema sections. New artifact
+`t01-c01-c06/7` (`a56de65b…89d5c`); `/6` preserved as history.
+`M1-CL-05` on real upstream artifacts stays the Wave-2 acceptance.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

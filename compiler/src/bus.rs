@@ -25,6 +25,7 @@ use crate::intern::InternTable;
 use crate::limits::{LimitError, Limits};
 use crate::manifest::ManifestRegistry;
 use crate::routing::RoutingTable;
+use crate::snapshot::{LiteralKind, LiteralSuffix, Lx08CandidateType};
 use crate::target::CompilerConfig;
 use crate::task::{
     ContinuationRecord, HostRequestRecord, ResultRecord, StoreId, Task, TaskDraft, TaskKind,
@@ -97,6 +98,46 @@ pub struct ArtifactRecord {
     pub bytes: Vec<u8>,
 }
 
+/// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
+/// candidate type (Gate 1 `/7` freeze of the rev-45 exact ordered fields).
+///
+/// Field order is frozen as declared: `token`, `kind`, `radix`, `suffix`,
+/// `value`, `negative`, `spelling`, `candidate_type`. No `node` and no
+/// `required_kind`: those belong to the sem-stage `ConstantRequest`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiteralRecord {
+    /// Originating token, if any (`None` for synthetic literals).
+    pub token: Option<TokenId>,
+    /// Literal kind (M1 produces only `Integer`).
+    pub kind: LiteralKind,
+    /// Numeric radix (`2`, `8`, `10`, `16`; M1 decimal only).
+    pub radix: u8,
+    /// Literal suffix (M1 produces only `None`).
+    pub suffix: LiteralSuffix,
+    /// Big-endian magnitude bytes (no sign, no width prefix).
+    pub value: Vec<u8>,
+    /// Whether the literal was preceded by `-` in the source.
+    pub negative: bool,
+    /// Original spelling bytes.
+    pub spelling: Vec<u8>,
+    /// Lexical candidate type (symbolic; M1-closed `{Int}`, no bit width).
+    pub candidate_type: Lx08CandidateType,
+}
+
+/// A T08-owned folded constant: big-endian magnitude plus sign (Gate 1 `/7`
+/// freeze; user-selected magnitude-bytes carrier, 2026-10-06).
+///
+/// T08 decodes committed operands, folds with checked addition, and commits
+/// exactly one `ConstRecord` per evaluation; T09 consumes it without
+/// re-folding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConstRecord {
+    /// Big-endian magnitude bytes (no width prefix).
+    pub value: Vec<u8>,
+    /// Sign of the folded value.
+    pub negative: bool,
+}
+
 /// Every typed arena owned by the compiler bus.
 ///
 /// Foundation stores carry real record types. Language stores whose record
@@ -132,16 +173,14 @@ pub struct Arenas {
     pub sem: ReservedArena<SemId>,
     /// AST nodes (schema owned by T05).
     pub nodes: ReservedArena<NodeId>,
-    /// T04-owned decoded literals (raw lexical facts; record schema owned by
-    /// T04).
-    ///
-    /// A [`ReservedArena`] (stable IDs only, no fabricated record): the T04
-    /// owner replaces this with a real typed arena when it freezes the
-    /// `LiteralRecord` schema. (The `ids.rs` working-basis note names a
-    /// `TypedArena`; that replacement is the T04 freeze, not this bus change.)
-    pub literals: ReservedArena<LiteralId>,
-    /// Constants (schema owned by T08).
-    pub consts: ReservedArena<ConstId>,
+    /// T04-owned decoded literals (Gate 1 `/7` typed schema; rev-45 exact
+    /// ordered fields). The T04 production chips land in slice 2; Gate 1
+    /// seeds `G1-CL-01` fixtures directly.
+    pub literals: TypedArena<LiteralId, LiteralRecord>,
+    /// Folded constants (Gate 1 `/7` typed schema; magnitude-bytes carrier).
+    /// T08 appends exactly one `ConstRecord` per evaluation through the
+    /// commit materialization path.
+    pub consts: TypedArena<ConstId, ConstRecord>,
     /// Layout descriptors (schema owned by T08).
     pub layouts: ReservedArena<LayoutId>,
     /// Initialization plans (schema owned by T08).

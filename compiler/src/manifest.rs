@@ -13,6 +13,8 @@
 
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::ChipId;
+use crate::limits::STAGE_COUNT;
+use crate::routing::RoutingTable;
 use crate::task::{StoreId, TaskGroup, TaskKind, TaskKindRegistry};
 
 /// The tick phase in which a chip is allowed to run.
@@ -203,6 +205,26 @@ impl StoreSchema {
             (StoreId::Wires, "selected_task"),
         ];
         for &(store, field) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
+    /// The Gate 1 (`/7`) M1 slice field set: foundation plus the two frozen
+    /// language append fields (`lex.literals` for the `LiteralRecord`
+    /// schema, `constants.records` for the `ConstRecord` schema).
+    ///
+    /// Group-owned stores otherwise start empty; their owners call
+    /// [`StoreSchema::declare`] when they freeze their record fields.
+    /// `foundation()` itself is unchanged and stays the `/6` record.
+    pub fn m1_slice() -> Self {
+        let mut schema = Self::foundation();
+        let slice: &[(StoreId, &str)] = &[
+            (StoreId::Lex, "literals"),
+            (StoreId::Constants, "records"),
+        ];
+        for &(store, field) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = schema.declare(store, field);
         }
@@ -634,29 +656,50 @@ pub struct ManifestRegistry {
 /// Seed store-owner allowlist: `(chip, store, field, kind)` rows.
 ///
 /// Each row authorizes one chip ([`ChipId`]) to write one store field for one
-/// task kind. The table is EMPTY until `/6`.
-///
-/// TODO(`/6`): seed per-chip rows from the frozen `M1AppendSchema`
-/// (proposal sections 8/`12.17`); per-chip rows land wave-gated with their
-/// tests, NOT now. Once seeded, [`ManifestRegistry::register`] rejects any
-/// declared write without a matching row
-/// ([`ManifestError::StoreOwnerViolation`], rule
-/// `manifest.store-owner-allowlist-mandatory`).
+/// task kind. Gate 1 (`/7`) seeds the single writer row the M1 const-fold
+/// chain needs: the T08 fold chip ([`G1_FOLD_CHIP`]) appending the
+/// `constants.records` field for [`TaskKind::CONSTANT_CONST_FOLD`].
+/// Later waves add their rows with their tests; kinds outside the frozen
+/// waves stay dormant (see [`check_store_owner_allowlist`]).
 ///
 /// Pinned invariant: `tasks.ready` (the [`StoreId::Tasks`] `"queue.ready"`
 /// field) gets zero allowlisted chip writers — it is a derived quota-1
 /// compatibility view over the canonical per-stage queues, never a second
 /// write target.
-pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[];
+pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] =
+    &[(G1_FOLD_CHIP, StoreId::Constants, "records", TaskKind::CONSTANT_CONST_FOLD)];
 
-/// Enforce the store-owner allowlist skeleton for one manifest.
+/// Gate 1 (`/7`) T08 fold chip reservation.
 ///
-/// Dormant while [`STORE_OWNER_ALLOWLIST`] is empty (the `/6` seed is not
-/// frozen, so every declared write is allowed and all existing validations
-/// keep passing). Once rows land, each declared write needs a row matching
-/// the chip ID, store, field, and one of the chip's claimed task kinds.
+/// The Wave-1 fold chip registers with this ID and claims
+/// [`TaskKind::CONSTANT_CONST_FOLD`]; the allowlist row above authorizes
+/// its `constants.records` appends. (The T07 requester chip needs no write
+/// rows: it produces requests through `Enqueue` proposals, never store
+/// writes.)
+pub const G1_FOLD_CHIP: ChipId = ChipId(2);
+
+/// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
+pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
+        || kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_BINARY.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_FOLD.raw()
+}
+
+/// Enforce the store-owner allowlist for one manifest.
+///
+/// Wave-gated: manifests that claim no Gate 1 slice kind pass untouched
+/// (their waves land with their own rows and tests). A manifest that does
+/// claim a slice kind needs a row matching the chip ID, store, field, and
+/// one of its claimed task kinds for every declared write.
 fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestError> {
     if STORE_OWNER_ALLOWLIST.is_empty() {
+        return Ok(());
+    }
+    if !manifest
+        .task_kinds
+        .iter()
+        .any(|&kind| is_gate1_slice_kind(kind))
+    {
         return Ok(());
     }
     let Some(&first_kind) = manifest.task_kinds.first() else {
@@ -687,16 +730,79 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
     Ok(())
 }
 
-/// Chip-to-stage declaration check (skeleton).
+/// Gate 1 (`/7`) kind-to-stage assignment: `(task kind, stage ordinal)`.
 ///
-/// Always `Ok`: no total `kind -> stage` assignment table exists in `/5`, so
-/// [`ManifestError::StageUnassigned`] and
-/// [`ManifestError::StageLayerMismatch`] are currently unreachable.
+/// Foundation control kinds run at stage 0. The M1 slice follows chain
+/// order (request at 1, fold at 2). Stage ordinals range over
+/// `0..STAGE_COUNT`; what each stage *means* beyond this order, and the
+/// rows for every other kind, are a later co-freeze — this table grows
+/// wave by wave, never by silent default.
+pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
+    (TaskKind::CONTROL_NOOP, 0),
+    (TaskKind::CONTROL_UNSUPPORTED, 0),
+    (TaskKind::CONTROL_START_JOB, 0),
+    (TaskKind::CONTROL_IMPORT_SOURCE, 0),
+    (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
+    (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
+    (TaskKind::CONSTANT_CONST_FOLD, 2),
+];
+
+/// Look up the frozen stage ordinal for a task kind.
+pub const fn stage_of(kind: TaskKind) -> Option<u8> {
+    let mut index = 0;
+    while index < STAGE_ASSIGNMENT.len() {
+        // `TaskKind` has no const equality; raw codes are stable and frozen.
+        if STAGE_ASSIGNMENT[index].0.raw() == kind.raw() {
+            return Some(STAGE_ASSIGNMENT[index].1);
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Chip-to-stage declaration check.
 ///
-/// TODO(`/6`): validate total `kind -> stage` coverage, unique stage
-/// ordinals, and stage-vs-routed-layer agreement here (proposal sections
-/// `6.2.1`/`12.9`).
-fn check_stage_assignment(_manifest: &ChipManifest) -> Result<(), ManifestError> {
+/// Every claimed kind needs a [`STAGE_ASSIGNMENT`] row inside
+/// `0..STAGE_COUNT`, else [`ManifestError::StageUnassigned`]. Both error
+/// variants are now reachable: `StageUnassigned` here, and
+/// [`ManifestError::StageLayerMismatch`] through
+/// [`check_stage_layer_agreement`] once the kind is routed.
+fn check_stage_assignment(manifest: &ChipManifest) -> Result<(), ManifestError> {
+    for &kind in &manifest.task_kinds {
+        let Some(stage) = stage_of(kind) else {
+            return Err(ManifestError::StageUnassigned { kind });
+        };
+        // The table is frozen and valid; an out-of-range row would be a bug.
+        debug_assert!((stage as usize) < STAGE_COUNT);
+        if (stage as usize) >= STAGE_COUNT {
+            return Err(ManifestError::StageUnassigned { kind });
+        }
+    }
+    Ok(())
+}
+
+/// Check stage-vs-routed-layer agreement for one manifest.
+///
+/// For every claimed kind that has both a stage row and a routing entry,
+/// the routed layer must equal the stage, else
+/// [`ManifestError::StageLayerMismatch`]. Unrouted kinds (Wave-1 chips
+/// register their routes with their manifests) pass untouched.
+pub fn check_stage_layer_agreement(
+    manifest: &ChipManifest,
+    routing: &RoutingTable,
+) -> Result<(), ManifestError> {
+    for &kind in &manifest.task_kinds {
+        let (Some(stage), Some(entry)) = (stage_of(kind), routing.lookup(kind)) else {
+            continue;
+        };
+        if entry.layer != stage as u16 {
+            return Err(ManifestError::StageLayerMismatch {
+                kind,
+                stage: stage as u16,
+                layer: entry.layer,
+            });
+        }
+    }
     Ok(())
 }
 
@@ -720,9 +826,9 @@ impl ManifestRegistry {
                 errors,
             });
         }
-        // Store-owner allowlist skeleton (dormant until the /6 seed lands)
-        // and chip-to-stage declaration skeleton (always Ok until the /6
-        // stage table lands).
+        // Wave-gated ownership/stage gates: the allowlist enforces manifests
+        // that claim Gate 1 slice kinds (other waves stay dormant until
+        // their rows land), and every claimed kind needs a stage row.
         check_store_owner_allowlist(&manifest).map_err(ManifestRegistryError::Registry)?;
         check_stage_assignment(&manifest).map_err(ManifestRegistryError::Registry)?;
         if self.manifests.iter().any(|other| other.id == manifest.id) {

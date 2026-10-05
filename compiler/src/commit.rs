@@ -37,6 +37,8 @@ use crate::ids::{
 };
 use crate::intern::InternError;
 use crate::limits::LimitError;
+use crate::records::G1DraftBody;
+use crate::snapshot::{LiteralKind, LiteralSuffix, Lx08CandidateType};
 use crate::task::{
     ChildRef, ContinuationRef, HostRequestRecord, PatchOp, Proposal, ResultRecord, ResultValue,
     StoreId, StorePatch, TaskKind, TaskState, WaitSet,
@@ -482,6 +484,9 @@ pub struct CommitReport {
     pub rejoined: Vec<TaskId>,
     /// Number of store patches committed.
     pub patches: u32,
+    /// Materialized draft records: owning task plus committed reference, in
+    /// apply order.
+    pub appended: Vec<(TaskId, RecordRef)>,
 }
 
 /// Fail if a proposal count exceeds the configured per-tick bound.
@@ -550,6 +555,10 @@ pub fn commit_proposals(
     // reinsert. They consume no reinsert capacity.
     let mut progress_failed: Vec<(TaskId, CommitError)> = Vec::new();
     let mut total_drafts: u32 = 0;
+    // Gate 1 (`/7`) typed materialization counts, per arena, for the
+    // infallible apply pass below.
+    let mut new_literals: u32 = 0;
+    let mut new_consts: u32 = 0;
 
     for &(_, _, index) in &ordered {
         let tagged = &proposals[index];
@@ -668,16 +677,46 @@ pub fn commit_proposals(
                     proposals.len().saturating_add(total_drafts as usize),
                     limits.max_proposals_per_tick,
                 )?;
-                // Typed draft materialization (phase P2d) is records-track
-                // work over the canonical `RecordDraft`: the deterministic
-                // reservation core (`reserve_predicted_ranges`, `NamePlan`,
-                // `validate_draft_links`, `ResolvedTable`) is provided below
-                // for that apply. Until it lands, acceptance would silently
-                // drop drafts, so validation rejects explicitly here.
-                return Err(CommitError::InvalidPatchShape {
-                    task: tagged.task,
-                    reason: "record draft materialization pending the records track",
-                });
+                // Gate 1 (`/7`) typed materialization: bodies travel 1:1
+                // positional with the reservation handles. A length or
+                // family mismatch, a body outside the closed Gate 1 set, or
+                // a literal outside the M1 exercised subset rejects the
+                // whole batch before any mutation. Families outside
+                // `G1DraftBody` keep the explicit pending-records-track
+                // rejection (acceptance would silently drop drafts).
+                if batch.bodies.len() != batch.records.len() {
+                    return Err(CommitError::InvalidPatchShape {
+                        task: tagged.task,
+                        reason: "append bodies must match records 1:1",
+                    });
+                }
+                for (handle, body) in batch.records.iter().zip(batch.bodies.iter()) {
+                    if body.family() != handle.family {
+                        return Err(CommitError::InvalidPatchShape {
+                            task: tagged.task,
+                            reason: "append body family mismatch",
+                        });
+                    }
+                    match body {
+                        G1DraftBody::Literal(literal) => {
+                            if literal.kind != LiteralKind::Integer
+                                || literal.suffix != LiteralSuffix::None
+                                || literal.radix != 10
+                                || literal.candidate_type != Lx08CandidateType::Int
+                            {
+                                return Err(CommitError::InvalidPatchShape {
+                                    task: tagged.task,
+                                    reason:
+                                        "literal outside the M1 exercised subset is explicit unsupported",
+                                });
+                            }
+                            new_literals = new_literals.saturating_add(1);
+                        }
+                        G1DraftBody::Const(_) => {
+                            new_consts = new_consts.saturating_add(1);
+                        }
+                    }
+                }
             }
             Proposal::Progress {
                 task: proposal_task,
@@ -829,11 +868,15 @@ pub fn commit_proposals(
     )?;
     check_capacity(
         bus,
-        new_tasks,
-        new_results,
-        new_diagnostics,
-        new_requests,
-        patches,
+        CapacityPlan {
+            new_tasks,
+            new_results,
+            new_diagnostics,
+            new_requests,
+            patches,
+            new_literals,
+            new_consts,
+        },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
     // ready queue stands in for one stage queue and the legacy
@@ -905,11 +948,22 @@ pub fn commit_proposals(
                 );
                 report.waiting.push(*task);
             }
-            Proposal::AppendRecords { task, .. } => {
-                // Unreachable: validation rejects every append batch with
-                // `InvalidPatchShape` until the records track lands typed
-                // materialization. The arm exists for exhaustiveness only.
-                let _ = task;
+            Proposal::AppendRecords { task, batch } => {
+                // Preflighted above (1:1 bodies, family match, M1 subset,
+                // per-arena capacity reserved): infallible here. Bodies
+                // append in batch order, so committed IDs are deterministic.
+                for body in &batch.bodies {
+                    match body {
+                        G1DraftBody::Literal(record) => {
+                            let id = bus.arenas.literals.push(record.clone());
+                            report.appended.push((*task, RecordRef::Literal(id)));
+                        }
+                        G1DraftBody::Const(record) => {
+                            let id = bus.arenas.consts.push(record.clone());
+                            report.appended.push((*task, RecordRef::Const(id)));
+                        }
+                    }
+                }
             }
             Proposal::Progress { task, ordinal } => {
                 // Preflighted above (task `Running`; queue capacity reserved
@@ -1111,38 +1165,60 @@ fn validate_patch(
     }
 }
 
-fn check_capacity(
-    bus: &CompilerBus,
+/// Planned record additions for one commit batch, for capacity preflight.
+#[derive(Clone, Copy, Debug, Default)]
+struct CapacityPlan {
+    /// New task records.
     new_tasks: u32,
+    /// New result records.
     new_results: u32,
+    /// New diagnostic records.
     new_diagnostics: u32,
+    /// New host-request records.
     new_requests: u32,
+    /// Committed store patches.
     patches: u32,
-) -> Result<(), CommitError> {
+    /// New literal records (Gate 1 `/7` materialization).
+    new_literals: u32,
+    /// New constant records (Gate 1 `/7` materialization).
+    new_consts: u32,
+}
+
+fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
     let limits = bus.limits();
     // Queue bound.
     let queue = bus.tasks.ready.len() as u32;
-    if new_tasks > limits.max_queue_len.saturating_sub(queue) {
+    if plan.new_tasks > limits.max_queue_len.saturating_sub(queue) {
         return Err(CommitError::Limit(LimitError::Queue {
             limit: limits.max_queue_len,
-            requested: queue.saturating_add(new_tasks),
+            requested: queue.saturating_add(plan.new_tasks),
         }));
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 4] = [
-        (bus.arenas.tasks.allocated(), new_tasks, "tasks"),
-        (bus.arenas.results.allocated(), new_results, "results"),
+    let checks: [(u32, u32, &'static str); 6] = [
+        (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
+        (
+            bus.arenas.results.allocated(),
+            plan.new_results,
+            "results",
+        ),
         (
             bus.arenas.diagnostics.allocated(),
-            new_diagnostics,
+            plan.new_diagnostics,
             "diagnostics",
         ),
         (
             bus.arenas.host_requests.allocated(),
-            new_requests,
+            plan.new_requests,
             "host_requests",
         ),
+        (
+            bus.arenas.literals.allocated(),
+            plan.new_literals,
+            "literals",
+        ),
+        (bus.arenas.consts.allocated(), plan.new_consts, "consts"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1154,7 +1230,7 @@ fn check_capacity(
         }
     }
     // Task total.
-    let requested_tasks = bus.arenas.tasks.allocated() as u64 + new_tasks as u64;
+    let requested_tasks = bus.arenas.tasks.allocated() as u64 + plan.new_tasks as u64;
     if requested_tasks > limits.max_tasks_total {
         return Err(CommitError::Limit(LimitError::TasksTotal {
             limit: limits.max_tasks_total,
@@ -1162,10 +1238,13 @@ fn check_capacity(
         }));
     }
     // Diagnostic total.
-    bus.ensure_diagnostics(new_diagnostics)?;
+    bus.ensure_diagnostics(plan.new_diagnostics)?;
     // Total records (includes the patch log).
-    let additional =
-        (new_tasks + new_results + new_diagnostics + new_requests) as u64 + patches as u64;
+    let additional = (plan.new_tasks
+        + plan.new_results
+        + plan.new_diagnostics
+        + plan.new_requests) as u64
+        + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())
 }
