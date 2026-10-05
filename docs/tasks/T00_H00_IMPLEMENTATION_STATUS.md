@@ -1,9 +1,16 @@
 # T00 / H00 Implementation Status
 
-Status: **H00 tooling scaffold only — H00 is not complete.**
-Owner path: `tools/torture/**` (plus this note). This does not alter
-[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md), the compiler contract, the
-framework, or CI.
+Status: **H00 tooling scaffold only — H00 is not complete.** The H01 probe
+harness under `tools/torture/probe/**` is a separate area that exists but has
+never run; no probe report or report hash exists (see
+[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4.1 and the
+[probe README](../../tools/torture/probe/README.md)).
+Owner path: the verifier crate (`tools/torture/src/**`, `tools/torture/tests/**`,
+`tools/torture/Cargo.toml`, `tools/torture/Cargo.lock`) and
+`tools/torture/README.md` (plus this note). `tools/torture/probe/**` and
+`.github/workflows/t00-target-probes.yml` are owned by the H01 probe task. This
+does not alter [T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md), the compiler
+contract, the framework, or CI.
 
 ## Implemented
 
@@ -105,7 +112,13 @@ still out of scope.
   legal sign-off; neither has occurred. A real lock therefore stays `draft`, and
   the tool returns exit `3`, never `0`.
 - **Legal truth is out of scope.** The tool checks that license/provenance records
-  exist and that provenance embeds a revision-like token; it cannot confirm the
+  exist. A filled provenance without a revision-like token (>=7 hex characters)
+  is only a `provenance.revision-unresolved` **warning**: warnings do not affect
+  the exit code, so a frozen lock can verify (exit `0`) with revision linkage
+  unresolved. Successful frozen verification therefore does not establish
+  per-asset revision linkage — the heuristic only scans the provenance text and
+  never binds it to the asset bytes or revision. A stronger freeze gate would
+  need separate approval, implementation, and tests. The tool cannot confirm the
   recorded license is correct or that redistribution is lawful. Human legal
   review remains required before any freeze.
 - **Runner/toolchain are unresolved (H01).** `substrate.runner`, `toolchain`,

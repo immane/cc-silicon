@@ -9,7 +9,7 @@ ID / Name / Group:
 Contract version/hash:
 Owned files:
 Task kind / payload fields / result tag:
-Category / backend_class / phase:
+Category / backend_class / phase / deterministic:
 Allowed dialects/targets:
 Reads (record fields for the field/ID):
 Writes (own output slot, append area, patch fields, wire slots):
@@ -24,6 +24,8 @@ Integration acceptance:
 Known unsupported / linked torture feature IDs:
 ```
 
+The header's ID/Name/Group, task kind, category, reads, writes, dependencies, and required fixtures bind to the [C04 `ChipManifest`](../../compiler/contracts/COMPILER_SFL_MANIFEST.md) fields (`id`, `chip_name`, `group`, `task_kinds`, `capability`, `reads`, `writes`, `dependencies`, `tests`); every worker is `phase=propagation` and `deterministic=true` (T01 §5), and the validator rejects an undeclared read/write path, an empty test list, or a capability/backend class that contradicts the group rule.
+
 Naming: the struct follows the catalog name, while the task/result may differ; for example, `IntegerPromotionChip` accepts `PromoteInteger`. IDs are consistent across tests, manifests, and traces; do not conflate TaskId with ChipId.
 
 ## 2. Example A: TY25 IntegerPromotionChip
@@ -31,13 +33,13 @@ Naming: the struct follows the catalog name, while the task/result may differ; f
 - Prerequisite: TY13/19/bitfield information is frozen; the target integer model exists. Can run in parallel with the parser, testing with synthetic TypeRecord.
 - task: `PromoteInteger { source_type: TypeId, bitfield: Option<BitFieldInfoId>, context: ConversionContext }`.
 - result: `PromotionResult { source, destination: TypeId, cast_kind, unchanged }`; when result types need interning, submit the corresponding mechanical store proposal.
-- reads: the active task payload; `types[source].{kind,rank,width,signedness,enum_info}`; bitfield width/rank; `config.target.integer_model.{int_width,int_rank,unsigned_int_width}`; does not read AST/IR/symbol names.
+- reads: the active task payload; the symbolic `types[source].{kind,rank,signedness}` (M1 Part A; no target width); `types[source].{width,enum_info}`, bitfield width/rank, and `config.target.integer_model.{int_width,int_rank,unsigned_int_width}` (probe-gated Part B / non-M1); does not read AST/IR/symbol names.
 - writes: its own PromotionResult slot, necessary canonical type append proposals, its own wire completion/fault. It must not modify the source type in place, must not directly cast AST, and must not advance the phase.
-- Algorithm: determine the types/bitfields to which integer promotion applies; use int if int can represent all values of that type, otherwise unsigned int; leave the original type unchanged for inapplicable cases. Enums/special integers follow the frozen dialect rules and do not use a sample value to decide the promotion type.
+- Algorithm: determine the types/bitfields to which integer promotion applies; use int if int can represent all values of that type, otherwise unsigned int; leave the original type unchanged for inapplicable cases. Enums/special integers follow the frozen dialect rules and do not use a sample value to decide the promotion type. **Part A note:** the exercised M1 Part A case is the symbolic `int→int` identity — it reads no target width/bit-pattern and uses no target bitvector; the target-model reads, the two-synthetic-target boundary cases, the bitfield cases, and the target-dependent replay/integration assertions in this example are probe-gated Part B / non-M1 promotions.
 - Errors: invalid TypeId / an inapplicable kind contradicting the task context → structured contract fault; "already long so unchanged" is success, not Unsupported.
-- Normal: signed char, signed short; boundary: two synthetic targets where unsigned short is exactly covered by int / cannot be covered; bitfield: a small unsigned field and a full-width one; unchanged: int/unsigned/long; invalid ID.
+- Normal: signed char, signed short; boundary (probe-gated Part B): two synthetic targets where unsigned short is exactly covered by int / cannot be covered; bitfield (non-M1): a small unsigned field and a full-width one; unchanged: int/unsigned/long; invalid ID.
 - Replay: the same payload and target produce a result ID/type consistent with the trace; for a non-matching task the bus is unchanged except for scheduling diagnostics.
-- Integration: SE03, SE09, SE23 consume the result; IR07 must generate a real conversion; returning correct on type-check alone while missing the codegen extension is not acceptable.
+- Integration: SE03, SE09, SE23 consume the result; IR07 must generate a real conversion where the promotion changes representation (probe-gated Part B / non-M1; the M1 Part A `int→int` identity is `unchanged` — M1 exercises only the identity/no-conversion rule); returning correct on type-check alone while missing the codegen extension is not acceptable.
 
 ## 3. Example B: PA05 DeclaratorChip
 
