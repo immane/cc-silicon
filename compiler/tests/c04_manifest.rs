@@ -236,9 +236,9 @@ fn names_store_entry_resolves_for_group_manifests() {
 
 #[test]
 fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
-    // Seed: the T08 fold-chip row (`/7`), the PP01 row (`/10`), and the
-    // three LX rows (`/11`).
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 5);
+    // Seed: the T08 fold-chip row (`/7`), the PP01 row (`/10`), the three
+    // LX rows (`/11`), and the PA row (`/12`).
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 6);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(

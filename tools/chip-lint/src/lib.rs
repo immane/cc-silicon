@@ -196,6 +196,7 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
                         | "lx_intern"
                         | "lx_classify"
                         | "lx_decode"
+                        | "pa_tu"
                 ) || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(

@@ -199,6 +199,10 @@ impl TaskKind {
     /// exactly `[Token, PpToken]`; appends one `Literal` with
     /// `token: Some(committed TokenId)`; completes `Record`).
     pub const LEX_DECODE_LITERAL: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/12`) PA-slice kind: T05 TU-parse task (payload: the 13 M1
+    /// token refs in source order; appends the nine-node M1 tree in
+    /// pre-order; completes `Record` of the TU root).
+    pub const PARSE_TU: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 16);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -318,6 +322,18 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/12`) PA-slice registry: the LX slice plus the frozen
+    /// TU kind (all `Frozen`; `PARSE` owners start new codes at local 17).
+    pub fn pa_slice() -> Self {
+        let mut registry = Self::lx_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::PARSE_TU, "parse.translation_unit")];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

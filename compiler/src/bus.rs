@@ -224,6 +224,55 @@ pub enum TokenKind {
     Eof,
 }
 
+/// A T05-owned AST node (`/12` PA-slice freeze).
+///
+/// M1 produces only the nine-node `int main(void){return 2+3;}` tree; all
+/// other syntactic forms are explicit unsupported. `parent`/`children` are
+/// committed-or-predicted node IDs (single-batch pre-order allocation, TU
+/// first); `first_token`/`last_token` are committed tokens; `name` carries
+/// the declarator name; `literal` carries the committed literal for
+/// `IntLiteral` leaves. Coherence (reciprocal parent/children, token ranges)
+/// is worker-enforced and test-pinned; commit-side link validation stays a
+/// T01/T13 open item.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeRecord {
+    /// AST node kind.
+    pub kind: NodeKind,
+    /// Parent node (`None` for the TU root).
+    pub parent: Option<NodeId>,
+    /// Ordered child nodes.
+    pub children: Vec<NodeId>,
+    /// First covered token (committed).
+    pub first_token: TokenId,
+    /// Last covered token (committed, inclusive).
+    pub last_token: TokenId,
+    /// Declarator name (`Some` only for `Declarator`).
+    pub name: Option<NameId>,
+    /// Committed literal (`Some` only for `IntLiteral`).
+    pub literal: Option<LiteralId>,
+}
+
+/// AST node kinds (`/12` M1-closed produced subset in doc).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeKind {
+    /// The whole translation unit.
+    TranslationUnit,
+    /// `int main(void){...}`.
+    FunctionDefinition,
+    /// The `int` specifier bundle.
+    Specifiers,
+    /// `main(void)` (prototype, zero parameters).
+    Declarator,
+    /// `{ return 2+3; }`.
+    Compound,
+    /// `return 2+3;`.
+    Return,
+    /// `2+3` (M1-fixed `Add`; other operators deferred).
+    BinaryAdd,
+    /// A committed integer literal leaf.
+    IntLiteral,
+}
+
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
 /// candidate type (Gate 1 `/7` freeze of the rev-45 exact ordered fields).
 ///
@@ -297,8 +346,8 @@ pub struct Arenas {
     /// A [`ReservedArena`] (stable IDs only): the T07 owner replaces this
     /// with a real typed arena when it freezes the `SemRecord` schema.
     pub sem: ReservedArena<SemId>,
-    /// AST nodes (schema owned by T05).
-    pub nodes: ReservedArena<NodeId>,
+    /// AST nodes (`/12` PA-slice freeze: typed on freeze).
+    pub nodes: TypedArena<NodeId, NodeRecord>,
     /// T04-owned decoded literals (Gate 1 `/7` typed schema; rev-45 exact
     /// ordered fields). The T04 production chips land in slice 2; Gate 1
     /// seeds `G1-CL-01` fixtures directly.

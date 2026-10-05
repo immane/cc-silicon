@@ -263,6 +263,21 @@ artifact `t01-c01-c06/11` (`4484ae13…ce69`); acceptance
 `compiler/tests/c11_lex.rs` (8 tests); item list in
 [LX_SLICE.md](LX_SLICE.md).
 
+`/12` amendment — Wave 2 slice 3, PA translation-unit (R1 auto-bump; `/11`
+preserved as history): `NodeRecord` (7 fields) + M1-closed `NodeKind` (8
+variants) with the `nodes` arena becoming typed on freeze; the fixed
+nine-node M1 tree (pre-order prediction, reciprocal coherence test-pinned);
+`parse.translation_unit` (`group 4`, local `16`) with `pa_slice()`
+registry; stage row (`translation_unit → 2`) + allowlist row (`PA_TU_CHIP =
+7`, `Parse/nodes`); `AppendRecords` materialization for the `Node` family;
+snapshot bodies + `NODE_KIND_NAMES`/`NODE_RECORD_FIELDS` in the hash;
+`PaTuChip` worker (`PaTuInput`, pure `compute`, ZST, stage/layer, lint).
+The File-Enter edge stays deferred to T06. New hashed rules
+`parse.tu-fixed-nine-node-tree`, `parse.token-range-committed`,
+`commit.node-materialized`. New artifact `t01-c01-c06/12`
+(`246d37cc…f12b3d`); acceptance `compiler/tests/c12_parse.rs` (5 tests);
+item list in [PA_SLICE.md](PA_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

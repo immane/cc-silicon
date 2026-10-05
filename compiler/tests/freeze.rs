@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/11");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/12");
 }
 
 #[test]
@@ -106,6 +106,9 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "lex.token-back-link-committed",
         "commit.name-interned-lookup-first",
         "commit.token-materialized",
+        "parse.tu-fixed-nine-node-tree",
+        "parse.token-range-committed",
+        "commit.node-materialized",
         "probe.wchar-encoding-required",
         "probe.attestation.private-state-not-provenance",
         "config.structurally-immutable",

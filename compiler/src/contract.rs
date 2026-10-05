@@ -26,15 +26,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
 /// const-fold slice, the `/8` worker-integration amendment, the `/9`
-/// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), and the Wave 2
-/// LX slice (`/11`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/11";
+/// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
+/// slice (`/11`), and the Wave 2 PA slice (`/12`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/12";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "4484ae13721364c456a7a6a8088921176e667acb3cc7180dfb436bc538bfce69";
+pub const CONTRACT_HASH: &str = "246d37ccc774a755f27185a6bdbd9f6d4d8c84c9df3d9756a8576f12b5462b3d";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -139,6 +139,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "lex.token-back-link-committed",
     "commit.name-interned-lookup-first",
     "commit.token-materialized",
+    "parse.tu-fixed-nine-node-tree",
+    "parse.token-range-committed",
+    "commit.node-materialized",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -267,6 +270,29 @@ pub const TOKEN_KIND_NAMES: &[&str] = &["keyword", "identifier", "punctuator", "
 /// Frozen `/11` `PpTokenRecord` fields, in declaration order.
 pub const PPTOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "spelling"];
 
+/// Frozen `/12` `NodeKind` names, in declaration order.
+pub const NODE_KIND_NAMES: &[&str] = &[
+    "translation_unit",
+    "function_definition",
+    "specifiers",
+    "declarator",
+    "compound",
+    "return",
+    "binary_add",
+    "int_literal",
+];
+
+/// Frozen `/12` `NodeRecord` fields, in declaration order.
+pub const NODE_RECORD_FIELDS: &[&str] = &[
+    "kind",
+    "parent",
+    "children",
+    "first_token",
+    "last_token",
+    "name",
+    "literal",
+];
+
 /// Frozen `/11` `TokenRecord` fields, in declaration order.
 pub const TOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "name", "pp_token"];
 
@@ -353,6 +379,8 @@ impl FrozenSchema {
         push_str_list(&mut w, TOKEN_KIND_NAMES);
         push_str_list(&mut w, PPTOKEN_RECORD_FIELDS);
         push_str_list(&mut w, TOKEN_RECORD_FIELDS);
+        push_str_list(&mut w, NODE_KIND_NAMES);
+        push_str_list(&mut w, NODE_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -560,7 +588,7 @@ pub fn compute_contract_hash() -> String {
 /// The full text of `contracts/CONTRACT_VERSION`.
 pub fn contract_version_file() -> String {
     format!(
-        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 LX slice).\n\
+        "# Frozen T01 compiler contract artifact (C01-C06 + M1 Gate 1 + Wave 2 PA slice).\n\
          # Decision: docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md\n\
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\

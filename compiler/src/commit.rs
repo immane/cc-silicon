@@ -598,6 +598,7 @@ pub fn commit_proposals(
     let mut new_consts: u32 = 0;
     let mut new_artifacts: u32 = 0;
     let mut new_tokens: u32 = 0;
+    let mut new_nodes: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -613,6 +614,7 @@ pub fn commit_proposals(
     let consts_base = bus.arenas.consts.allocated();
     let artifacts_base = bus.arenas.artifacts.allocated();
     let tokens_base = bus.arenas.tokens.allocated();
+    let nodes_base = bus.arenas.nodes.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -620,6 +622,7 @@ pub fn commit_proposals(
         let mut next_const = consts_base;
         let mut next_artifact = artifacts_base;
         let mut next_token = tokens_base;
+        let mut next_node = nodes_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -655,6 +658,14 @@ pub fn commit_proposals(
                                 next_token,
                             ));
                             next_token = next_token.saturating_add(1);
+                        }
+                        G1DraftBody::Node(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Node,
+                                next_node,
+                            ));
+                            next_node = next_node.saturating_add(1);
                         }
                         G1DraftBody::Name { .. } => {
                             // Names intern lookup-first: no predicted ID is
@@ -767,6 +778,9 @@ pub fn commit_proposals(
                             }
                             RecordRef::Token(id) if id.index() >= tokens_base => {
                                 Some((tagged.task, RecordFamily::Token, id.index()))
+                            }
+                            RecordRef::Node(id) if id.index() >= nodes_base => {
+                                Some((tagged.task, RecordFamily::Node, id.index()))
                             }
                             RecordRef::Name(id) if id.index() >= intern_base => {
                                 // Names must be committed before use: same-batch
@@ -884,6 +898,9 @@ pub fn commit_proposals(
                         G1DraftBody::Token(_) => {
                             new_tokens = new_tokens.saturating_add(1);
                         }
+                        G1DraftBody::Node(_) => {
+                            new_nodes = new_nodes.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -943,6 +960,7 @@ pub fn commit_proposals(
                         G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
                         G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
                         G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
+                        G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1159,6 +1177,7 @@ pub fn commit_proposals(
             new_consts,
             new_artifacts,
             new_tokens,
+            new_nodes,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1271,6 +1290,15 @@ pub fn commit_proposals(
                                 id.index()
                             )));
                             report.appended.push((*task, RecordRef::Token(id)));
+                        }
+                        G1DraftBody::Node(record) => {
+                            let id = bus.arenas.nodes.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Node,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Node(id)));
                         }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
@@ -1443,6 +1471,7 @@ fn validate_append_authorization(
             G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
             G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
             G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
+            G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1562,6 +1591,8 @@ struct CapacityPlan {
     new_artifacts: u32,
     /// New C-token records (Wave 2 `/11` LX-slice materialization).
     new_tokens: u32,
+    /// New AST node records (Wave 2 `/12` PA-slice materialization).
+    new_nodes: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1576,7 +1607,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 8] = [
+    let checks: [(u32, u32, &'static str); 9] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1601,6 +1632,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             "artifacts",
         ),
         (bus.arenas.tokens.allocated(), plan.new_tokens, "tokens"),
+        (bus.arenas.nodes.allocated(), plan.new_nodes, "nodes"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1632,7 +1664,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_literals
         + plan.new_consts
         + plan.new_artifacts
-        + plan.new_tokens) as u64
+        + plan.new_tokens
+        + plan.new_nodes) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

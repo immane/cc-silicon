@@ -211,6 +211,20 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/12`) PA-slice field set: the LX slice plus the PA
+    /// append field (`parse.nodes` for `NodeRecord`). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model; the PA inventory is pinned by the `NODE_*_NAMES` lists.
+    pub fn pa_slice() -> Self {
+        let mut schema = Self::lx_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Parse, "nodes")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/11`) LX-slice field set: the M1 slice plus the LX
     /// append fields (`names.entries` for interned names, `pp.tokens` for
     /// `PpTokenRecord`, `lex.tokens` for `TokenRecord`; `lex.literals` is
@@ -715,6 +729,7 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "literals",
         TaskKind::LEX_DECODE_LITERAL,
     ),
+    (PA_TU_CHIP, StoreId::Parse, "nodes", TaskKind::PARSE_TU),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -740,6 +755,9 @@ pub const LX_CLASSIFY_CHIP: ChipId = ChipId(5);
 /// Wave 2 (`/11`) LX literal-decode chip reservation.
 pub const LX_DECODE_CHIP: ChipId = ChipId(6);
 
+/// Wave 2 (`/12`) PA TU-parse chip reservation.
+pub const PA_TU_CHIP: ChipId = ChipId(7);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -759,6 +777,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
         || kind.raw() == TaskKind::LEX_DECODE_LITERAL.raw()
 }
 
+/// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
+pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
 /// Enforce the store-owner allowlist for one manifest.
 ///
 /// Wave-gated: manifests that claim no Gate 1 slice kind pass untouched
@@ -770,7 +793,10 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
         return Ok(());
     }
     if !manifest.task_kinds.iter().any(|&kind| {
-        is_gate1_slice_kind(kind) || is_pp01_slice_kind(kind) || is_lx_slice_kind(kind)
+        is_gate1_slice_kind(kind)
+            || is_pp01_slice_kind(kind)
+            || is_lx_slice_kind(kind)
+            || is_pa_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -818,6 +844,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::LEX_INTERN, 2),
     (TaskKind::LEX_CLASSIFY, 2),
     (TaskKind::LEX_DECODE_LITERAL, 2),
+    (TaskKind::PARSE_TU, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

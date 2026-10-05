@@ -17,8 +17,8 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, PpTokenKind,
-    PpTokenRecord, SpanRecord, TokenKind, TokenRecord,
+    ArtifactKind, ArtifactRecord, CompilerBus, ConstRecord, LiteralRecord, NodeKind, NodeRecord,
+    PpTokenKind, PpTokenRecord, SpanRecord, TokenKind, TokenRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -708,11 +708,13 @@ impl Snapshot {
             bus.arenas.types.allocated(),
             bus.arenas.types.live_ids(),
         );
-        push_reserved(
-            &mut w,
-            bus.arenas.nodes.allocated(),
-            bus.arenas.nodes.live_ids(),
-        );
+        // Wave 2 (`/12`) typed AST nodes: allocated count plus per-record
+        // bodies in ascending ID order (same convention as tokens above).
+        w.u64(bus.arenas.nodes.allocated() as u64);
+        for (id, node) in bus.arenas.nodes.iter() {
+            w.u32(id.index());
+            w.raw(&encode_node(node));
+        }
         // Gate 1 (`/7`) typed constants: allocated count plus per-record
         // bodies in ascending ID order (tombstones stay visible as gaps,
         // same convention as the typed continuations above).
@@ -1655,6 +1657,112 @@ pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecordView, CodecErr
 
 /// Canonical encoding of one artifact record: kind-name str + fragment bytes.
 ///
+/// Name of a [`NodeKind`], in declaration order.
+pub fn node_kind_name(kind: NodeKind) -> &'static str {
+    match kind {
+        NodeKind::TranslationUnit => "translation_unit",
+        NodeKind::FunctionDefinition => "function_definition",
+        NodeKind::Specifiers => "specifiers",
+        NodeKind::Declarator => "declarator",
+        NodeKind::Compound => "compound",
+        NodeKind::Return => "return",
+        NodeKind::BinaryAdd => "binary_add",
+        NodeKind::IntLiteral => "int_literal",
+    }
+}
+
+fn parse_node_kind(name: &str) -> Option<NodeKind> {
+    match name {
+        "translation_unit" => Some(NodeKind::TranslationUnit),
+        "function_definition" => Some(NodeKind::FunctionDefinition),
+        "specifiers" => Some(NodeKind::Specifiers),
+        "declarator" => Some(NodeKind::Declarator),
+        "compound" => Some(NodeKind::Compound),
+        "return" => Some(NodeKind::Return),
+        "binary_add" => Some(NodeKind::BinaryAdd),
+        "int_literal" => Some(NodeKind::IntLiteral),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`NodeRecord`].
+///
+/// Byte layout (fixed field order): kind-name str | parent-present `u8` +
+/// optional parent `u32` LE | children-count `u64` LE + child `u32` LE each |
+/// first-token `u32` LE | last-token `u32` LE | name-present `u8` + optional
+/// name `u32` LE | literal-present `u8` + optional literal `u32` LE.
+pub fn encode_node(record: &NodeRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(node_kind_name(record.kind));
+    match record.parent {
+        Some(parent) => {
+            w.u8(1);
+            w.u32(parent.index());
+        }
+        None => w.u8(0),
+    }
+    w.u64(record.children.len() as u64);
+    for child in &record.children {
+        w.u32(child.index());
+    }
+    w.u32(record.first_token.index());
+    w.u32(record.last_token.index());
+    match record.name {
+        Some(name) => {
+            w.u8(1);
+            w.u32(name.index());
+        }
+        None => w.u8(0),
+    }
+    match record.literal {
+        Some(literal) => {
+            w.u8(1);
+            w.u32(literal.index());
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+/// Decode one committed [`NodeRecord`]; consumes the whole input.
+pub fn decode_node(bytes: &[u8]) -> Result<NodeRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let name = r.string()?;
+    let kind = parse_node_kind(&name).ok_or(CodecError::Unsupported("unknown node kind"))?;
+    let parent = match r.u8()? {
+        0 => None,
+        1 => Some(NodeId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let child_count = r.u64()? as usize;
+    let mut children = Vec::with_capacity(child_count);
+    for _ in 0..child_count {
+        children.push(NodeId::from_index(r.u32()?));
+    }
+    let first_token = TokenId::from_index(r.u32()?);
+    let last_token = TokenId::from_index(r.u32()?);
+    let node_name = match r.u8()? {
+        0 => None,
+        1 => Some(NameId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let literal = match r.u8()? {
+        0 => None,
+        1 => Some(LiteralId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(NodeRecord {
+        kind,
+        parent,
+        children,
+        first_token,
+        last_token,
+        name: node_name,
+        literal,
+    })
+}
+
 /// Canonical encoding of a `/10` artifact: kind name, optional source index,
 /// bytes, then the `raw_offsets` map.
 pub fn encode_artifact(
