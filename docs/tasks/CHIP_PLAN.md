@@ -1,9 +1,9 @@
-# Chip Plan: all 332 rows graded, waved, and unblocked
+# Chip Plan: all 331 chips graded, waved, and unblocked
 
 | Field | Value |
 |---|---|
 | Status | **PLAN** — readiness grades and wave assignment, not a freeze, not code authorization |
-| Scope | All T02–T13 chip tables (332 table rows; README says 331 — see §7) |
+| Scope | All T02–T13 chip tables (331 unique chip IDs; grep finds 332 rows — see §7) |
 | Method | Four parallel file surveys (2026-10-06) against `TASK_TEMPLATE.md` + `T01 §7` frozen baseline |
 | Rule | No chip is generated before its wave's schemas, kinds, stages, and manifests are frozen (Gates per `GATE_1_M1_FIRST_SLICE.md` §9A pattern) |
 
@@ -20,8 +20,8 @@
 
 | Wave | Content | Unblocks when |
 |---|---|---|
-| Wave 0 (done) | Foundation C01–C06 + Gate 1 const-fold types (`/7`) | — |
-| Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types | kinds already frozen; needs only its manifest + routing row (T01 serial, then dispatch). SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
+| Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
+| Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
 | Wave 2 (M1 frontend) | T03 PP01 slice → T04 LX slice (M1-LX-01..07) → T05 PA M1 paths → T06 TY M1 subset → T07 SE M1 subset → T08 CL M1 subset → T09 IR M1 subset (Constant+Return) → T13 VF01–06/VF12–14 | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands like Gate 1 with its own fixture (G2-CL-0x…) |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
@@ -41,9 +41,9 @@ guarantees rework.
 | T04 Lex | LX01–LX18 (18) | 0 | LX01–08 slice | `TokenRecord`, link tags, provenance carrier | 2 (M1-LX-01..07 first) |
 | T05 Parse | PA01–PA38 (38) | 0 | M1 paths | `NodeKind`, `NodeRecord`, kinds, TU carrier | 2 |
 | T06 Symbol/Type | TY01–TY34 (34) | 0 | M1 subset | scope/symbol/type records, File-Enter payload | 2 |
-| T07 Semantic | SE01–SE30 (30) | SE02/SE07 shapes | M1 subset | `SemRecord` link encoding, conversion matrix | 1 (SE02/SE07) → 2 |
-| T08 Const/Layout/Init | CL01–CL26 (26) | CL02/CL03 int subset | M1 subset | layout/init schemas, overflow formula | 1 (fold) → 2 |
-| T09 IR | IR01–IR29 (29) | IR03 const-consume shape | M1 subset | IR records, `ir.*` kinds, FunctionEnd hook | 1 (IR03) → 2 |
+| T07 Semantic | SE01–SE30 (30) | 0 (SE02/SE07 shapes need `SemRecord`) | M1 subset | `SemRecord` link encoding, conversion matrix | 2 |
+| T08 Const/Layout/Init | CL01–CL26 (26) | CL02/CL03 int subset (one fold worker) | M1 subset | layout/init schemas, overflow formula | 1 (fold) → 2 |
+| T09 IR | IR01–IR29 (29) | 0 (IR03 needs IR records) | M1 subset | IR records, `ir.*` kinds, FunctionEnd hook | 2 |
 | T10 Optimize | OP01–OP22 (22) | 0 | all headers | IR freeze + version-guard protocol | 3 |
 | T11 Target | CG01–CG39 (39) | 0 | spec text only | probe values, machine records | 4 |
 | T12 GNU/Builtins | EX01–EX39 (39) | 0 | EX01–33/37–39 | census splits (EX34–36), sysroot, T11 handoff | 3 + 5 |
@@ -188,11 +188,11 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 ### T07 Semantic (SE01–SE30) — Wave 2 (SE02/SE07 emit requests once `SemRecord` lands)
 
 - SE01 NameExpressionChip | symbol protocol | 2
-- SE02 LiteralExpressionChip → emits `ConstantRequest::Literal` | — | 1
+- SE02 LiteralExpressionChip → emits `ConstantRequest::Literal` | `SemRecord` link encoding | 2
 - SE03 UnaryArithmeticChip | conversion schemas | 2–3
 - SE04 LogicalOperationChip | kinds | 2
 - SE05 AddressExpressionChip / SE06 DereferenceExpressionChip | kinds | 2–3
-- SE07 ArithmeticBinaryChip → emits `ConstantRequest::Binary` | — | 1
+- SE07 ArithmeticBinaryChip → emits `ConstantRequest::Binary` | `SemRecord` link encoding | 2
 - SE08 PointerArithmeticChip | layout protocol | 2–3
 - SE09 ShiftBitwiseChip | kinds | 2–3
 - SE10 ComparisonChip | kinds | 2
@@ -213,7 +213,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 ### T08 Const/Layout/Init (CL01–CL26) — Wave 1 (fold) → 2
 
 - CL01 ConstantContextChip (legality gate) | const kinds | 2
-- CL02 ConstantUnaryChip / CL03 ConstantBinaryChip (int subset; no host overflow) | — | 1
+- CL02 ConstantUnaryChip / CL03 ConstantBinaryChip (int subset; no host overflow; one fold worker proves the pattern) | — | 1
 - CL04 ConstantBranchChip | kinds | 2
 - CL05 ConstantCastChip | conversion schemas | 2–3
 - CL06 AddressConstantChip | symbol protocol | 3
@@ -232,7 +232,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 
 - IR01 FunctionBeginChip / IR28 FunctionEndChip (terminal-fact, no marker) | IR records, hook contract | 2
 - IR02 BlockCreateChip | IR records | 2
-- IR03 ConstantLowerChip (consumes `ConstId`, no refold) | — | 1
+- IR03 ConstantLowerChip (consumes `ConstId`, no refold) | IR records, `ir.*` kinds | 2
 - IR04 ObjectAddressLowerChip … IR06 StoreLowerChip | IR records | 2
 - IR07 ConversionLowerChip (M1 identity only) | — | 2
 - IR08–IR11 Unary/Arithmetic/PointerArith/Compare | IR records | 2
@@ -313,4 +313,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 
 ## 7. Count note
 
-Table rows grep to 332 (T07 matches 31 lines against 30 listed chips — one wrapped row); README says 331. The one-row delta is a counting artifact, not a missing chip; the T07 owner confirms SE01–SE30 (30) at Wave 2 planning.
+Table-ID grep finds 332 rows for 331 unique chip IDs: the T07 table lists
+SE01–SE30 (30 chips) plus one `VF06` cross-reference row (verifier
+registration, T01+T13 owned) that the chip-ID pattern also matches. README's
+331 unique count is correct; the one-row delta is that cross-reference, not a
+missing chip and not a wrapped row.

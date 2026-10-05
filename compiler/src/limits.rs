@@ -67,8 +67,10 @@ pub struct Limits {
     pub stage_queue_bound: [u32; STAGE_COUNT],
     /// Maximum bit width of a constant value.
     ///
-    /// Defaults to 128 and must satisfy `1 <= max_const_bits <= 128`;
-    /// anything larger is rejected because the value carrier is `i128`.
+    /// Defaults to 128 and must satisfy `1 <= max_const_bits <= 128`.
+    /// The Gate 1 folded-constant carrier is big-endian magnitude bytes;
+    /// this budget bounds the minimal bit length the fold chip enforces
+    /// (insufficient budget is a typed chip overflow, never `Legal`).
     pub max_const_bits: u32,
     /// Maximum number of `Progress` reschedules for one task.
     ///
@@ -259,8 +261,7 @@ pub enum LimitError {
     },
     /// `max_const_bits` is zero or exceeds 128.
     ///
-    /// A limit-configuration violation (rejected by [`Limits::try_new`]);
-    /// the value carrier is `i128`, so widths above 128 are unrepresentable.
+    /// A limit-configuration violation (rejected by [`Limits::try_new`]).
     InvalidConstBits {
         /// The rejected value.
         value: u32,

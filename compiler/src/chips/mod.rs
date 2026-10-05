@@ -1,34 +1,40 @@
 // ============================================================================
 // chips/mod.rs — host-driven worker chips and driver (Wave 1 template)
 //
-// The routing shell never invokes workers: it resolves task kinds and the
-// *host* runs the responsible chip. A worker is a stateless unit that reads
-// the frozen bus plus its task and returns proposals; a host driver resolves
-// the task kind, finds the worker by chip ID, collects its proposals, and
-// hands the batch to the commit path. All worker I/O crosses this boundary
-// as `Proposal` values — workers never mutate the bus, never perform Host
-// I/O, and never call other workers.
+// The routing shell never invokes workers directly: it resolves task kinds
+// and the *host* runs the responsible chip through `propagate_with` /
+// `clock_tick_with`. A worker is a stateless unit that computes from a
+// narrow projection plus its task and returns proposals; a host driver
+// resolves the task kind, finds the worker by chip ID, collects its
+// proposals, and hands the batch to the commit path. All worker I/O crosses
+// this boundary as `Proposal` values — workers never mutate the bus, never
+// perform Host I/O, and never call other workers.
 //
 // Template rules (every later chip copies this file's shape):
 //
 // * One file per chip under `chips/`; the file owns the worker struct, its
-//   `Worker` impl, and its chip-local helpers. Nothing else.
+//   `Worker` impl, its narrow `Input` projection plus projector, its pure
+//   `compute(&Input)`, and chip-local helpers. The computation never takes
+//   the full bus; the adapter owns the projection.
 // * `manifest()` is the chip's exact C04 declaration (frozen kinds, exact
 //   reads/writes, phase, capability). The manifest registers cleanly or the
 //   chip does not exist.
-// * `handle()` returns proposals only. Every failure path is a `Fail`
-//   proposal with a structured diagnostic — never a panic, never silence.
+// * `handle()` is the adapter: project then compute. Every failure path is
+//   a `Fail` proposal with a structured diagnostic — never a panic, never
+//   silence.
 // * Predicted record IDs follow the frozen rule: your Nth body of family F
 //   in your batch gets `arena.allocated() + (F-bodies applied earlier in
 //   the batch)`. Quota-1 single-append workers predict `allocated() + 0`.
-//   The commit verifies every future-dated `Complete` reference against its
-//   prediction table (`CommitError::UnpredictedRecord`); a misprediction
-//   rejects loudly, never completes with a wrong reference.
+//   The commit verifies every future-dated `Complete` reference (`Record`
+//   and `Records` carriers alike) against its prediction table
+//   (`CommitError::UnpredictedRecord`); a misprediction rejects loudly,
+//   never completes with a wrong reference. Quota>1 batching is not
+//   accepted: colliding predictions fail loudly, they do not alias.
 // ============================================================================
 
 mod fold;
 
-pub use fold::FoldChip;
+pub use fold::{const_bits_required, project_fold_input, FoldChip, FoldInput};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
@@ -67,8 +73,14 @@ impl WorkerRegistry {
     }
 
     /// Register a worker. A duplicate chip ID is rejected.
+    ///
+    /// `/9` PCR-10: the worker must be a zero-sized unit struct. A
+    /// field-bearing worker is rejected instead of running with hidden state.
     pub fn register<W: Worker + 'static>(&mut self, worker: W) -> Result<(), DriveError> {
         let id = worker.chip_id();
+        if std::mem::size_of::<W>() != 0 {
+            return Err(DriveError::NonStatelessWorker { chip: id });
+        }
         if self.workers.iter().any(|(other, _)| *other == id) {
             return Err(DriveError::DuplicateWorker { chip: id });
         }
@@ -123,6 +135,29 @@ pub enum DriveError {
         /// Task owner.
         owner: ChipId,
     },
+    /// The routed chip has no registered manifest (commit would reject its
+    /// appends; the driver refuses earlier).
+    UnregisteredChip {
+        /// Chip with no manifest.
+        chip: ChipId,
+    },
+    /// The worker is not a zero-sized unit struct (`/9` PCR-10: chips are
+    /// stateless; a field-bearing worker would hide semantic state).
+    NonStatelessWorker {
+        /// Chip with state.
+        chip: ChipId,
+    },
+    /// The routed layer disagrees with the frozen stage assignment
+    /// (`/9` PCR-09: the driver enforces `check_stage_layer_agreement`
+    /// instead of leaving it as a standalone helper).
+    StageLayerMismatch {
+        /// Task kind.
+        kind: TaskKind,
+        /// Frozen stage.
+        stage: u16,
+        /// Routed layer.
+        layer: u16,
+    },
 }
 
 impl std::fmt::Display for DriveError {
@@ -149,6 +184,23 @@ impl std::fmt::Display for DriveError {
             Self::OwnerMismatch { owner } => {
                 write!(f, "task owner {} is not the routed chip", owner.index())
             }
+            Self::UnregisteredChip { chip } => {
+                write!(f, "chip {} has no registered manifest", chip.index())
+            }
+            Self::NonStatelessWorker { chip } => {
+                write!(
+                    f,
+                    "chip {} worker must be a zero-sized unit struct",
+                    chip.index()
+                )
+            }
+            Self::StageLayerMismatch { kind, stage, layer } => {
+                write!(
+                    f,
+                    "task kind {} stage {stage} disagrees with routed layer {layer}",
+                    kind.raw()
+                )
+            }
         }
     }
 }
@@ -159,10 +211,11 @@ impl std::error::Error for DriveError {}
 /// proposals for the commit path.
 ///
 /// The driver checks identity only (task exists, kind routed, worker
-/// present and matching, kind claimed, owner equals chip). All semantic
-/// decisions belong to the worker's proposals and the commit's
-/// validation. Non-`Registered` resolutions are driver errors, never
-/// synthesized executions.
+/// present and matching, kind claimed, owner equals chip, chip manifest
+/// registered, routed layer agrees with the frozen stage). All semantic
+/// decisions belong to the worker's proposals and the commit's validation.
+/// Non-`Registered` resolutions are driver errors, never synthesized
+/// executions.
 pub fn drive_task(
     bus: &CompilerBus,
     task: TaskId,
@@ -175,10 +228,20 @@ pub fn drive_task(
         .map_err(|_| DriveError::UnknownTask { task })?;
     let (kind, owner) = (record.kind, record.owner);
     let shell = RoutingShell::new();
-    let (chip, _layer) = match shell.resolve(bus, kind) {
+    let (chip, layer) = match shell.resolve(bus, kind) {
         crate::routing::Resolution::Registered { chip, layer } => (chip, layer),
         _ => return Err(DriveError::NotRegistered { kind }),
     };
+    // `/9` PCR-09: enforce stage/layer agreement on the execution path.
+    if let Some(stage) = crate::manifest::stage_of(kind) {
+        if layer != stage as u16 {
+            return Err(DriveError::StageLayerMismatch {
+                kind,
+                stage: stage as u16,
+                layer,
+            });
+        }
+    }
     let worker = workers.get(chip).ok_or(DriveError::NoWorker { chip })?;
     if worker.chip_id() != chip {
         return Err(DriveError::WorkerMismatch { chip });
@@ -189,6 +252,9 @@ pub fn drive_task(
     if owner != chip {
         return Err(DriveError::OwnerMismatch { owner });
     }
+    if bus.registrations.get(chip).is_none() {
+        return Err(DriveError::UnregisteredChip { chip });
+    }
     Ok(worker
         .handle(task, bus)
         .into_iter()
@@ -198,6 +264,68 @@ pub fn drive_task(
             proposal,
         })
         .collect())
+}
+
+/// Build a tick-handler closure over a worker registry for
+/// `RoutingShell::propagate_with` / `clock_tick_with`.
+///
+/// Lookup failures become loud `Fail` proposals (never silent skips, never
+/// fabricated successes); the commit then attributes and validates them.
+pub fn handler_for<'a>(
+    workers: &'a WorkerRegistry,
+) -> impl Fn(TaskId, &CompilerBus) -> Vec<Proposal> + 'a {
+    move |task: TaskId, bus: &CompilerBus| {
+        let (kind, owner) = match bus.arenas.tasks.get(task) {
+            Ok(record) => (record.kind, record.owner),
+            Err(_) => {
+                return vec![fail(
+                    task,
+                    protocol_fault(format!("tick handler for unknown task {}", task.index())),
+                )];
+            }
+        };
+        let chip = match RoutingShell::new().resolve(bus, kind) {
+            crate::routing::Resolution::Registered { chip, layer } => {
+                // `/9` PCR-09: the tick handler enforces the same
+                // stage/layer agreement as `drive_task`.
+                if let Some(stage) = crate::manifest::stage_of(kind) {
+                    if layer != stage as u16 {
+                        return vec![fail(
+                            task,
+                            protocol_fault(format!(
+                                "tick handler: kind {} stage {stage} disagrees with layer {layer}",
+                                kind.raw()
+                            )),
+                        )];
+                    }
+                }
+                chip
+            }
+            _ => {
+                return vec![fail(
+                    task,
+                    protocol_fault(format!("tick handler: kind {} has no route", kind.raw())),
+                )];
+            }
+        };
+        let Some(worker) = workers.get(chip) else {
+            return vec![fail(
+                task,
+                protocol_fault(format!("tick handler: chip {} has no worker", chip.index())),
+            )];
+        };
+        if worker.chip_id() != chip
+            || !worker.manifest().task_kinds.contains(&kind)
+            || owner != chip
+            || bus.registrations.get(chip).is_none()
+        {
+            return vec![fail(
+                task,
+                protocol_fault("tick handler: worker/owner/registration mismatch"),
+            )];
+        }
+        worker.handle(task, bus)
+    }
 }
 
 /// Build a structured `Fail` proposal for a worker-side fault.

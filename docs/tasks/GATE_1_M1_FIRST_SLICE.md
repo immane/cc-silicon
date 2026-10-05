@@ -140,3 +140,49 @@ Wave 1 (slice chips per `TASK_TEMPLATE`) is unblocked on these types;
 - Worker template: `compiler/src/chips/` (`Worker` trait, host
   `WorkerRegistry` + `drive_task`, `FoldChip` first chip). The routing
   shell never invokes workers; the host drives, the commit decides.
+
+## 8. `/8` worker-integration amendment (review-driven, supersedes §7)
+
+Review of the Phase 0 template found six blocking gaps; all are fixed
+under the authorized R1 auto-bump rule as `t01-c01-c06/8` (hash
+`9216c594…855`), with `/7` preserved as history. §7's "no hash change"
+claim is superseded: the kind→shape relaxation was a protocol change and
+now ships as a versioned amendment.
+
+- **Strict kind→shape decode** (`request.kind-shape-strict`,
+  `request.const-fold-forwards-identical-refs`): `const_eval_literal`
+  decodes only the single-literal shape, `const_eval_binary` only the
+  node-plus-two-literals shape; `const_fold` accepts either forwarded
+  shape. Cross-shape payloads are `Arity`, never silent reinterpretation.
+- **Unified total-record preflight** (`commit.total-budget-unified`):
+  appends join results/tasks/diagnostics/requests/patches in one
+  `ensure_total_records` check; the separate draft-only check is removed.
+- **Append authorization** (`append.authorized-registered-declared`): every
+  `AppendRecords` body checks registered manifest, accepted kind, declared
+  write, and schema field (mirrors `validate_patch`).
+- **Predicted references for both carriers**
+  (`commit.predicted-records-checked`): `Record` and `Records` future-dated
+  `Literal`/`Const` refs are verified against the prediction table.
+  Quota>1 colliding predictions fail loudly; quota>1 batching stays
+  unaccepted.
+- **Bit-budget overflow** (`const.budget-enforced-chip-overflow`): the fold
+  computation enforces `limits.max_const_bits` over the narrow projection
+  and fails with the accepted `ConstOverflow` chip diagnostic (never
+  `Legal`, never a `CommitError`).
+- **Narrow projection + tick lifecycle**: the chip computes from `FoldInput`
+  only (adapter owns the projection); the shell drives workers through
+  `propagate_with` / `clock_tick_with`, and `G1-CL-01` runs without manual
+  `Running` fixup. The `Worker` API receiving the full bus is retained
+  only as the adapter boundary, not the computation boundary.
+
+## 9. `/9` pre-chip readiness amendment (review-driven, R1 auto-bump)
+
+Frozen as `t01-c01-c06/9` (hash `f9539895…eafb`); `/8` preserved as history.
+Closes PCR-01..10 on the execution path: full config encoding, per-task
+transition, await-all + idle drain with closure, own-batch parent binding,
+canonical draft indexes, append/patch conflict rejection, live binary nodes,
+driver stage/layer enforcement, stateless workers with declared mechanical
+reads, and chip-lint coverage of inherent `compute`. Regression suite
+`compiler/tests/c09_readiness.rs` (13 tests); chip-lint 10 tests; `compiler/src/chips`
+strict scan passes. Wave 1 template is enforced; broader language waves remain
+per-slice frozen work, not authorized by this amendment.

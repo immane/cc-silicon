@@ -191,6 +191,43 @@ hashed rule IDs and enum/schema sections. New artifact
 `t01-c01-c06/7` (`a56de65b…89d5c`); `/6` preserved as history.
 `M1-CL-05` on real upstream artifacts stays the Wave-2 acceptance.
 
+`/8` amendment — worker integration (review-driven; R1 auto-bump; `/7`
+preserved as history): strict kind→shape `ConstantRequest` decode
+(`const_eval_literal` literal-only, `const_eval_binary` binary-only,
+`const_fold` either forwarded shape); unified total-record preflight
+(appends join the single `ensure_total_records` sum); `AppendRecords`
+authorization (registered manifest, accepted kind, declared write, schema
+field); predicted-reference checks for both `Record` and `Records`
+carriers; fold bit-budget enforcement as the accepted `ConstOverflow`
+chip diagnostic; narrow `FoldInput` projection with pure `compute`; shell
+`propagate_with`/`clock_tick_with` worker integration. New hashed rules
+`append.authorized-registered-declared`,
+`commit.total-budget-unified`, `commit.predicted-records-checked`,
+`request.kind-shape-strict`,
+`request.const-fold-forwards-identical-refs`,
+`const.budget-enforced-chip-overflow`. New artifact `t01-c01-c06/8`
+(`9216c594…855`); item list in
+[GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §8.
+
+`/9` amendment — pre-chip readiness fixes (review-driven; R1 auto-bump; `/8`
+preserved as history): canonical config encodes all bounds
+(`max_inflight_per_tick`, `stage_queue_bound`, `max_const_bits`,
+`max_task_progress`); every batch task needs exactly one transition
+(append/patch-only rejected before mutation); await-all requires all-terminal
+children; idle ticks drain joins with bounded closure (`Joined` outcome);
+`OwnBatch` requires the draft parent link; draft indexes must equal positions;
+typed-append vs `StorePatch` append conflicts rejected; binary fold requires a
+live node; driver enforces stage/layer agreement; workers must be unit structs
+with declared mechanical reads; chip-lint scans inherent `compute` and
+allowlists `BTreeMap`/`BTreeSet`/`vec!`/`format!`. New hashed rules
+`snapshot.config-encodes-all-bounds`, `commit.transition-required-per-task`,
+`join.await-all-requires-all-terminal`, `join.idle-drains-with-closure`,
+`commit.ownbatch-requires-parent`, `append.draft-index-canonical`,
+`append.patch-conflict-rejected`, `const.binary-node-must-be-live`,
+`dispatch.stage-layer-enforced`, `worker.stateless-unit-required`. New artifact
+`t01-c01-c06/9` (`f9539895…eafb`); regression suite `compiler/tests/c09_readiness.rs`
+(13 tests); item list in [GATE_1_M1_FIRST_SLICE.md](GATE_1_M1_FIRST_SLICE.md) §9.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
@@ -198,8 +235,8 @@ hashed rule IDs and enum/schema sections. New artifact
 | C03 | Task/TaskState/Result/Proposal/StorePatch envelope; next-tick enqueue; deterministic commit order; inner task IDs bound to the enclosing task; exactly one `Complete`/`Fail`/`AwaitHost` transition per task per batch; Enqueue parents resolved against existing or earlier predicted siblings; Enqueue destinations must be registered and accept the kind (bootstrap is integration-only); exactly-once completion and result consumption with an accurate `ResultAlreadyConsumed` error; lossless `usize` proposal-budget comparison; structured error protocol; unique kind registry with reserved local-code ranges | Per-group concrete task/result payload variants are not frozen (group owners add them; the envelope carries typed `RecordRef` payloads); patch `RecordRef`s are not existence-checked by the mechanical commit; the §4 reserved-ID/local-reference relocation protocol is absent (see C01); the frozen protocol enums are pinned by variant name only, not by numeric discriminant/wire tag (see C05) |
 | C04 | Manifest schema extension, foundation store schema, validator, fixture tests, validated registry (schema + kind checks on registration); commit-time per-chip field-scoped write manifests, owner/task-kind attribution, read-only `config` rejected both at registration and commit | The extension is a lint, not a parser; group store fields must be declared as each group freezes them. The `/6` hash-scope reconciliation between `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields` token is still open (see C05) |
 | C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs` |
-| C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; pre-populated malformed wires on the propagation entry path fail explicitly without stranding a task; cancel clears stale selection; defined cancel/budget pin behavior | No worker handlers installed; T02 installs them. No language logic, no C chips, no compiler |
+| C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; transition-free worker vectors fail per-task (`TaskNotTransitioned`); idle ticks drain await-all joins with closure (`Joined`); stage/layer enforced on the driver path; cancel clears stale selection; defined cancel/budget pin behavior | Wave 1 fold worker installed via `drive_task`/`handler_for`; no broader language pipeline yet |
 
-Test evidence (2026-10-05, `/6`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `freeze` 7, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
+Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 13, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
 
 Full test commands and results are in `compiler/README.md`.

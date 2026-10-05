@@ -193,11 +193,21 @@ fn newly_enqueued_task_runs_next_tick() {
     bus.arenas.tasks.get_mut(parent).unwrap().state = TaskState::Running;
     let report = commit_proposals(
         &mut bus,
-        vec![TaggedProposal {
-            chip: ChipId(7),
-            task: parent,
-            proposal: Proposal::Enqueue(draft(TaskKind::CONTROL_NOOP)),
-        }],
+        vec![
+            TaggedProposal {
+                chip: ChipId(7),
+                task: parent,
+                proposal: Proposal::Enqueue(draft(TaskKind::CONTROL_NOOP)),
+            },
+            TaggedProposal {
+                chip: ChipId(7),
+                task: parent,
+                proposal: Proposal::Complete {
+                    task: parent,
+                    value: ResultValue::Empty,
+                },
+            },
+        ],
     )
     .unwrap();
     let child = report.enqueued[0];

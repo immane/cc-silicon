@@ -114,8 +114,9 @@ kind; it is not a uniform producer-manifest check:
   registered manifest (for example a bootstrapped foundation task) can still be
   completed, failed, or parked with `AwaitHost` (`compiler/tests/c03_task.rs`,
   `completion_is_exactly_once`);
-- a `StorePatch` is the only proposal kind that enforces the producing chip's
-  manifest: the producer must be registered and accept the task kind; the patch
+- a `StorePatch` and an `AppendRecords` batch both enforce the producing
+  chip's manifest (`/9`): the producer must be registered and accept the task
+  kind; the patch
   must match the enclosing task and the producing chip; the patched field must
   be declared in that chip's registered **write** set and in the store schema;
   the patch is version-guarded and shape-checked. Negative tests live in

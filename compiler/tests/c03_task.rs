@@ -184,10 +184,16 @@ fn enqueued_tasks_are_ready_next_tick() {
     let parent = running_task(&mut bus, TaskKind::CONTROL_NOOP);
     let report = commit_proposals(
         &mut bus,
-        vec![tag(
-            parent,
-            Proposal::Enqueue(draft(TaskKind::CONTROL_NOOP)),
-        )],
+        vec![
+            tag(parent, Proposal::Enqueue(draft(TaskKind::CONTROL_NOOP))),
+            tag(
+                parent,
+                Proposal::Progress {
+                    task: parent,
+                    ordinal: 1,
+                },
+            ),
+        ],
     )
     .unwrap();
     let child = report.enqueued[0];
@@ -240,7 +246,20 @@ fn append(task: TaskId, owner: ChipId, version: u64) -> Proposal {
 fn valid_append_patch_is_committed_and_bumps_version() {
     let mut bus = bus_with_manifest();
     let task = running_task(&mut bus, TaskKind::CONTROL_NOOP);
-    let report = commit_proposals(&mut bus, vec![tag(task, append(task, ChipId(7), 0))]).unwrap();
+    let report = commit_proposals(
+        &mut bus,
+        vec![
+            tag(task, append(task, ChipId(7), 0)),
+            tag(
+                task,
+                Proposal::Complete {
+                    task,
+                    value: ResultValue::Empty,
+                },
+            ),
+        ],
+    )
+    .unwrap();
     assert_eq!(report.patches, 1);
     assert_eq!(bus.patch_log.len(), 1);
     assert_eq!(bus.store_versions.get(StoreId::Diagnostics), 1);
@@ -607,6 +626,13 @@ fn earlier_predicted_sibling_can_be_a_parent() {
         vec![
             tag(producer, Proposal::Enqueue(first)),
             tag(producer, Proposal::Enqueue(second)),
+            tag(
+                producer,
+                Proposal::Progress {
+                    task: producer,
+                    ordinal: 1,
+                },
+            ),
         ],
     )
     .unwrap();
@@ -1352,8 +1378,11 @@ fn commit_await_children_end_to_end() {
 fn commit_await_children_own_batch() {
     // `OwnBatch(0)` resolves against this task's own `Enqueue` list even when
     // the await proposal precedes the enqueue in vector order (phase 2b).
+    // `/9` PCR-05: the enqueued draft must name this parent.
     let mut bus = bus_with_manifest();
     let parent = running_task(&mut bus, TaskKind::CONTROL_NOOP);
+    let mut child_draft = draft(TaskKind::CONTROL_NOOP);
+    child_draft.parent = Some(parent);
     let report = commit_proposals(
         &mut bus,
         vec![
@@ -1364,7 +1393,7 @@ fn commit_await_children_own_batch() {
                     children: vec![ChildRef::OwnBatch(0)],
                 },
             ),
-            tag(parent, Proposal::Enqueue(draft(TaskKind::CONTROL_NOOP))),
+            tag(parent, Proposal::Enqueue(child_draft)),
         ],
     )
     .unwrap();
