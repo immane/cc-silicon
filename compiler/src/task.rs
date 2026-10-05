@@ -334,6 +334,16 @@ impl TaskKind {
     /// with argument prescan, `#`/`##`, and blue-paint rescan).
     pub const PREPROCESS_MACRO_SUBSTITUTE: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 27);
+    /// Wave 2 (`/25`) PP-include-slice kind: include-resolve task
+    /// (payload: exactly one `HeaderName` ref; pure lookup over committed
+    /// sources; completes `Record(Source)` or fails not-loaded).
+    pub const PREPROCESS_INCLUDE_RESOLVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 28);
+    /// Wave 2 (`/25`) PP-include-slice kind: include-enter task (payload:
+    /// full-stream pp-token refs plus exactly one trailing `Source` ref;
+    /// splices one level of header tokens, keeps everything else verbatim).
+    pub const PREPROCESS_INCLUDE_ENTER: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 29);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -514,6 +524,28 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/25`) PP-include-slice registry: the PP-expand
+    /// slice plus the frozen include kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 30).
+    pub fn pp_include_slice() -> Self {
+        let mut registry = Self::pp_expand_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::PREPROCESS_INCLUDE_RESOLVE,
+                "preprocess.include_resolve",
+            ),
+            (
+                TaskKind::PREPROCESS_INCLUDE_ENTER,
+                "preprocess.include_enter",
+            ),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

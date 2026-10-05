@@ -22,7 +22,7 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals + `/23` macro definitions + `/24` expansion) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals + `/23` macro definitions + `/24` expansion + `/25` include) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
@@ -90,8 +90,8 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP14 MacroPasteChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
 - PP15 MacroRescanChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
 - PP16 VariadicMacroChip | kinds, VA_OPT policy (variadic USE deferred; definitions recorded) | 3
-- PP17 IncludeResolveChip | kinds, path policy | 3
-- PP18 IncludeEnterExitChip | kinds, host protocol | 3
+- PP17 IncludeResolveChip | ✅ DONE (`/25` PpIncludeResolveChip, `c25_include` 8 tests; exact/basename policy, host-passive) | 3
+- PP18 IncludeEnterExitChip | ✅ DONE (`/25` PpIncludeEnterChip; single-pass stitch, nested survives) | 3
 - PP19 ConditionalDirectiveChip | ✅ DONE (`/22` PpConditionalChip, `c22_conditional` 8 tests; stack + inline PP-int evaluator, defined frozen-false; PP20–22 folded as pure helpers) | 2–3
 - PP20 DefinedOperatorChip | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
 - PP21 PpExpressionParseChip | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
