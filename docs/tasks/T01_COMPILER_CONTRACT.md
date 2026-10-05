@@ -581,6 +581,33 @@ cumulative over `pp_line_slice()`); no schema change; no allowlist row
 `compiler/tests/c29_pragma.rs` (9 tests); item list in
 [PP_PRAGMA_SLICE.md](PP_PRAGMA_SLICE.md).
 
+`/30` amendment — Wave 3 slice 5, PP expansion map (R1 auto-bump; `/29`
+preserved as history): new `PpExpandMapChip` (chip 37, PP27), pure
+single-task (one dispatch, no bus writes, `Complete(Ack)`; no children,
+so the frozen-join path never applies). For every payload pp-token ref
+in payload order the chip rebuilds the per-token origin chain from the
+frozen `SpanRecord` links and the committed `ExpansionRecord` records:
+the frame's `spelling` span names the raw form (`#` operands read this
+side), the `expanded` span names the product/prescanned form (`##`
+products land here), `spelling` and `expanded` stay side by side per
+frame (prescan-vs-raw), `parent` linkage plus per-frame
+`ordinal`/`depth` recover the blue-paint rescan nesting, and every
+frame resolves to a `SpanRecord` whose `source` names the physical file
+at that nesting level (nested include origins). An unexpanded token
+carries no frames. Dangling links (unprojected span, dangling
+expansion or parent), expansion cycles, and over-long walks fail as
+typed `Invalid`; wrong dispatch fails as a protocol fault. Nothing is
+persisted: no `OriginChain` carrier exists yet, so the chains are
+returned through `origin_chain` / `origin_root` for the wiring layer
+(no store field lands). `preprocess.expand_map` (local 34), stage 1,
+layer 1, `pp_expand_map_slice()` registry (47 entries, cumulative over
+`pp_pragma_slice()`); no schema change; no allowlist row (Ack-only,
+read-only). New hashed rules `pp.expand-origin-chain`,
+`pp.origin-paste-prescan`, `pp.origin-blue-paint`. New artifact
+`t01-c01-c06/30` (`76bf628e…f2f3592`); acceptance
+`compiler/tests/c30_expand_map.rs` (10 tests); item list in
+[PP_EXPAND_MAP_SLICE.md](PP_EXPAND_MAP_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

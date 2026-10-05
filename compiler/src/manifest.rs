@@ -1059,6 +1059,9 @@ pub const PP23_CHIP: ChipId = ChipId(35);
 /// Wave 3 (`/29`) PP pragma-dispatch chip reservation.
 pub const PP25_CHIP: ChipId = ChipId(36);
 
+/// Wave 3 (`/30`) PP expansion-source-map chip reservation.
+pub const PP27_CHIP: ChipId = ChipId(37);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1081,6 +1084,11 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/30`) PP expansion-map slice.
+pub const fn is_pp_expand_map_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_EXPAND_MAP.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/29`) PP pragma slice.
@@ -1214,6 +1222,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_builtin_slice_kind(kind)
             || is_pp_line_slice_kind(kind)
             || is_pp_pragma_slice_kind(kind)
+            || is_pp_expand_map_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1296,6 +1305,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_MACRO_BUILTIN, 1),
     (TaskKind::PREPROCESS_LINE_DIRECTIVE, 1),
     (TaskKind::PREPROCESS_PRAGMA_DIRECTIVE, 1),
+    (TaskKind::PREPROCESS_EXPAND_MAP, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

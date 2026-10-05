@@ -23,7 +23,7 @@
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
 | Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals + `/23` macro definitions + `/24` expansion + `/25` include) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
-| Wave 3 (full C) | T03 PP16 ✅ (`/26` variadic) + PP24 ✅ (`/27` builtins) + PP23 ✅ (`/28` line) → remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
+| Wave 3 (full C) | T03 PP16 ✅ (`/26` variadic) + PP24 ✅ (`/27` builtins) + PP23 ✅ (`/28` line) + PP25 ✅ (`/29` pragma) + PP27 ✅ (`/30` expansion map) → remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
 
@@ -99,7 +99,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP23 LineDirectiveChip | ✅ DONE (`/28` PpLineChip, `c28_line` 10 tests; `#line` ± file, GNU markers, `2^31-1` boundary, zero/overflow/bad-escape `Fail`, physical-vs-logical, Ack-only read-only) | 3
 - PP24 BuiltinMacroChip | ✅ DONE (`/27` PpBuiltinChip, `c27_builtin` 9 tests; `__FILE__`/`__LINE__`/`__COUNTER__`(seed 0), frozen-target macros, `__DATE__`/`__TIME__`/unknown as explicit `Unsupported`) | 3
 - PP25 PragmaDispatchChip | ✅ DONE (`/29` PpPragmaChip, `c29_pragma` 9 tests; `once` flag, `pack` push/pop, unknown-pragma benign ignore per C11 6.10.6p1, malformed `_Pragma` typed `Fail`, `_Pragma` string decode, Ack-only read-only) | 3
-- PP27 ExpansionSourceMapChip | origin-chain carrier | 3
+- PP27 ExpansionSourceMapChip | ✅ DONE (`/30` PpExpandMapChip, `c30_expand_map` 10 tests; per-token origin chains over committed spans/expansions, `#` raw / `##` product / prescan-vs-raw / blue-paint nesting / nested include origins, dangling links typed `Fail`, Ack-only read-only) | 3
 - PP28 PreprocessedEmitChip | kinds | 3
 
 ### T04 Lex (LX01–LX18) — Wave 2 (M1-LX-01..07 first)

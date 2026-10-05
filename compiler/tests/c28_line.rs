@@ -246,10 +246,7 @@ fn gnu_marker_accepts_and_ignores_flags() {
     assert_eq!(location.line, 7);
     assert_eq!(location.file, Some(b"g.h".to_vec()));
     // GNU marker without a file retains the current file.
-    let bare = pure_input(
-        &[(K::Punctuator, b"#"), (K::PpNumber, b"9")],
-        source,
-    );
+    let bare = pure_input(&[(K::Punctuator, b"#"), (K::PpNumber, b"9")], source);
     assert!(acked(&PpLineChip.compute(&bare)));
     let location = line_location(&bare).unwrap();
     assert_eq!((location.line, location.file), (9, None));

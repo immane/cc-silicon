@@ -10,6 +10,7 @@ mod pp_define;
 mod pp_diagnostic;
 mod pp_directive;
 mod pp_enter;
+mod pp_expand_map;
 mod pp_invoke;
 mod pp_line;
 mod pp_normalize;
@@ -33,6 +34,10 @@ pub use self::pp_define::{project_pp_define_input, PpDefineChip, PpDefineInput};
 pub use self::pp_diagnostic::{project_pp_diagnostic_input, PpDiagnosticChip, PpDiagnosticInput};
 pub use self::pp_directive::{project_pp_directive_input, PpDirectiveChip, PpDirectiveInput};
 pub use self::pp_enter::{project_pp_include_enter_input, PpIncludeEnterChip, PpIncludeEnterInput};
+pub use self::pp_expand_map::{
+    origin_chain, origin_root, project_pp_expand_map_input, OriginChain, OriginFrame,
+    PpExpandMapChip, PpExpandMapInput, PP27_TASK_KIND,
+};
 pub use self::pp_invoke::{project_pp_invoke_input, PpInvokeChip, PpInvokeInput};
 pub use self::pp_line::{
     line_location, project_pp_line_input, LogicalLocation, PpLineChip, PpLineInput, PP23_TASK_KIND,

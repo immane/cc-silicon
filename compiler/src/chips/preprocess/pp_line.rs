@@ -51,9 +51,7 @@ use crate::bus::{PpTokenKind, PpTokenRecord, SpanRecord};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{PpTokenId, RecordRef, SourceId, SpanId, TaskId};
-use crate::manifest::{
-    BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PP23_CHIP,
-};
+use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PP23_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
 
 /// Frozen PP23 task kind (aliases `TaskKind::PREPROCESS_LINE_DIRECTIVE`,

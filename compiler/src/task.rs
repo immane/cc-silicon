@@ -374,6 +374,12 @@ impl TaskKind {
     /// input fails as a typed `Invalid`).
     pub const PREPROCESS_PRAGMA_DIRECTIVE: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 33);
+    /// Wave 3 (`/30`) PP-expand-map-slice kind: expansion-source-map task
+    /// (payload: pp-token refs in payload order; rebuilds the per-token
+    /// origin chain from committed span/expansion links and completes
+    /// `Ack`; dangling links fail as a typed `Invalid`).
+    pub const PREPROCESS_EXPAND_MAP: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 34);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -554,6 +560,20 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/30`) PP-expand-map-slice registry: the PP-pragma
+    /// slice plus the frozen expansion-source-map kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 35).
+    pub fn pp_expand_map_slice() -> Self {
+        let mut registry = Self::pp_pragma_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_EXPAND_MAP, "preprocess.expand_map")];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
