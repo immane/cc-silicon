@@ -1,14 +1,17 @@
 // ============================================================================
 // chips/preprocess/pp_comment.rs — T03 PP03 comment-replace worker
-// (Wave 2 slice 7, `/16`)
+// (Wave 2 slice 11, `/20`)
 //
 // Reads one committed `Spliced` artifact, replaces comments with whitespace
 // (one space per comment, every logical newline preserved), and appends one
-// `CommentFree` artifact with the composed map. M1 scope: comments are
-// recognized in code state only; inputs containing string/character
-// literals are explicit `Unsupported` (the full literal/header-name
-// protection machine stays deferred); an unterminated block comment fails
-// with a typed diagnostic (the M1-NEG-01 carrier shape).
+// `CommentFree` artifact with the composed map. `/20` scope: comment
+// openers inside string/character literals and `#include` header names are
+// literal bytes that pass through byte-identical (backslash escapes the
+// next byte inside `"..."`/`'...'` and quoted headers; angle headers take
+// no escapes); an unterminated literal/header fails with a typed
+// diagnostic, and an unterminated block comment fails with the M1-NEG-01
+// carrier shape. The `/16` rule rejecting literal-bearing inputs as
+// `Unsupported` is SUPERSEDED by this slice.
 // ============================================================================
 
 use crate::bus::{ArtifactKind, ArtifactRecord};
@@ -189,23 +192,42 @@ impl PpCommentChip {
 }
 
 /// Replace comments with whitespace; return the output bytes plus the
-/// output-to-input boundary map. `//` runs to the newline (preserved);
-/// `/*` runs to the first `*/` with every inner newline preserved. A `"`
-/// or `'` anywhere is explicit `Unsupported` (literal/header-name
-/// protection deferred); EOF inside `/*` is a typed unterminated-comment
-/// failure. Each comment becomes exactly one space spanning the comment
-/// (zero-width only when empty, which cannot occur for a real opener).
+/// output-to-input boundary map (`/20` full-scan contract, shared predicate
+/// with PP04 per `PP_FULL_SCAN_SLICE.md` §§2–3). `//` runs to the newline
+/// (preserved, one space); `/*` runs to the first `*/` with every inner
+/// newline preserved (one space); EOF inside `/*` is the typed
+/// M1-NEG-01 unterminated-comment failure. Comment openers inside
+/// `"..."`/`'...'` literals and `#include` header names are literal bytes
+/// passing through byte-identical with per-byte identity map entries: a
+/// backslash escapes the next byte (any) inside literals and quoted
+/// headers, angle headers take no escapes/comments, and a newline/EOF
+/// before the close is a typed (`Task`, 4) unterminated failure. The
+/// include prefix is lexical and line-start only (`[ \t]*`, `#` or `%:`,
+/// `[ \t]*`, `include` plus an identifier boundary, then spaces/tabs and
+/// block comments skipped — `//` or a newline aborts it, leaving the
+/// `//` a normal comment); `include_next` and non-line-start `#` never
+/// open a header context.
 pub fn replace_comments(input: &[u8]) -> Result<(Vec<u8>, Vec<u64>), DiagnosticDraft> {
     let mut out: Vec<u8> = Vec::with_capacity(input.len());
     let mut mid: Vec<u64> = Vec::with_capacity(input.len() + 1);
     mid.push(0);
     let mut cursor = 0usize;
+    let mut pending_header: Option<(usize, HeaderKind)> = None;
     while cursor < input.len() {
+        if let Some((header_at, header_kind)) = pending_header {
+            if cursor == header_at {
+                pending_header = None;
+                consume_header(input, &mut cursor, &mut out, &mut mid, header_kind)?;
+                continue;
+            }
+            if cursor > header_at {
+                pending_header = None;
+            }
+        }
         let byte = input[cursor];
         if byte == b'"' || byte == b'\'' {
-            return Err(DiagnosticDraft::unsupported(
-                "string/character literal: full scan-state protection is deferred",
-            ));
+            consume_quoted(input, &mut cursor, &mut out, &mut mid, byte)?;
+            continue;
         }
         if byte == b'/' && input.get(cursor + 1) == Some(&b'/') {
             cursor += 2;
@@ -239,10 +261,213 @@ pub fn replace_comments(input: &[u8]) -> Result<(Vec<u8>, Vec<u64>), DiagnosticD
             mid.push(cursor as u64);
             continue;
         }
+        if is_hash_or_percent_colon_at(input, cursor)
+            && is_line_start_blank(input, cursor)
+            && pending_header.is_none()
+        {
+            pending_header = match_include_header(input, cursor);
+        }
         out.push(byte);
         cursor += 1;
         mid.push(cursor as u64);
     }
     debug_assert_eq!(mid.len() as u64, out.len() as u64 + 1);
     Ok((out, mid))
+}
+
+/// Header-name flavor located by the include-prefix lookahead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HeaderKind {
+    Angle,
+    Quoted,
+}
+
+/// Emit one input byte with its per-byte identity map entry.
+fn emit_byte(input: &[u8], cursor: &mut usize, out: &mut Vec<u8>, mid: &mut Vec<u64>) {
+    out.push(input[*cursor]);
+    *cursor += 1;
+    mid.push(*cursor as u64);
+}
+
+/// True when the cursor holds `#`, or `%` followed by `:`.
+fn is_hash_or_percent_colon_at(input: &[u8], pos: usize) -> bool {
+    if input.get(pos) == Some(&b'#') {
+        return true;
+    }
+    input.get(pos) == Some(&b'%') && input.get(pos + 1) == Some(&b':')
+}
+
+/// True when every byte since the previous newline (or input start) is a
+/// space or tab, so a `#`/`%:` here may open an include prefix (§2).
+fn is_line_start_blank(input: &[u8], pos: usize) -> bool {
+    let mut back = pos;
+    while back > 0 {
+        back -= 1;
+        if input[back] == b'\n' {
+            return true;
+        }
+        if input[back] != b' ' && input[back] != b'\t' {
+            return false;
+        }
+    }
+    true
+}
+
+/// True for identifier bytes (`[A-Za-z0-9_]`), used for the `include`
+/// trailing-boundary check (`include_next` must not match).
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+/// Skip `/*...*/` starting at `pos` (which must hold `/` then `*`);
+/// returns the first index past `*/`, or `None` when unterminated (the
+/// main loop re-reports that span as the typed block-comment failure).
+fn skip_block_comment(input: &[u8], pos: usize) -> Option<usize> {
+    let mut scan = pos + 2;
+    while scan < input.len() {
+        if input[scan] == b'*' && input.get(scan + 1) == Some(&b'/') {
+            return Some(scan + 2);
+        }
+        scan += 1;
+    }
+    None
+}
+
+/// Lexical include-prefix lookahead (§2): from a line-start `#`/`%:` match
+/// `include` with an identifier boundary, skip spaces/tabs and block
+/// comments (`//` or a newline aborts: no header context), then report the
+/// header start and flavor for `<`/`"` (anything else: no header context).
+fn match_include_header(input: &[u8], pos: usize) -> Option<(usize, HeaderKind)> {
+    let mut scan = pos;
+    if input.get(scan) == Some(&b'#') {
+        scan += 1;
+    } else if input.get(scan) == Some(&b'%') && input.get(scan + 1) == Some(&b':') {
+        scan += 2;
+    } else {
+        return None;
+    }
+    while input.get(scan) == Some(&b' ') || input.get(scan) == Some(&b'\t') {
+        scan += 1;
+    }
+    let word: &[u8; 7] = b"include";
+    let mut taken = 0usize;
+    while taken < word.len() {
+        if input.get(scan + taken) != Some(&word[taken]) {
+            return None;
+        }
+        taken += 1;
+    }
+    scan += word.len();
+    if matches!(input.get(scan), Some(next) if is_ident_byte(*next)) {
+        return None;
+    }
+    loop {
+        let byte = *input.get(scan)?;
+        if byte == b' ' || byte == b'\t' {
+            scan += 1;
+            continue;
+        }
+        if byte == b'\n' {
+            return None;
+        }
+        if byte == b'/' {
+            if input.get(scan + 1) == Some(&b'*') {
+                scan = skip_block_comment(input, scan)?;
+                continue;
+            }
+            return None;
+        }
+        if byte == b'<' {
+            return Some((scan, HeaderKind::Angle));
+        }
+        if byte == b'"' {
+            return Some((scan, HeaderKind::Quoted));
+        }
+        return None;
+    }
+}
+
+/// Consume one `"..."`/`'...'` literal starting at the opening quote,
+/// emitting every byte verbatim: a backslash escapes the next byte (any),
+/// the first unescaped matching quote closes, and a newline/EOF before
+/// the close is a typed (`Task`, 4) failure.
+fn consume_quoted(
+    input: &[u8],
+    cursor: &mut usize,
+    out: &mut Vec<u8>,
+    mid: &mut Vec<u64>,
+    quote: u8,
+) -> Result<(), DiagnosticDraft> {
+    let unterminated = if quote == b'\'' {
+        "unterminated character literal"
+    } else {
+        "unterminated string literal"
+    };
+    emit_byte(input, cursor, out, mid);
+    loop {
+        let byte = match input.get(*cursor) {
+            None => {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    unterminated,
+                ));
+            }
+            Some(found) => *found,
+        };
+        if byte == b'\n' {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                unterminated,
+            ));
+        }
+        if byte == b'\\' {
+            emit_byte(input, cursor, out, mid);
+            if input.get(*cursor).is_none() {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    unterminated,
+                ));
+            }
+            emit_byte(input, cursor, out, mid);
+            continue;
+        }
+        emit_byte(input, cursor, out, mid);
+        if byte == quote {
+            return Ok(());
+        }
+    }
+}
+
+/// Consume one header name starting at its opener, emitting every byte
+/// verbatim: `<...>` runs to the first `>` with no escape or comment
+/// processing, `"..."` reuses the escape-aware quote rule, and a
+/// newline/EOF before the close is a typed (`Task`, 4) failure.
+fn consume_header(
+    input: &[u8],
+    cursor: &mut usize,
+    out: &mut Vec<u8>,
+    mid: &mut Vec<u64>,
+    kind: HeaderKind,
+) -> Result<(), DiagnosticDraft> {
+    if kind == HeaderKind::Quoted {
+        return consume_quoted(input, cursor, out, mid, b'"');
+    }
+    emit_byte(input, cursor, out, mid);
+    while *cursor < input.len() {
+        let byte = input[*cursor];
+        if byte == b'\n' {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "unterminated header name",
+            ));
+        }
+        emit_byte(input, cursor, out, mid);
+        if byte == b'>' {
+            return Ok(());
+        }
+    }
+    Err(DiagnosticDraft::error(
+        DiagnosticCode::new(DiagGroup::Task, 4),
+        "unterminated header name",
+    ))
 }

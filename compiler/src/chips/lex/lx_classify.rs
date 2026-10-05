@@ -248,6 +248,14 @@ impl LxClassifyChip {
                     }
                 }
                 PpTokenKind::Punctuator => TokenKind::Punctuator,
+                PpTokenKind::StringLiteral | PpTokenKind::CharLiteral | PpTokenKind::HeaderName => {
+                    return vec![fail(
+                        input.task,
+                        DiagnosticDraft::unsupported(
+                            "string/character/header-name pp-token is outside the M1 exercised subset",
+                        ),
+                    )];
+                }
                 PpTokenKind::Eof => TokenKind::Eof,
             };
             let name = match projected.kind {

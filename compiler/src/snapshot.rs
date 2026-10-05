@@ -1479,6 +1479,9 @@ pub fn pp_token_kind_name(kind: PpTokenKind) -> &'static str {
         PpTokenKind::Identifier => "identifier",
         PpTokenKind::PpNumber => "pp_number",
         PpTokenKind::Punctuator => "punctuator",
+        PpTokenKind::StringLiteral => "string_literal",
+        PpTokenKind::CharLiteral => "char_literal",
+        PpTokenKind::HeaderName => "header_name",
         PpTokenKind::Eof => "eof",
     }
 }
@@ -1488,6 +1491,9 @@ fn parse_pp_token_kind(name: &str) -> Option<PpTokenKind> {
         "identifier" => Some(PpTokenKind::Identifier),
         "pp_number" => Some(PpTokenKind::PpNumber),
         "punctuator" => Some(PpTokenKind::Punctuator),
+        "string_literal" => Some(PpTokenKind::StringLiteral),
+        "char_literal" => Some(PpTokenKind::CharLiteral),
+        "header_name" => Some(PpTokenKind::HeaderName),
         "eof" => Some(PpTokenKind::Eof),
         _ => None,
     }

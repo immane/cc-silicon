@@ -241,9 +241,14 @@ fn pp_comment_m1_scope_rules() {
     assert_eq!(bytes, b"a\n b");
     // Unterminated block comment fails loudly (M1-NEG-01 carrier shape).
     assert!(replace_comments(b"a /* x").is_err());
-    // Literals are explicit unsupported (protection deferred).
-    assert!(replace_comments(b"\"https://x\"").is_err());
-    assert!(replace_comments(b"'/'").is_err());
+    // `/20` supersede: literals pass through byte-identical (protection
+    // implemented); detailed literal/header cases live in `c20_ppscan`.
+    let (bytes, mid) = replace_comments(b"\"https://x\"").unwrap();
+    assert_eq!(bytes, b"\"https://x\"");
+    assert_eq!(mid, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    let (bytes, mid) = replace_comments(b"'/'").unwrap();
+    assert_eq!(bytes, b"'/'");
+    assert_eq!(mid, vec![0, 1, 2, 3]);
 }
 
 #[test]
@@ -274,9 +279,20 @@ fn pp_scan_m1_table_and_munch() {
     assert_eq!(tokens[0].kind, PpTokenKind::PpNumber);
     let tokens = scan(b"+ +").unwrap();
     assert_eq!(tokens.len(), 2);
-    // Non-M1 inputs are explicit unsupported, never mis-tokenized.
-    assert!(scan(b"a*b").is_err());
-    assert!(scan(b"\"s\"").is_err());
+    // `/20` supersede: the full table scans `*` and string literals
+    // (detailed maximal-munch cases live in `c20_ppscan`).
+    let tokens = scan(b"a*b").unwrap();
+    assert_eq!(
+        tokens.iter().map(|token| token.kind).collect::<Vec<_>>(),
+        vec![
+            PpTokenKind::Identifier,
+            PpTokenKind::Punctuator,
+            PpTokenKind::Identifier
+        ]
+    );
+    let tokens = scan(b"\"s\"").unwrap();
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].kind, PpTokenKind::StringLiteral);
 }
 
 /// Install the full M1 PP chain (normalize enfranchised into the PP

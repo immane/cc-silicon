@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/19";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/20";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "76155ee8b66bd3a8e60c3e812a25301abcfd4ffffbf6e0dfbda3be25f6b476a4";
+pub const CONTRACT_HASH: &str = "e56005645e5051ba5ab0e422ee245f7f4566a7b7289d18ae8f25789404f97c8b";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -171,6 +171,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf01.refs-resolve",
     "vf01.span-bounds",
     "vf01.reserved-unused-m1",
+    "pp.comment-literal-aware",
+    "pp.scan-full-punctuators",
+    "pp.scan-literal-header-tokens",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -292,7 +295,15 @@ pub const REQUIRED_KIND_NAMES: &[&str] = &["integer_constant_expression"];
 pub const CONST_LEGALITY_NAMES: &[&str] = &["legal", "not_constant_expression", "unsupported"];
 
 /// Frozen `/11` `PpTokenKind` names, in declaration order.
-pub const PPTOKEN_KIND_NAMES: &[&str] = &["identifier", "pp_number", "punctuator", "eof"];
+pub const PPTOKEN_KIND_NAMES: &[&str] = &[
+    "identifier",
+    "pp_number",
+    "punctuator",
+    "string_literal",
+    "char_literal",
+    "header_name",
+    "eof",
+];
 
 /// Frozen `/11` `TokenKind` names, in declaration order.
 pub const TOKEN_KIND_NAMES: &[&str] = &["keyword", "identifier", "punctuator", "integer", "eof"];

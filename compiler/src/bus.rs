@@ -178,15 +178,24 @@ pub struct PpTokenRecord {
     pub spelling: Vec<u8>,
 }
 
-/// Preprocessing-token kinds (`/11` M1-closed produced subset in doc).
+/// Preprocessing-token kinds (`/11` M1 closed set extended in `/20`
+/// with literal and header-name kinds for the full-token scan; LX decode
+/// of the new kinds stays deferred).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PpTokenKind {
     /// `int`, `main`, `void`, `return` at PP level (keywords not yet distinguished).
     Identifier,
     /// `2`, `3` (M1 decimal only; other numeric forms are explicit unsupported).
     PpNumber,
-    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    /// `(`, `)`, `{`, `+`, `;`, `}` (M1 subset; the full C11 table lives
+    /// chip-local in the `/20` scanner and produces the same kind).
     Punctuator,
+    /// `"..."` with escapes preserved (`/20`; LX decode deferred).
+    StringLiteral,
+    /// `'...'` with escapes preserved (`/20`; LX decode deferred).
+    CharLiteral,
+    /// `<...>` or `"..."` after `#include` (`/20`; PP17 consumes it).
+    HeaderName,
     /// End of input (zero-width span at the source end).
     Eof,
 }
