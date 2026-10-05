@@ -9,7 +9,7 @@
 // duplicates are idempotent and deterministic.
 // ============================================================================
 
-use super::{fail, protocol_fault, Worker};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{PpTokenId, RecordRef, TaskId};
 use crate::manifest::{

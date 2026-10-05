@@ -12,7 +12,7 @@
 // no scope edge.
 // ============================================================================
 
-use super::{fail, protocol_fault, Worker};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{NodeKind, NodeRecord, TokenKind};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, NameId, RecordRef, TaskId, TokenId};

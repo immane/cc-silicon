@@ -11,7 +11,7 @@
 // promotions stay deferred per rev 46 / OB-51).
 // ============================================================================
 
-use super::{fail, protocol_fault, Worker};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{IntRank, TypeKind};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{RecordRef, TaskId, TypeId};

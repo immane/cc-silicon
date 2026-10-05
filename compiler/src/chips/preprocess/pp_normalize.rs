@@ -13,7 +13,7 @@
 // the narrow projection.
 // ============================================================================
 
-use super::{fail, protocol_fault, Worker};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{ArtifactKind, ArtifactRecord};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{ArtifactId, RecordRef, SourceId, TaskId};

@@ -10,7 +10,7 @@
 // shapes are explicit `Unsupported`.
 // ============================================================================
 
-use super::{fail, protocol_fault, Worker};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{IntRank, TypeKind, TypeRecord};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{RecordRef, TaskId, TypeId};

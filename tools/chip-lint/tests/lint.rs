@@ -151,10 +151,12 @@ fn parse_failure_is_a_lint_failure() {
 }
 
 #[test]
-fn accepts_deterministic_btree_and_sibling_reexport() {
+fn accepts_deterministic_btree_and_self_rooted_reexport() {
     assert!(messages("use std::collections::BTreeMap;").is_empty());
     assert!(messages("use std::collections::BTreeSet;").is_empty());
-    assert!(messages("pub use fold::{FoldChip};").is_empty());
+    assert!(messages("pub use self::fold::{FoldChip};").is_empty());
+    // A bare module root stays rejected so cross-chip imports are visible.
+    assert!(!messages("pub use fold::{FoldChip};").is_empty());
 }
 
 #[test]

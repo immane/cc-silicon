@@ -180,28 +180,14 @@ fn lint_file(file: &str, syntax: &File) -> Vec<Diagnostic> {
             Item::Use(item_use) => {
                 let path = item_use.tree.to_token_stream().to_string().replace(' ', "");
                 let root = path.split(&[':', '{'][..]).next().unwrap_or_default();
-                // `/9` PCR-10: deterministic BTreeMap/BTreeSet and sibling
-                // chip-module re-exports are mechanical, not Host I/O.
+                // Deterministic `BTreeMap`/`BTreeSet` imports are mechanical,
+                // not Host I/O. Sibling re-exports must use `self::`, `super::`,
+                // or `crate::` roots (group `mod.rs` files do); a bare module
+                // root is rejected so cross-chip imports stay visible.
                 let allowed_std_collections = path.starts_with("std::collections::")
                     && (path.contains("BTreeMap") || path.contains("BTreeSet"));
-                let allowed_root = matches!(
-                    root,
-                    "crate"
-                        | "self"
-                        | "super"
-                        | "core"
-                        | "alloc"
-                        | "fold"
-                        | "pp_normalize"
-                        | "lx_intern"
-                        | "lx_classify"
-                        | "lx_decode"
-                        | "pa_tu"
-                        | "ty_conv"
-                        | "ty_scope"
-                        | "ty_symbol"
-                        | "ty_types"
-                ) || allowed_std_collections;
+                let allowed_root = matches!(root, "crate" | "self" | "super" | "core" | "alloc")
+                    || allowed_std_collections;
                 if is_denied_path(&path) || !allowed_root {
                     diagnostics.push(diagnostic(
                         file,
