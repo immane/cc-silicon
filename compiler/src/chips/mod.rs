@@ -73,7 +73,9 @@ pub use self::types::{
     canonical_scan, is_m1_int, m1_int, project_ty_conv_input, project_ty_type_input, TyConvChip,
     TyConvInput, TyTypeChip, TyTypeInput,
 };
-pub use self::verify::{project_vf06_input, Vf06Chip, Vf06Input};
+pub use self::verify::{
+    project_vf06_input, project_vf12_input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input,
+};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};

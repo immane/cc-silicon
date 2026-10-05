@@ -288,6 +288,12 @@ impl TaskKind {
     /// completes `Records`).
     pub const PREPROCESS_SCAN: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
+    /// exactly one committed `Function`; walks the M1 covered subset
+    /// without executing target code; completes `Record` of the modeled
+    /// `Const`; non-covered shapes fail, never pass).
+    pub const VERIFICATION_IR_INTERPRET: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 17);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -406,6 +412,22 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/17`) VF12-slice registry: the PP slice plus the frozen
+    /// symbolic-interpret kind (all `Frozen`; `VERIFICATION` owners start
+    /// new codes at local 18).
+    pub fn vf12_slice() -> Self {
+        let mut registry = Self::pp_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_IR_INTERPRET,
+            "verification.ir_interpret",
+        )];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

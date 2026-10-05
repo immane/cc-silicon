@@ -1,18 +1,20 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/16`)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/17`)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after the Wave 2 slice 7 (`/16`) freeze. The frozen contract
+> 2026-10-06 after the Wave 2 slice 8 (`/17`) freeze. The frozen contract
 > (`compiler/contracts/CONTRACT_VERSION`) plus `docs/tasks/T01_COMPILER_CONTRACT.md`
 > §7.1 remain authoritative; this file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/16`, hash
-  `04d8e4b404505e1343245ae1db86361866c2dbd1ddffc1cce8e1cd7dc40d9f10`.
+- Frozen artifact: `t01-c01-c06/17`, hash
+  `c519c5b4cf2b2963358ec9c300d25a138e28005f88b9762c608c6692a60b2043`.
 - Branch: `initial-compiler-development` (PR #13 targets `main`).
-- The M1 C frontend is **closed end-to-end**: seeded source bytes flow
-  PP01→PP02→PP03→PP04→LX(intern→classify→decode)→PA→TY→SE→fold→IR with no
-  hand-built values (`M1-CL-05` handoff complete at `/15`).
+- The M1 C frontend is **closed end-to-end and symbolically modeled**:
+  seeded source bytes flow
+  PP01→PP02→PP03→PP04→LX(intern→classify→decode)→PA→TY→SE→fold→IR→VF12
+  with no hand-built values (`M1-CL-05` handoff complete at `/15`, meaning
+  modeled at `/17`).
 - Rule: **one serial slice at a time** — each slice freezes
   schemas/kinds/stages/allowlist first, then implements. Never dispatch a
   wave before its freeze lands (rework is guaranteed otherwise).
@@ -31,6 +33,7 @@
 | `/14` | SE checks + VF06 | `semantic/{se_literal,se_binary,se_return}.rs`, `verify/vf_invariant.rs` | `c14_se` 9 |
 | `/15` | IR function lowering | `ir_lower/ir_function.rs` | `c15_ir` 7 |
 | `/16` | PP splice/comment/scan | `preprocess/{pp_splice,pp_comment,pp_scan}.rs` | `c16_pp` 8 |
+| `/17` | VF12 symbolic interpret | `verify/vf_interpret.rs` | `c17_vf12` 6 |
 
 ## 3. Patterns every new slice must follow
 
@@ -90,7 +93,7 @@ git diff --check
 ## 6. Open threads (do not treat as settled)
 
 - T02 control subset + H04 candidate driver (evidence CLI) — biggest gap.
-- T13 VF subset on real records (VF01–06/VF12–14); VF06-M1 exists.
+- T13 VF remainder on real records (VF01–05/VF13–14; VF06-M1 and VF12-M1 exist).
 - File-Enter edge auto-firing; `TokenRecord.literal` forward link;
   `ConversionPlan`; query-point lookup ordering; FunctionEnd/IR28 hook
   (OB-26); PP diagnostic taxonomy (F4); full scan-state machine;
