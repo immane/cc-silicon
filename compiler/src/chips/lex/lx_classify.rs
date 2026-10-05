@@ -11,8 +11,8 @@
 // T04 writes no spans.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{PpTokenKind, TokenKind};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NameId, PpTokenId, RecordRef, SpanId, TaskId, TokenId};
 use crate::manifest::{

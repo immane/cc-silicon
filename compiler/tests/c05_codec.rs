@@ -693,7 +693,7 @@ fn snapshot_covers_new_reserved_arenas_in_flight_and_report() {
         .literals
         .alloc(fixture_literal(2, b"2"), &limits)
         .unwrap();
-    touched.arenas.sem.alloc(&limits).unwrap();
+    touched.arenas.inits.alloc(&limits).unwrap();
     touched.arenas.layouts.alloc(&limits).unwrap();
     touched.tasks.in_flight.push(TaskId::from_index(3));
     touched

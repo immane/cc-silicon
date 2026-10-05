@@ -39,17 +39,25 @@ pub mod constant_layout_init;
 pub mod lex;
 pub mod parse;
 pub mod preprocess;
+pub mod semantic;
 pub mod symbols;
 pub mod types;
+pub mod verify;
 
-pub use self::constant_layout_init::{const_bits_required, project_fold_input, FoldChip, FoldInput};
+pub use self::constant_layout_init::{
+    const_bits_required, project_fold_input, FoldChip, FoldInput,
+};
 pub use self::lex::{
     decimal_magnitude, is_keyword, project_lx_classify_input, project_lx_decode_input,
-    project_lx_intern_input, C11_KEYWORDS, LxClassifyChip, LxClassifyInput, LxDecodeInput,
-    LxDecodeLiteralChip, LxInternChip, LxInternInput,
+    project_lx_intern_input, LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip,
+    LxInternChip, LxInternInput, C11_KEYWORDS,
 };
 pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
 pub use self::preprocess::{normalize, project_pp_input, PpInput, PpNormalizeChip};
+pub use self::semantic::{
+    project_se_binary_input, project_se_literal_input, project_se_return_input, SeBinChip,
+    SeBinaryInput, SeLitChip, SeLiteralInput, SeRetChip, SeReturnInput,
+};
 pub use self::symbols::{
     in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input,
     project_ty_scope_enter_input, project_ty_scope_exit_input, TyScopeChip, TyScopeEnterInput,
@@ -59,6 +67,7 @@ pub use self::types::{
     canonical_scan, is_m1_int, m1_int, project_ty_conv_input, project_ty_type_input, TyConvChip,
     TyConvInput, TyTypeChip, TyTypeInput,
 };
+pub use self::verify::{project_vf06_input, Vf06Chip, Vf06Input};
 
 use crate::bus::{CompilerBus, TaggedProposal};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};

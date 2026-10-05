@@ -14,8 +14,8 @@
 // declarator, so declaration order is the commit order.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{Linkage, NodeKind, StorageDuration, SymbolKind, TypeKind};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NameId, NodeId, RecordRef, ScopeId, SymbolId, TaskId, TypeId};
 use crate::manifest::{

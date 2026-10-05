@@ -247,6 +247,26 @@ impl TaskKind {
     /// completes `Record`).
     pub const SYMBOL_RETURN_CONVERT: Self =
         Self(((TaskGroup::SYMBOL_TYPE.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 2 (`/14`) SE-slice kind: literal-expression check (payload:
+    /// exactly one `IntLiteral` node; appends one `SemRecord`; completes
+    /// `Record`).
+    pub const SEMANTIC_LITERAL_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 2 (`/14`) SE-slice kind: binary-expression check (payload:
+    /// exactly one `BinaryAdd` node; appends one `SemRecord`, enqueues one
+    /// `const_fold` child with forwarded refs, and awaits it; on resume
+    /// completes `Record` of the committed `SemRecord`).
+    pub const SEMANTIC_BINARY_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/14`) SE-slice kind: return-statement check (payload:
+    /// exactly one `Return` node; appends one `SemRecord`; completes
+    /// `Record`).
+    pub const SEMANTIC_RETURN_STMT: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
+    /// exactly one TU node; checks the M1 checked set; completes `Ack`).
+    pub const VERIFICATION_TYPED_INVARIANT: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 16);
 
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
@@ -366,6 +386,27 @@ impl TaskKindRegistry {
             (TaskKind::CONTROL_IMPORT_SOURCE, "control.import_source"),
         ];
         for &(kind, name) in foundation {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/14`) SE-slice registry: the TY slice plus the three
+    /// frozen SE kinds and the VF06 verifier kind (all `Frozen`;
+    /// `SEMANTIC`/`VERIFICATION` owners start new codes at local 19/17).
+    pub fn se_slice() -> Self {
+        let mut registry = Self::ty_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::SEMANTIC_LITERAL_EXPR, "semantic.literal_expr"),
+            (TaskKind::SEMANTIC_BINARY_EXPR, "semantic.binary_expr"),
+            (TaskKind::SEMANTIC_RETURN_STMT, "semantic.return_stmt"),
+            (
+                TaskKind::VERIFICATION_TYPED_INVARIANT,
+                "verification.typed_invariant",
+            ),
+        ];
+        for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
         }

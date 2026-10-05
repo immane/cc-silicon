@@ -387,6 +387,43 @@ pub struct ScopeEventRecord {
     pub at: crate::ids::NodeId,
 }
 
+/// Value category (`/14` SE-slice freeze; M1 produces `NonLvalue` only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueCategory {
+    /// An lvalue.
+    Lvalue,
+    /// A non-lvalue (M1 integer constants and `2+3`).
+    NonLvalue,
+    /// A function designator.
+    FunctionDesignator,
+    /// A void expression.
+    Void,
+}
+
+/// Effect mask (`/14`; M1 allows only `0` — a nonzero mask is a typed chip
+/// failure, never a pass).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EffectMask(pub u32);
+
+/// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per
+/// checked `NodeId`).
+///
+/// M1 checks `{IntLiteral, BinaryAdd, Return}` with `ty = int`,
+/// `category = NonLvalue`, `effects = 0`. There is no `conversions` field
+/// at this slice: M1 identity is the absence of a plan (TC-02 answered),
+/// and the shared plan type freezes later with non-identity conversions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemRecord {
+    /// Checked node.
+    pub node: NodeId,
+    /// Committed canonical type.
+    pub ty: TypeId,
+    /// Value category.
+    pub category: ValueCategory,
+    /// Effects.
+    pub effects: EffectMask,
+}
+
 /// A T05-owned AST node (`/12` PA-slice freeze).
 ///
 /// M1 produces only the nine-node `int main(void){return 2+3;}` tree; all
@@ -501,11 +538,9 @@ pub struct Arenas {
     pub symbols: TypedArena<SymbolId, SymbolRecord>,
     /// Canonical types (`/13` slice freeze: typed on freeze).
     pub types: TypedArena<TypeId, TypeRecord>,
-    /// Semantic facts, one per checked node (schema owned by T07).
-    ///
-    /// A [`ReservedArena`] (stable IDs only): the T07 owner replaces this
-    /// with a real typed arena when it freezes the `SemRecord` schema.
-    pub sem: ReservedArena<SemId>,
+    /// Semantic facts, one per checked node (`/14` slice freeze: typed on
+    /// freeze).
+    pub sem: TypedArena<SemId, SemRecord>,
     /// AST nodes (`/12` PA-slice freeze: typed on freeze).
     pub nodes: TypedArena<NodeId, NodeRecord>,
     /// T04-owned decoded literals (Gate 1 `/7` typed schema; rev-45 exact

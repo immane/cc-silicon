@@ -12,8 +12,8 @@
 // no scope edge.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{NodeKind, NodeRecord, TokenKind};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, NameId, RecordRef, TaskId, TokenId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PA_TU_CHIP};

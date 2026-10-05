@@ -15,8 +15,8 @@
 // adapter below owns the narrow projection.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{ConstRecord, LiteralRecord};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, NodeId, RecordRef, TaskId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, G1_FOLD_CHIP};

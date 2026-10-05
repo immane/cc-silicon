@@ -11,8 +11,8 @@
 // the C-token relation is the output-side publish-time back-link.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{PpTokenKind, TokenKind};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, RecordRef, TaskId, TokenId};
 use crate::manifest::{

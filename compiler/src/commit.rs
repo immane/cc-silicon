@@ -603,6 +603,7 @@ pub fn commit_proposals(
     let mut new_symbols: u32 = 0;
     let mut new_scopes: u32 = 0;
     let mut new_scope_events: u32 = 0;
+    let mut new_sems: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -622,6 +623,7 @@ pub fn commit_proposals(
     let types_base = bus.arenas.types.allocated();
     let symbols_base = bus.arenas.symbols.allocated();
     let scopes_base = bus.arenas.scopes.allocated();
+    let sem_base = bus.arenas.sem.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -633,6 +635,7 @@ pub fn commit_proposals(
         let mut next_type = types_base;
         let mut next_symbol = symbols_base;
         let mut next_scope = scopes_base;
+        let mut next_sem = sem_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -700,6 +703,10 @@ pub fn commit_proposals(
                                 next_scope,
                             ));
                             next_scope = next_scope.saturating_add(1);
+                        }
+                        G1DraftBody::Sem(_) => {
+                            predicted.insert((proposals[index].task, RecordFamily::Sem, next_sem));
+                            next_sem = next_sem.saturating_add(1);
                         }
                         G1DraftBody::ScopeEvent { .. } => {
                             // Scope events are observed via arena scan, never
@@ -829,6 +836,9 @@ pub fn commit_proposals(
                             }
                             RecordRef::Scope(id) if id.index() >= scopes_base => {
                                 Some((tagged.task, RecordFamily::Scope, id.index()))
+                            }
+                            RecordRef::Sem(id) if id.index() >= sem_base => {
+                                Some((tagged.task, RecordFamily::Sem, id.index()))
                             }
                             RecordRef::ScopeEvent(id) => {
                                 // Scope events are never completion carriers:
@@ -967,6 +977,9 @@ pub fn commit_proposals(
                         G1DraftBody::ScopeEvent(_) => {
                             new_scope_events = new_scope_events.saturating_add(1);
                         }
+                        G1DraftBody::Sem(_) => {
+                            new_sems = new_sems.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -1031,6 +1044,7 @@ pub fn commit_proposals(
                         G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
                         G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
                         G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
+                        G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1252,6 +1266,7 @@ pub fn commit_proposals(
             new_symbols,
             new_scopes,
             new_scope_events,
+            new_sems,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1404,6 +1419,15 @@ pub fn commit_proposals(
                         G1DraftBody::ScopeEvent(record) => {
                             let id = bus.arenas.scope_events.push(record.clone());
                             report.appended.push((*task, RecordRef::ScopeEvent(id)));
+                        }
+                        G1DraftBody::Sem(record) => {
+                            let id = bus.arenas.sem.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Sem,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Sem(id)));
                         }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
@@ -1581,6 +1605,7 @@ fn validate_append_authorization(
             G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
             G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
             G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
+            G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1710,6 +1735,8 @@ struct CapacityPlan {
     new_scopes: u32,
     /// New scope-event records (Wave 2 `/13`).
     new_scope_events: u32,
+    /// New semantic-fact records (Wave 2 `/14` SE-slice materialization).
+    new_sems: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1724,7 +1751,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 13] = [
+    let checks: [(u32, u32, &'static str); 14] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1758,6 +1785,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             plan.new_scope_events,
             "scope_events",
         ),
+        (bus.arenas.sem.allocated(), plan.new_sems, "sem"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -1794,7 +1822,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_types
         + plan.new_symbols
         + plan.new_scopes
-        + plan.new_scope_events) as u64
+        + plan.new_scope_events
+        + plan.new_sems) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

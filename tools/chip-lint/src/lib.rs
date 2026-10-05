@@ -291,11 +291,12 @@ struct ChipBodyVisitor<'a> {
 
 impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     fn visit_expr_macro(&mut self, node: &'ast ExprMacro) {
-        // `/9` PCR-10: `vec!`/`format!` are transparent deterministic
-        // constructors, not opaque DSLs. All other macros stay opaque.
+        // Transparent deterministic macros (`vec!`/`format!` construct
+        // values; `matches!` is a pure pattern test), not opaque DSLs. All
+        // other macros stay opaque.
         if let Some(segment) = node.mac.path.segments.last() {
             let name = segment.ident.to_string();
-            if name == "vec" || name == "format" {
+            if name == "vec" || name == "format" || name == "matches" {
                 visit::visit_expr_macro(self, node);
                 return;
             }
@@ -385,7 +386,7 @@ impl<'ast> Visit<'ast> for ChipBodyVisitor<'_> {
     fn visit_item_macro(&mut self, node: &'ast syn::ItemMacro) {
         if let Some(segment) = node.mac.path.segments.last() {
             let name = segment.ident.to_string();
-            if name == "vec" || name == "format" {
+            if name == "vec" || name == "format" || name == "matches" {
                 visit::visit_item_macro(self, node);
                 return;
             }

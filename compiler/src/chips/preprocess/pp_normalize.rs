@@ -13,8 +13,8 @@
 // the narrow projection.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{ArtifactKind, ArtifactRecord};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{ArtifactId, RecordRef, SourceId, TaskId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PP01_CHIP};

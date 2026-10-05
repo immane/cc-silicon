@@ -11,8 +11,8 @@
 // promotions stay deferred per rev 46 / OB-51).
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{IntRank, TypeKind};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{RecordRef, TaskId, TypeId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, TY_CONV_CHIP};

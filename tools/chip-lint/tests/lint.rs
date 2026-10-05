@@ -160,6 +160,19 @@ fn accepts_deterministic_btree_and_self_rooted_reexport() {
 }
 
 #[test]
+fn accepts_transparent_matches_macro() {
+    let source = r#"
+        struct MatchChip;
+        impl MatchChip {
+            fn compute(&self, kind: u32) -> bool {
+                matches!(kind, 1 | 2 | 3)
+            }
+        }
+    "#;
+    assert!(messages(source).is_empty());
+}
+
+#[test]
 fn rejects_worker_compute_host_api() {
     let source = r#"
         struct FoldChip;

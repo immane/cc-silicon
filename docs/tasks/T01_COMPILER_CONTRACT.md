@@ -296,6 +296,21 @@ deferred. New hashed rules `ty.canonical-int-reuse-scan`,
 (`0de77f06…5fa6d`); acceptance `compiler/tests/c13_ty.rs` (8 tests); item
 list in [TY_SLICE.md](TY_SLICE.md).
 
+`/14` amendment — Wave 2 slice 5, SE semantic-check + VF06 (R1 auto-bump;
+`/13` preserved as history): `SemRecord` (4 fields, no `conversions` field
+at slice scope) + `ValueCategory` (4 names) + `EffectMask(u32)`; M1 identity
+is plan absence; binary two-phase handoff through a real `const_fold`
+child; `semantic.literal_expr(18)` / `binary_expr(19)` / `return_stmt(20)`
+plus `verification.typed_invariant(16)`, all stage 4, chips 12–15, three
+allowlist rows; `Sem` append materialization; `Semantic` diagnostic group
+(conflict = 1, undeclared = 2); snapshot bodies + `VALUE_CATEGORY_NAMES` /
+`SEM_RECORD_FIELDS` in the hash. New hashed rules
+`se.literal-checked-nonlvalue`, `se.binary-forwards-identical-fold`,
+`se.return-identity-no-plan`, `vf06.checked-set-complete`,
+`commit.sem-materialized`. New artifact `t01-c01-c06/14`
+(`881f9a3f…19d44`); acceptance `compiler/tests/c14_se.rs` (9 tests); item
+list in [SE_SLICE.md](SE_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

@@ -12,8 +12,8 @@
 // `(parent, kind)`.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{NodeKind, ScopeEventKind, ScopeKind, ScopeRecord};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NodeId, RecordRef, ScopeId, TaskId};
 use crate::manifest::{

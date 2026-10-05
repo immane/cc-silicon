@@ -17,10 +17,10 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, CharKind, CompilerBus, ConstRecord, IntRank, Linkage,
+    ArtifactKind, ArtifactRecord, CharKind, CompilerBus, ConstRecord, EffectMask, IntRank, Linkage,
     LiteralRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
-    ScopeEventRecord, ScopeKind, ScopeRecord, SpanRecord, StorageDuration, SymbolKind,
-    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord,
+    ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind,
+    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
@@ -775,16 +775,15 @@ impl Snapshot {
             w.u32(id.index());
             w.raw(&encode_literal_record(literal));
         }
-        push_reserved(
-            &mut w,
-            bus.arenas.sem.allocated(),
-            bus.arenas.sem.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.scope_events.allocated(),
-            bus.arenas.scope_events.live_ids(),
-        );
+        // Wave 2 (`/14`) typed semantic facts: allocated count plus
+        // per-record bodies in ascending ID order. (The stale duplicate
+        // reserved encoding of `scope_events` that `/13` left behind is
+        // removed here: bodies are encoded once, above.)
+        w.u64(bus.arenas.sem.allocated() as u64);
+        for (id, fact) in bus.arenas.sem.iter() {
+            w.u32(id.index());
+            w.raw(&encode_sem(fact));
+        }
 
         // In-flight dispatch set (ephemeral per-tick batch; empty at latch).
         w.u64(bus.tasks.in_flight.len() as u64);
@@ -2042,6 +2041,58 @@ pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecord, CodecError> 
     let at = NodeId::from_index(r.u32()?);
     r.finish()?;
     Ok(ScopeEventRecord { scope, kind, at })
+}
+
+/// Name of a [`ValueCategory`], in declaration order.
+pub fn value_category_name(category: ValueCategory) -> &'static str {
+    match category {
+        ValueCategory::Lvalue => "lvalue",
+        ValueCategory::NonLvalue => "non_lvalue",
+        ValueCategory::FunctionDesignator => "function_designator",
+        ValueCategory::Void => "void",
+    }
+}
+
+fn parse_value_category(name: &str) -> Option<ValueCategory> {
+    match name {
+        "lvalue" => Some(ValueCategory::Lvalue),
+        "non_lvalue" => Some(ValueCategory::NonLvalue),
+        "function_designator" => Some(ValueCategory::FunctionDesignator),
+        "void" => Some(ValueCategory::Void),
+        _ => None,
+    }
+}
+
+/// Canonical encoding of one committed [`SemRecord`].
+///
+/// Byte layout (fixed field order): node `u32` LE | ty `u32` LE |
+/// category-name str | effects `u32` LE.
+pub fn encode_sem(record: &SemRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.node.index());
+    w.u32(record.ty.index());
+    w.str(value_category_name(record.category));
+    w.u32(record.effects.0);
+    w.finish()
+}
+
+/// Decode one committed [`SemRecord`]; consumes the whole input.
+pub fn decode_sem(bytes: &[u8]) -> Result<SemRecord, CodecError> {
+    use crate::ids::{NodeId, TypeId};
+    let mut r = Reader::new(bytes);
+    let node = NodeId::from_index(r.u32()?);
+    let ty = TypeId::from_index(r.u32()?);
+    let name = r.string()?;
+    let category =
+        parse_value_category(&name).ok_or(CodecError::Unsupported("unknown value category"))?;
+    let effects = EffectMask(r.u32()?);
+    r.finish()?;
+    Ok(SemRecord {
+        node,
+        ty,
+        category,
+        effects,
+    })
 }
 
 /// Canonical encoding of a `/10` artifact: kind name, optional source index,

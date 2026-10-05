@@ -10,8 +10,8 @@
 // shapes are explicit `Unsupported`.
 // ============================================================================
 
-use crate::chips::{fail, protocol_fault, Worker};
 use crate::bus::{IntRank, TypeKind, TypeRecord};
+use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{RecordRef, TaskId, TypeId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, TY_TYPE_CHIP};

@@ -16,7 +16,7 @@
 
 use crate::bus::{
     ArtifactRecord, ConstRecord, LiteralRecord, NodeRecord, ScopeEventRecord, ScopeRecord,
-    SymbolRecord, TokenRecord, TypeRecord,
+    SemRecord, SymbolRecord, TokenRecord, TypeRecord,
 };
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
@@ -38,7 +38,8 @@ pub struct RecordDraft {
 /// materialization path accepts (`Literal`/`Const` frozen at Gate 1 `/7`;
 /// `Artifact` added at Wave 2 `/10` for the PP01 slice; `Token`/`Name`
 /// added at `/11` for the LX slice; `Node` added at `/12` for the PA slice;
-/// `Type`/`Symbol`/`Scope`/`ScopeEvent` added at `/13` for the TY slice).
+/// `Type`/`Symbol`/`Scope`/`ScopeEvent` added at `/13` for the TY slice;
+/// `Sem` added at `/14` for the SE slice).
 ///
 /// Each body is the record-to-be: allocation assigns the stable ID, so the
 /// draft body and the committed record share their fields exactly. Bodies
@@ -71,6 +72,8 @@ pub enum G1DraftBody {
     Scope(ScopeRecord),
     /// A scope event to append to the `scope_events` arena (`/13`).
     ScopeEvent(ScopeEventRecord),
+    /// A checked-node fact to append to the `sem` arena (`/14` SE slice).
+    Sem(SemRecord),
 }
 
 impl G1DraftBody {
@@ -87,6 +90,7 @@ impl G1DraftBody {
             Self::Symbol(_) => RecordFamily::Symbol,
             Self::Scope(_) => RecordFamily::Scope,
             Self::ScopeEvent(_) => RecordFamily::ScopeEvent,
+            Self::Sem(_) => RecordFamily::Sem,
         }
     }
 }
