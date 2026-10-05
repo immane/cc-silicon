@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/22");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/23");
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn m1_seed_mapping_covers_every_family_exactly_once() {
         order.push(*family);
     }
     // Every mapped family is a distinct member of the frozen inventory
-    // (the 19 append families; non-appended families have no seed row).
+    // (the 20 append families; non-appended families have no seed row).
     let all: BTreeSet<&str> = RecordFamily::ALL.iter().map(|f| f.name()).collect();
     assert_eq!(all.len(), RecordFamily::ALL.len());
     for family in &seen {
@@ -184,8 +184,8 @@ fn m1_seed_mapping_covers_every_family_exactly_once() {
     }
     assert_eq!(
         seen.len(),
-        19,
-        "seed mapping carries the 19 proposal-§8 append families"
+        20,
+        "seed mapping carries the 20 proposal-§8 append families"
     );
     // Proposal wire inventory matches the frozen name list pairwise.
     assert_eq!(M1_PROPOSAL_WIRE_TAGS.len(), PROPOSAL_NAMES.len());
@@ -387,9 +387,9 @@ fn proposal_names_match_wire_tags() {
 fn record_kinds_match_record_ref_wire_tags() {
     use cc_silicon_compiler::ids::{
         ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
-        HostRequestId, InitId, InstructionId, LayoutId, LiteralId, NameId, NodeId, PpTokenId,
-        RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId,
-        TokenId, TypeId, VRegId, ValueId,
+        HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId,
+        PpTokenId, RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId,
+        TaskId, TokenId, TypeId, VRegId, ValueId,
     };
     use cc_silicon_compiler::snapshot::record_ref_tag;
     use cc_silicon_compiler::task::RECORD_KINDS;
@@ -454,6 +454,7 @@ fn record_kinds_match_record_ref_wire_tags() {
             26,
             "scope_events",
         ),
+        (RecordRef::Macro(MacroId::from_index(0)), 27, "macros"),
     ];
     assert_eq!(RECORD_KINDS.len(), refs.len());
     for (reference, tag, kind) in refs.iter() {
@@ -475,7 +476,7 @@ fn record_family_make_round_trips() {
         assert_eq!(record_ref_index(reference), 7);
         assert_eq!(RecordRef::make(family, 7), reference);
     }
-    assert_eq!(RecordFamily::ALL.len(), 27);
+    assert_eq!(RecordFamily::ALL.len(), 28);
     for (i, family) in RecordFamily::ALL.iter().enumerate() {
         assert_eq!(family.ordinal() as usize, i);
     }

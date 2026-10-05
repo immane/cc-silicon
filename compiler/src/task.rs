@@ -307,6 +307,23 @@ impl TaskKind {
     /// active-line refs, active directive lines included).
     pub const PREPROCESS_CONDITIONAL: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-definition task (payload:
+    /// one post-`#` `#define` line's refs; appends one fresh `MacroRecord`
+    /// or fans out one redefine child and awaits it; completes `Record` or
+    /// `Ack`).
+    pub const PREPROCESS_MACRO_DEFINE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-redefinition check task
+    /// (payload: one post-`#` line's refs plus exactly one committed
+    /// incumbent `Macro` ref; benign equivalence completes `Ack`,
+    /// anything else fails naming the difference).
+    pub const PREPROCESS_MACRO_REDEFINE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-undef task (payload: one
+    /// post-`#` `#undef` line's refs; appends one tombstone or
+    /// acknowledges the ignore).
+    pub const PREPROCESS_MACRO_UNDEF: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 25);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -487,6 +504,26 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/23`) PP-macro-slice registry: the PP-conditional
+    /// slice plus the frozen macro kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 26).
+    pub fn pp_macro_slice() -> Self {
+        let mut registry = Self::pp_conditional_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_MACRO_DEFINE, "preprocess.macro_define"),
+            (
+                TaskKind::PREPROCESS_MACRO_REDEFINE,
+                "preprocess.macro_redefine",
+            ),
+            (TaskKind::PREPROCESS_MACRO_UNDEF, "preprocess.macro_undef"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
@@ -1703,4 +1740,5 @@ pub const RECORD_KINDS: &[&str] = &[
     "literals",
     "sem",
     "scope_events",
+    "macros",
 ];

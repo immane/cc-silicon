@@ -6,7 +6,8 @@
 // directive lines (recognized with the `/21` raw walk-back predicate),
 // evaluates `#if`/`#elif` expressions with a chip-local PP-int evaluator
 // (recursive descent plus `defined`, folded from the PP20–PP22 catalog
-// rows — see `PP_CONDITIONAL_SLICE.md` §6 for the promotion criteria),
+// rows — see `PP_CONDITIONAL_SLICE.md` §6 for the promotion criteria;
+// `/23` amendment: `defined` and `#ifdef` read the committed macro table),
 // and completes `Records` of the active-line token refs. Conditional
 // directive lines are fully consumed here (never kept); active
 // non-conditional lines — directives like `#error` included — pass
@@ -17,7 +18,7 @@
 use crate::bus::{PpTokenKind, PpTokenRecord, SpanRecord};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
-use crate::ids::{PpTokenId, RecordRef, SourceId, SpanId, TaskId};
+use crate::ids::{MacroId, PpTokenId, RecordRef, SourceId, SpanId, TaskId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PP19_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
 
@@ -34,6 +35,8 @@ pub struct PpConditionalInput {
     pub spans: Vec<(SpanId, SpanRecord)>,
     /// Source byte strings referenced by those spans, in first-use order.
     pub sources: Vec<(SourceId, Vec<u8>)>,
+    /// Committed macro definitions in ascending-ID order (latest wins).
+    pub macros: Vec<(MacroId, crate::bus::MacroRecord)>,
 }
 
 /// Build the narrow projection for one dispatched task.
@@ -107,12 +110,20 @@ pub fn project_pp_conditional_input(
             }
         }
     }
+    let mut macros: Vec<(MacroId, crate::bus::MacroRecord)> = bus
+        .arenas
+        .macros
+        .iter()
+        .map(|(id, body)| (id, body.clone()))
+        .collect();
+    macros.sort_by_key(|(id, _)| id.index());
     Ok(PpConditionalInput {
         task,
         state: record.state.clone(),
         tokens,
         spans,
         sources,
+        macros,
     })
 }
 
@@ -133,6 +144,7 @@ impl Worker for PpConditionalChip {
                 FieldPath::new(StoreId::Tasks, "active.state"),
                 FieldPath::new(StoreId::Tasks, "active.owner"),
                 FieldPath::new(StoreId::Pp, "tokens"),
+                FieldPath::new(StoreId::Pp, "macros"),
                 FieldPath::new(StoreId::Sources, "bytes"),
                 FieldPath::new(StoreId::Sources, "spans"),
             ],
@@ -293,7 +305,7 @@ fn conditional_step(
     };
     if name == b"if" {
         let tokens = expr_tokens(input, line)?;
-        let value = eval_pp_expr(&tokens)?;
+        let value = eval_pp_expr(&tokens, &input.macros)?;
         let take = *active && value != 0;
         stack.push(CondLevel {
             parent_active: *active,
@@ -311,8 +323,9 @@ fn conditional_step(
         if record.kind != PpTokenKind::Identifier {
             return Err(err("malformed conditional: expected an identifier"));
         }
-        // Frozen `/22`: no macro table exists, so nothing is defined.
-        let defined = false;
+        // `/23` amendment of the `/22` frozen-`false` rule: the committed
+        // table decides (latest record wins; tombstones count as absent).
+        let defined = macro_defined(input, &record.spelling);
         let take = *active && (defined == (name == b"ifdef"));
         stack.push(CondLevel {
             parent_active: *active,
@@ -334,7 +347,7 @@ fn conditional_step(
             return Err(err("`#elif` after `#else`"));
         }
         let tokens = expr_tokens(input, line)?;
-        let value = eval_pp_expr(&tokens)?;
+        let value = eval_pp_expr(&tokens, &input.macros)?;
         let take = !level.taken && level.parent_active && value != 0;
         level.taken = level.taken || take;
         *active = take;
@@ -573,11 +586,46 @@ fn directive_name(input: &PpConditionalInput, line: &RawLine) -> Result<Vec<u8>,
     Ok(record.spelling.clone())
 }
 
+/// True when the committed macro table defines this spelling: the latest
+/// record with equal spelling exists and is not a tombstone.
+fn macro_defined(input: &PpConditionalInput, spelling: &[u8]) -> bool {
+    let mut defined = false;
+    for (_, record) in &input.macros {
+        if record.spelling.as_slice() == spelling {
+            defined = !record.undefined;
+        }
+    }
+    defined
+}
+
+/// Free-function twin for the expression parser (which cannot borrow the
+/// whole input): same latest-wins rule over committed macro bodies.
+fn defined_in(macros: &[(MacroId, crate::bus::MacroRecord)], spelling: &[u8]) -> i128 {
+    let mut defined = false;
+    for (_, record) in macros {
+        if record.spelling.as_slice() == spelling {
+            defined = !record.undefined;
+        }
+    }
+    if defined {
+        1
+    } else {
+        0
+    }
+}
+
 /// Evaluate one `#if`/`#elif` expression (pp-token records, stream order)
 /// to an exact `i128`. Both sides of `&&`/`||`/`?:` always evaluate
 /// (fail-closed); division/modulo by zero, bad shifts, and overflow fail.
-fn eval_pp_expr(tokens: &[PpTokenRecord]) -> Result<i128, DiagnosticDraft> {
-    let mut parser = ExprParser { tokens, pos: 0 };
+fn eval_pp_expr(
+    tokens: &[PpTokenRecord],
+    macros: &[(MacroId, crate::bus::MacroRecord)],
+) -> Result<i128, DiagnosticDraft> {
+    let mut parser = ExprParser {
+        tokens,
+        macros,
+        pos: 0,
+    };
     let value = parser.parse_conditional()?;
     if parser.pos != tokens.len() {
         return Err(DiagnosticDraft::error(
@@ -591,6 +639,7 @@ fn eval_pp_expr(tokens: &[PpTokenRecord]) -> Result<i128, DiagnosticDraft> {
 /// Recursive-descent PP-int parser over pp-token records (frozen §3).
 struct ExprParser<'a> {
     tokens: &'a [PpTokenRecord],
+    macros: &'a [(MacroId, crate::bus::MacroRecord)],
     pos: usize,
 }
 
@@ -836,34 +885,39 @@ impl<'a> ExprParser<'a> {
         }
     }
 
-    /// `defined identifier` or `defined ( identifier )` (frozen-`false`;
-    /// malformed uses fail loudly).
+    /// `defined identifier` or `defined ( identifier )` against the
+    /// committed table (latest record wins; tombstones count as absent);
+    /// malformed uses fail loudly.
     fn parse_defined(&mut self) -> Result<i128, DiagnosticDraft> {
+        // Copy the spelling out first: `peek` borrows `self`, and the
+        // table read must not alias that borrow.
         if self.eat(&[b"("]) {
-            match self.peek() {
+            let spelling = match self.peek() {
                 Some(record)
                     if record.kind == PpTokenKind::Identifier
                         && record.spelling.as_slice() != b"defined" =>
                 {
-                    self.pos += 1;
+                    record.spelling.clone()
                 }
                 _ => return Err(self.err("malformed `defined`: expected an identifier")),
-            }
+            };
+            self.pos += 1;
             if !self.eat(&[b")"]) {
                 return Err(self.err("malformed `defined`: expected `)`"));
             }
-            return Ok(0);
+            return Ok(defined_in(self.macros, &spelling));
         }
-        match self.peek() {
+        let spelling = match self.peek() {
             Some(record)
                 if record.kind == PpTokenKind::Identifier
                     && record.spelling.as_slice() != b"defined" =>
             {
-                self.pos += 1;
-                Ok(0)
+                record.spelling.clone()
             }
-            _ => Err(self.err("malformed `defined`: expected an identifier")),
-        }
+            _ => return Err(self.err("malformed `defined`: expected an identifier")),
+        };
+        self.pos += 1;
+        Ok(defined_in(self.macros, &spelling))
     }
 }
 

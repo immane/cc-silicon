@@ -211,6 +211,20 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/23`) PP-macro field set: the PP slice plus the macro
+    /// append field (`pp.macros` for `MacroRecord`). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model; the macro inventory is pinned by `MACRO_RECORD_FIELDS`.
+    pub fn pp_macro_slice() -> Self {
+        let mut schema = Self::pp_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Pp, "macros")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/16`) PP-slice field set: the IR slice plus the PP
     /// scan append field (`sources.spans` for `SpanRecord`; `pp.tokens` and
     /// `artifacts.fragments` are already declared). Post-seed runtime
@@ -901,6 +915,18 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         "tokens",
         TaskKind::PREPROCESS_SCAN,
     ),
+    (
+        PP06_CHIP,
+        StoreId::Pp,
+        "macros",
+        TaskKind::PREPROCESS_MACRO_DEFINE,
+    ),
+    (
+        PP08_CHIP,
+        StoreId::Pp,
+        "macros",
+        TaskKind::PREPROCESS_MACRO_UNDEF,
+    ),
 ];
 
 /// Gate 1 (`/7`) T08 fold chip reservation.
@@ -976,6 +1002,15 @@ pub const PP26_CHIP: ChipId = ChipId(24);
 /// Wave 2 (`/22`) PP conditional-inclusion chip reservation.
 pub const PP19_CHIP: ChipId = ChipId(25);
 
+/// Wave 2 (`/23`) PP macro-definition chip reservation.
+pub const PP06_CHIP: ChipId = ChipId(26);
+
+/// Wave 2 (`/23`) PP macro-redefinition chip reservation.
+pub const PP07_CHIP: ChipId = ChipId(27);
+
+/// Wave 2 (`/23`) PP macro-undef chip reservation.
+pub const PP08_CHIP: ChipId = ChipId(28);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -998,6 +1033,13 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/23`) PP macro-definition slice.
+pub const fn is_pp_macro_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_DEFINE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_REDEFINE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_UNDEF.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/22`) PP conditional slice.
@@ -1085,6 +1127,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_vf01_slice_kind(kind)
             || is_pp_directive_slice_kind(kind)
             || is_pp_conditional_slice_kind(kind)
+            || is_pp_macro_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1156,6 +1199,9 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::PREPROCESS_DIRECTIVE, 1),
     (TaskKind::PREPROCESS_DIAGNOSTIC, 1),
     (TaskKind::PREPROCESS_CONDITIONAL, 1),
+    (TaskKind::PREPROCESS_MACRO_DEFINE, 1),
+    (TaskKind::PREPROCESS_MACRO_REDEFINE, 1),
+    (TaskKind::PREPROCESS_MACRO_UNDEF, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

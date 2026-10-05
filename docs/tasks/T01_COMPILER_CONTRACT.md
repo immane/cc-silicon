@@ -435,6 +435,24 @@ expression errors. `preprocess.conditional` (local 22), stage 1, layer
 (`b8400fca…6af5dc`); acceptance `compiler/tests/c22_conditional.rs`
 (8 tests); item list in [PP_CONDITIONAL_SLICE.md](PP_CONDITIONAL_SLICE.md).
 
+`/23` amendment — Wave 2 slice 14, PP macro definitions (R1 auto-bump;
+`/22` preserved as history): new `Macro` record family (wire tag 27,
+ordinal 27; byte-spelling names/params so no intern prediction;
+tombstones for `#undef`) with full commit/snapshot/hash pipeline; new
+`PpDefineChip` (chip 26, per-line fan-out by caller, fresh-append or
+PP07-await), `PpRedefineChip` (chip 27, benign-equivalence verifier),
+`PpUndefChip` (chip 28, tombstones + ignore-unknown); PP19 amended to
+read the table for `defined`/`#ifdef` (the `/22` frozen-`false` rule
+superseded as predicted). `preprocess.macro_define` (23) +
+`macro_redefine` (24) + `macro_undef` (25), stage 1, layers 1,
+`pp_macro_slice()` registry (38 entries, cumulative over
+`pp_conditional_slice()`); schema gains `(Pp, "macros")`; allowlist
+rows for the two writers. New hashed rules `pp.macrodef-record`,
+`pp.redefine-benign-rule`, `pp.undef-tombstone`,
+`pp.defined-reads-table`. New artifact `t01-c01-c06/23`
+(`cf8f2194…5b1ca0`); acceptance `compiler/tests/c23_macro.rs`
+(10 tests); item list in [PP_MACRO_DEFINE_SLICE.md](PP_MACRO_DEFINE_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

@@ -91,6 +91,7 @@ define_ids! {
     LiteralId => "literals",
     SemId => "sem",
     ScopeEventId => "scope_events",
+    MacroId => "macros",
 }
 
 /// Identifier of a registered chip (a stateless transition unit).
@@ -171,6 +172,9 @@ pub enum RecordRef {
     Sem(SemId),
     /// A scope lifecycle event record (`Enter`/`Exit`). Frozen wire tag 26.
     ScopeEvent(ScopeEventId),
+    /// A macro definition record (`/23`; includes `#undef` tombstones).
+    /// Frozen wire tag 27.
+    Macro(MacroId),
 }
 
 impl RecordRef {
@@ -204,13 +208,15 @@ impl RecordRef {
             Self::Literal(_) => "literals",
             Self::Sem(_) => "sem",
             Self::ScopeEvent(_) => "scope_events",
+            Self::Macro(_) => "macros",
         }
     }
 
     /// Frozen wire tag of this reference, in declaration order.
     ///
     /// Tags 0-23 are the frozen `/5` inventory and are unchanged. The `/6`
-    /// appends are `Literal` = 24, `Sem` = 25, `ScopeEvent` = 26.
+    /// appends are `Literal` = 24, `Sem` = 25, `ScopeEvent` = 26,
+    /// `Macro` = 27.
     ///
     /// Tag-order note (integrator): the draft proposal text (`§5`) sketched
     /// `Sem` = 24, `ScopeEvent` = 25, `Literal` = 26. The frozen assignment
@@ -246,6 +252,7 @@ impl RecordRef {
             Self::Literal(_) => 24,
             Self::Sem(_) => 25,
             Self::ScopeEvent(_) => 26,
+            Self::Macro(_) => 27,
         }
     }
 
@@ -282,6 +289,7 @@ impl RecordRef {
             Self::Literal(_) => RecordFamily::Literal,
             Self::Sem(_) => RecordFamily::Sem,
             Self::ScopeEvent(_) => RecordFamily::ScopeEvent,
+            Self::Macro(_) => RecordFamily::Macro,
         }
     }
 
@@ -316,12 +324,13 @@ impl RecordRef {
             RecordFamily::Literal => Self::Literal(LiteralId::from_index(index)),
             RecordFamily::Sem => Self::Sem(SemId::from_index(index)),
             RecordFamily::ScopeEvent => Self::ScopeEvent(ScopeEventId::from_index(index)),
+            RecordFamily::Macro => Self::Macro(MacroId::from_index(index)),
         }
     }
 }
 
 /// Closed family tag, total over every [`RecordRef`] variant (24 frozen `/5`
-/// families plus `Literal`, `Sem`, and `ScopeEvent` = 27 variants).
+/// families plus `Literal`, `Sem`, `ScopeEvent` (= 27 variants), and `Macro` = 28 variants).
 ///
 /// Family ordinals and [`RecordRef::wire_tag`] wire tags are two distinct
 /// closed inventories that are order-misaligned by design (for example
@@ -386,11 +395,13 @@ pub enum RecordFamily {
     HostRequest = 25,
     /// Output artifact fragment family.
     Artifact = 26,
+    /// Macro definition family (`/23`; includes `#undef` tombstones).
+    Macro = 27,
 }
 
 impl RecordFamily {
     /// Every family in ordinal order.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Source,
         Self::Span,
         Self::Expansion,
@@ -418,6 +429,7 @@ impl RecordFamily {
         Self::Diagnostic,
         Self::HostRequest,
         Self::Artifact,
+        Self::Macro,
     ];
 
     /// Explicit ordinal (the discriminant). This is not a wire tag.
@@ -455,6 +467,7 @@ impl RecordFamily {
             Self::Diagnostic => "diagnostic",
             Self::HostRequest => "host_request",
             Self::Artifact => "artifact",
+            Self::Macro => "macro",
         }
     }
 }

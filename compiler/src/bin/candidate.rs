@@ -153,8 +153,8 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::pp_conditional_slice();
-    bus.schema = StoreSchema::pp_slice();
+    bus.kinds = TaskKindRegistry::pp_macro_slice();
+    bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
         .expect("fold manifest registers");

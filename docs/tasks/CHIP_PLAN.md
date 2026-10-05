@@ -22,7 +22,7 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals + `/23` macro definitions) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
 | Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
@@ -79,9 +79,9 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP04 PpTokenScanChip: stream → PpToken | ✅ DONE (`/16` M1 subset + `/20` full C11 table, literals, header names) | 2
 - PP05 DirectiveDispatchChip: line tokens → DirectiveTask | ✅ DONE (`/21` PpDirectiveChip, `c21_directive` 8 tests; raw walk-back recognition, fan-out + await-all, frozen taxonomy) | 2–3
 - PP26 PpDiagnosticChip | ✅ DONE (`/21` PpDiagnosticChip; `#error` fails with the joined message, negative-only by design) | 2
-- PP06 MacroDefinitionChip → MacroDef | kinds | 3
-- PP07 MacroRedefinitionChip | kinds | 3
-- PP08 MacroUndefChip | kinds | 3
+- PP06 MacroDefinitionChip → MacroDef | ✅ DONE (`/23` PpDefineChip, `c23_macro` 10 tests; per-line fan-out, fresh/await/resume, adjacency rule) | 3
+- PP07 MacroRedefinitionChip | ✅ DONE (`/23` PpRedefineChip; benign-equivalence verifier, names the differing part) | 3
+- PP08 MacroUndefChip | ✅ DONE (`/23` PpUndefChip; tombstones + ignore-unknown) | 3
 - PP09 MacroInvocationChip | kinds | 3
 - PP10 MacroArgumentCollectChip | kinds | 3
 - PP11 MacroArgumentExpandChip | kinds | 3

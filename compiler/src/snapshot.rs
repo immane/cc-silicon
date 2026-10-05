@@ -18,16 +18,16 @@
 
 use crate::bus::{
     ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, ConstRecord, EffectMask,
-    FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord, NodeKind, NodeRecord,
-    PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord,
-    SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord,
-    TypeKind, TypeRecord, ValueCategory, ValueRecord,
+    FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord, MacroRecord,
+    NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind,
+    ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind,
+    TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagnosticRecord, Severity};
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
-    HostRequestId, InitId, InstructionId, LayoutId, LiteralId, NameId, NodeId, PpTokenId,
+    HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId, PpTokenId,
     RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId,
     TypeId, VRegId, ValueId,
 };
@@ -149,6 +149,8 @@ pub const RECORD_REF_TAG_LITERAL: u8 = 24;
 pub const RECORD_REF_TAG_SEM: u8 = 25;
 /// Frozen `/6` `RecordRef` wire tag for the `scope_events` family.
 pub const RECORD_REF_TAG_SCOPE_EVENT: u8 = 26;
+/// Frozen Wave 2 `/23` `RecordRef` wire tag for the `macros` family.
+pub const RECORD_REF_TAG_MACRO: u8 = 27;
 /// Number of frozen `/5` `RecordRef` variants (tags 0-23).
 pub const RECORD_REF_FROZEN_COUNT: usize = 24;
 
@@ -156,7 +158,7 @@ pub const RECORD_REF_FROZEN_COUNT: usize = 24;
 ///
 /// Delegates to [`RecordRef::wire_tag`] (single source of truth in `ids.rs`):
 /// frozen `/5` tags 0-23 plus the `/6` appends `Literal` = 24, `Sem` = 25,
-/// `ScopeEvent` = 26.
+/// `ScopeEvent` = 26, plus the `/23` append `Macro` = 27.
 pub fn record_ref_tag(reference: RecordRef) -> u8 {
     reference.wire_tag()
 }
@@ -192,6 +194,7 @@ pub fn record_ref_index(reference: RecordRef) -> u32 {
         Literal(id) => id.index(),
         Sem(id) => id.index(),
         ScopeEvent(id) => id.index(),
+        Macro(id) => id.index(),
     }
 }
 
@@ -687,6 +690,14 @@ impl Snapshot {
             w.u32(id.index());
             w.raw(&encode_pp_token(token));
         }
+        // Wave 2 (`/23`) typed macro definitions and `#undef` tombstones:
+        // allocated count plus per-record bodies in ascending ID order
+        // (same convention as the typed nodes above).
+        w.u64(bus.arenas.macros.allocated() as u64);
+        for (id, macro_record) in bus.arenas.macros.iter() {
+            w.u32(id.index());
+            w.raw(&encode_macro(macro_record));
+        }
         w.u64(bus.arenas.tokens.allocated() as u64);
         for (id, token) in bus.arenas.tokens.iter() {
             w.u32(id.index());
@@ -1092,11 +1103,12 @@ pub fn encode_record_ref(reference: RecordRef) -> Vec<u8> {
 
 /// Canonical bytes of one raw `(tag, index)` reference.
 ///
-/// Accepts tags 0-26: the frozen `/5` tags 0-23 plus the `/6` working-basis
+/// Accepts tags 0-27: the frozen `/5` tags 0-23 plus the `/6` working-basis
 /// tags 24-26 ([`RECORD_REF_TAG_SEM`], [`RECORD_REF_TAG_SCOPE_EVENT`],
-/// [`RECORD_REF_TAG_LITERAL`]). Anything higher is [`CodecError::InvalidTag`].
+/// [`RECORD_REF_TAG_LITERAL`]) and the `/23` tag 27 ([`RECORD_REF_TAG_MACRO`]).
+/// Anything higher is [`CodecError::InvalidTag`].
 pub fn encode_record_ref_raw(tag: u8, index: u32) -> Result<Vec<u8>, CodecError> {
-    if tag > RECORD_REF_TAG_SCOPE_EVENT {
+    if tag > RECORD_REF_TAG_MACRO {
         return Err(CodecError::InvalidTag(tag));
     }
     let mut w = Writer::new();
@@ -1107,12 +1119,13 @@ pub fn encode_record_ref_raw(tag: u8, index: u32) -> Result<Vec<u8>, CodecError>
 
 /// Decode one raw `(tag, index)` reference; consumes the whole input.
 ///
-/// Tags 0-26 decode successfully (24-26 are the `/6` appends `Literal`, `Sem`,
-/// `ScopeEvent`). Tags above 26 are [`CodecError::InvalidTag`].
+/// Tags 0-27 decode successfully (24-26 are the `/6` appends `Literal`, `Sem`,
+/// `ScopeEvent`; 27 is the `/23` append `Macro`). Tags above 27 are
+/// [`CodecError::InvalidTag`].
 pub fn decode_record_ref_raw(bytes: &[u8]) -> Result<(u8, u32), CodecError> {
     let mut r = Reader::new(bytes);
     let tag = r.u8()?;
-    if tag > RECORD_REF_TAG_SCOPE_EVENT {
+    if tag > RECORD_REF_TAG_MACRO {
         return Err(CodecError::InvalidTag(tag));
     }
     let index = r.u32()?;
@@ -1120,12 +1133,13 @@ pub fn decode_record_ref_raw(bytes: &[u8]) -> Result<(u8, u32), CodecError> {
     Ok((tag, index))
 }
 
-/// Decode one typed record reference (all 27 frozen tags).
+/// Decode one typed record reference (all 28 frozen tags).
 ///
 /// Tags 0-23 are the frozen `/5` inventory; tags 24-26 are the `/6` appends
-/// (`Literal` = 24, `Sem` = 25, `ScopeEvent` = 26) with explicit match arms
-/// below. Tags above 26 are rejected by [`decode_record_ref_raw`] before this
-/// match, so the trailing arm is unreachable-but-checked rather than a panic.
+/// (`Literal` = 24, `Sem` = 25, `ScopeEvent` = 26) and tag 27 is the `/23`
+/// append (`Macro` = 27), with explicit match arms below. Tags above 27 are
+/// rejected by [`decode_record_ref_raw`] before this match, so the trailing
+/// arm is unreachable-but-checked rather than a panic.
 pub fn decode_record_ref(bytes: &[u8]) -> Result<RecordRef, CodecError> {
     let (tag, index) = decode_record_ref_raw(bytes)?;
     match tag {
@@ -1156,6 +1170,7 @@ pub fn decode_record_ref(bytes: &[u8]) -> Result<RecordRef, CodecError> {
         RECORD_REF_TAG_LITERAL => Ok(RecordRef::Literal(LiteralId::from_index(index))),
         RECORD_REF_TAG_SEM => Ok(RecordRef::Sem(SemId::from_index(index))),
         RECORD_REF_TAG_SCOPE_EVENT => Ok(RecordRef::ScopeEvent(ScopeEventId::from_index(index))),
+        RECORD_REF_TAG_MACRO => Ok(RecordRef::Macro(MacroId::from_index(index))),
         other => Err(CodecError::InvalidTag(other)),
     }
 }
@@ -2050,6 +2065,54 @@ pub fn decode_scope_event(bytes: &[u8]) -> Result<ScopeEventRecord, CodecError> 
     let at = NodeId::from_index(r.u32()?);
     r.finish()?;
     Ok(ScopeEventRecord { scope, kind, at })
+}
+
+/// Canonical encoding of one committed [`MacroRecord`].
+///
+/// Byte layout: name spelling (`bytes`) | param count `u64` + spellings
+/// (`bytes` each) | variadic `bool` | replacement count `u64` + pp-token
+/// `u32` IDs | tombstone `bool`.
+pub fn encode_macro(record: &MacroRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.bytes(&record.spelling);
+    w.u64(record.params.len() as u64);
+    for param in &record.params {
+        w.bytes(param);
+    }
+    w.bool(record.variadic);
+    w.u64(record.replacement.len() as u64);
+    for token in &record.replacement {
+        w.u32(token.index());
+    }
+    w.bool(record.undefined);
+    w.finish()
+}
+
+/// Decode one committed [`MacroRecord`]; consumes the whole input.
+pub fn decode_macro(bytes: &[u8]) -> Result<MacroRecord, CodecError> {
+    use crate::ids::PpTokenId;
+    let mut r = Reader::new(bytes);
+    let spelling = r.bytes()?;
+    let params_len = r.u64()? as usize;
+    let mut params = Vec::with_capacity(params_len.min(1024));
+    for _ in 0..params_len {
+        params.push(r.bytes()?);
+    }
+    let variadic = r.bool()?;
+    let replacement_len = r.u64()? as usize;
+    let mut replacement = Vec::with_capacity(replacement_len.min(1024));
+    for _ in 0..replacement_len {
+        replacement.push(PpTokenId::from_index(r.u32()?));
+    }
+    let undefined = r.bool()?;
+    r.finish()?;
+    Ok(MacroRecord {
+        spelling,
+        params,
+        variadic,
+        replacement,
+        undefined,
+    })
 }
 
 /// Name of a [`ValueCategory`], in declaration order.

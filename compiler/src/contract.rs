@@ -29,13 +29,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
 /// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
 /// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/22";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/23";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "b8400fcaf75d0542a1dc3cc8dbaa528694ac23ea72b8cf21f7668ec7796af5dc";
+pub const CONTRACT_HASH: &str = "cf8f2194c9b599bfd822e685dbb791f3b2d44b550bc5536705972920785b1ca0";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -180,6 +180,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.conditional-stack",
     "pp.expr-ppint-exact",
     "pp.defined-frozen-false",
+    "pp.macrodef-record",
+    "pp.redefine-benign-rule",
+    "pp.undef-tombstone",
+    "pp.defined-reads-table",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -202,6 +206,7 @@ pub const M1_STORE_FAMILY_ARENA: &[(&str, &str, &str, &str)] = &[
     ("sources", "expansions", "expansion", "expansions"),
     ("names", "entries", "name", "intern-table"),
     ("pp", "tokens", "pp_token", "pp_tokens"),
+    ("pp", "macros", "macro", "macros"),
     ("lex", "tokens", "token", "tokens"),
     ("lex", "literals", "literal", "literals"),
     ("parse", "nodes", "node", "nodes"),
@@ -377,6 +382,9 @@ pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
 
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
 pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+/// Frozen `/23` macro-record field inventory (hash-participating).
+pub const MACRO_RECORD_FIELDS: &[&str] =
+    &["spelling", "params", "variadic", "replacement", "undefined"];
 
 /// Frozen `/15` `BlockRecord` fields, in declaration order.
 pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];
@@ -509,6 +517,7 @@ impl FrozenSchema {
         push_str_list(&mut w, VALUE_RECORD_FIELDS);
         push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
         push_str_list(&mut w, SPAN_RECORD_FIELDS);
+        push_str_list(&mut w, MACRO_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);

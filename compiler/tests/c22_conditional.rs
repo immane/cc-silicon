@@ -41,7 +41,7 @@ fn new_bus() -> CompilerBus {
 fn install_pp(bus: &mut CompilerBus) {
     use cc_silicon_compiler::manifest::{StoreSchema, PP01_CHIP};
     bus.kinds = TaskKindRegistry::pp_conditional_slice();
-    bus.schema = StoreSchema::pp_slice();
+    bus.schema = StoreSchema::pp_macro_slice();
     for chip in [
         &PpNormalizeChip as &dyn Worker,
         &PpSpliceChip,
@@ -401,7 +401,7 @@ fn conditional_stage_layer_manifest_gates() {
     install_pp(&mut bus);
     let mut mismatched = new_bus();
     mismatched.kinds = TaskKindRegistry::pp_conditional_slice();
-    mismatched.schema = StoreSchema::pp_slice();
+    mismatched.schema = StoreSchema::pp_macro_slice();
     mismatched
         .registrations
         .register(
@@ -430,7 +430,7 @@ fn conditional_stage_layer_manifest_gates() {
     assert!(stale
         .register(
             PpConditionalChip.manifest(),
-            &StoreSchema::pp_slice(),
+            &StoreSchema::pp_macro_slice(),
             &TaskKindRegistry::pp_directive_slice(),
         )
         .is_err());

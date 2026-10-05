@@ -610,6 +610,7 @@ pub fn commit_proposals(
     let mut new_instructions: u32 = 0;
     let mut new_spans: u32 = 0;
     let mut new_pptokens: u32 = 0;
+    let mut new_macros: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -636,6 +637,7 @@ pub fn commit_proposals(
     let instructions_base = bus.arenas.instructions.allocated();
     let spans_base = bus.arenas.spans.allocated();
     let pp_tokens_base = bus.arenas.pp_tokens.allocated();
+    let macros_base = bus.arenas.macros.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -653,6 +655,7 @@ pub fn commit_proposals(
         let mut next_value = values_base;
         let mut next_instruction = instructions_base;
         let mut next_pptoken = pp_tokens_base;
+        let mut next_macro = macros_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -764,6 +767,14 @@ pub fn commit_proposals(
                                 next_pptoken,
                             ));
                             next_pptoken = next_pptoken.saturating_add(1);
+                        }
+                        G1DraftBody::Macro(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Macro,
+                                next_macro,
+                            ));
+                            next_macro = next_macro.saturating_add(1);
                         }
                         G1DraftBody::Span { .. } => {
                             // Spans are referenced through token bodies, never
@@ -915,6 +926,9 @@ pub fn commit_proposals(
                             }
                             RecordRef::PpToken(id) if id.index() >= pp_tokens_base => {
                                 Some((tagged.task, RecordFamily::PpToken, id.index()))
+                            }
+                            RecordRef::Macro(id) if id.index() >= macros_base => {
+                                Some((tagged.task, RecordFamily::Macro, id.index()))
                             }
                             RecordRef::Span(id) if id.index() >= spans_base => {
                                 return Err(CommitError::UnpredictedRecord { task: tagged.task });
@@ -1077,6 +1091,9 @@ pub fn commit_proposals(
                         G1DraftBody::PpToken(_) => {
                             new_pptokens = new_pptokens.saturating_add(1);
                         }
+                        G1DraftBody::Macro(_) => {
+                            new_macros = new_macros.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -1154,6 +1171,7 @@ pub fn commit_proposals(
                         G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
                         G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
                         G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
+                        G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
                     };
                     append_fields.entry(tagged.task).or_default().insert(field);
                 }
@@ -1382,6 +1400,7 @@ pub fn commit_proposals(
             new_instructions,
             new_spans,
             new_pptokens,
+            new_macros,
         },
     )?;
     // Per-stage backpressure projection with real reinsert counts: the single
@@ -1593,6 +1612,15 @@ pub fn commit_proposals(
                             )));
                             report.appended.push((*task, RecordRef::PpToken(id)));
                         }
+                        G1DraftBody::Macro(record) => {
+                            let id = bus.arenas.macros.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Macro,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Macro(id)));
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
                             // state): infallible here. Limits are immutable
@@ -1776,6 +1804,7 @@ fn validate_append_authorization(
             G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
             G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
             G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
+            G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
         };
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
@@ -1919,6 +1948,8 @@ struct CapacityPlan {
     new_spans: u32,
     /// New preprocessing-token records (Wave 2 `/16`).
     new_pptokens: u32,
+    /// New macro-definition records (Wave 2 `/23`).
+    new_macros: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -1933,7 +1964,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 20] = [
+    let checks: [(u32, u32, &'static str); 21] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -1986,6 +2017,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             plan.new_pptokens,
             "pp_tokens",
         ),
+        (bus.arenas.macros.allocated(), plan.new_macros, "macros"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -2029,7 +2061,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_values
         + plan.new_instructions
         + plan.new_spans
-        + plan.new_pptokens) as u64
+        + plan.new_pptokens
+        + plan.new_macros) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())
