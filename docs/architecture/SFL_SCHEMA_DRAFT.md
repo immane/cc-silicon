@@ -125,6 +125,11 @@ Each bus field declaration should include `name`, `type`, `kind`
 (`register` | `derived` | `cache` | `private_backend`), `mutability`
 (`readonly` | `mutable`), `lifetime` (`tick` | `persistent`), and `description`.
 
+A mutable register may also declare `init` (its value after reset, before the
+first tick) and a `latch` rule (`from`: source pin or bus field, `at`:
+`tick-end`) when the motherboard's end-of-tick latch commits it. A register
+written during propagation is listed in a chip's `writes.bus` instead.
+
 ### 2.7 `chips`
 
 Required array. Each chip entry describes one logical transform.
@@ -301,6 +306,16 @@ bus:
       mutability: mutable
       lifetime: persistent
       description: Accumulated value
+    - name: prev_pulse
+      type: bool
+      kind: register
+      mutability: mutable
+      lifetime: persistent
+      init: false
+      latch:
+        from: pulse
+        at: tick-end
+      description: Pulse level latched at the previous tick end
     - name: wires
       type: Wires
       kind: cache
@@ -321,7 +336,7 @@ chips:
     deterministic: true
     backend_class: portable
     priority: 10
-    description: Detects a rising edge on the sampled input
+    description: Detects a rising edge on the sampled input using the latched previous pulse level
 
 motherboard:
   layering:

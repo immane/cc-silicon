@@ -4,8 +4,10 @@ Status: **Accepted** (user-approved T01 integration decision, 2026-10-04)
 
 This ADR records an explicit, application-scoped extension. It does **not**
 weaken or rewrite the framework specification. The root `cc-silicon` crate
-remains a domain-free, fixed-array, no-heap, `#![forbid(unsafe_code)]`
-framework; `docs/architecture/SILICON_PARADIGM_SPEC.md` is unchanged.
+remains a domain-free, `#![forbid(unsafe_code)]` framework; its fixed-array /
+no-heap constraint applies to **bus data**, not to the whole crate (the scope
+note closing §2 distinguishes bus storage, topology initialization, and the
+tick hot path). `docs/architecture/SILICON_PARADIGM_SPEC.md` is unchanged.
 
 ## 1. Context
 
@@ -40,7 +42,7 @@ append-only `Vec` arenas, intern tables, and work queues **inside its own
    serialization use explicit ordering (insertion order, sorted keys, ordinal
    counters), never hash-map iteration order.
 7. **The compiler is not heapless per tick and not directly
-   hardware-synthesizable.** The framework not allocating by itself is not a
+   hardware-synthesizable.** The framework's bus staying fixed-layout is not a
    claim about user chips. A bounded hardware realization must define capacity
    and exhaustion behavior separately and provide a differential; the CPU
    dynamic arena is not claimed to be portable across arbitrary HDL.
@@ -48,7 +50,24 @@ append-only `Vec` arenas, intern tables, and work queues **inside its own
    unimplemented behavior fails explicitly and is never reported as success.
 
 Scope: this extension applies to the compiler application crate only. The
-framework's own primitives and examples stay fixed-array and heap-free.
+framework's resource claims are scoped and must not be conflated:
+
+- **Bus storage — fixed-layout, no heap.** Applications implement `Bus` as a
+  flat struct of primitives, fixed-size arrays, and plain enums, with no
+  interior mutability and no threads. This is the constraint stated in
+  `docs/architecture/SILICON_PARADIGM_SPEC.md` §3.2.
+- **Topology initialization — allocates.** `Motherboard` stores its pipeline as
+  `Vec<Vec<Box<dyn LogicChip<B>>>>` plus a boxed `Backend`; `new`,
+  `with_backend`, `push_layer`, and `install_chip` allocate. That memory is
+  construction-time topology, not semantic bus state.
+- **Tick hot path — no framework allocation.** After construction, layers are
+  never resized during a tick, and `clock_tick` only resets wires, iterates the
+  pre-built layers, and latches. This claim covers the framework's own driver;
+  user chips and custom backends may still allocate.
+
+The "fixed arrays / no heap" rule is therefore a bus-data constraint, not a
+whole-framework resource guarantee. Examples (e.g. `examples/counter.rs`) keep
+fixed-layout bus data but allocate while assembling their `Motherboard`.
 
 ## 3. Decision: frozen target identity and probe policy
 
@@ -118,3 +137,4 @@ commits nothing and a commit failure never strands a task in `Running`.
 | 2026-10-04 | Protocol repair: inner-task binding and preflight-atomic commit, dangling-parent rejection, precise probe-attestation wording, `wchar_t.encoding` required, full wire/reserved snapshot coverage, validated manifest registration, structurally-immutable config; contract bumped to /3 | User, T01 integration session |
 | 2026-10-04 | Follow-up repair: single terminal/wait transition per task per batch (`AwaitHost` shares the guard), lossless `usize` proposal-budget comparison, propagation entry-path coverage for pre-populated malformed wires; contract bumped to /4 | User, T01 integration session |
 | 2026-10-04 | Audit repair: `.gitignore` no longer hides `compiler/contracts/target/`; source content hashes computed internally; Enqueue destinations require a registered kind-accepting chip; accurate `ResultAlreadyConsumed` error; contract bumped to /5 | User, T01 integration session |
+| 2026-10-05 | DOC-07 wording fix: scoped the framework resource claims to fixed-layout bus data, `Vec`/`Box` topology allocation at construction/installation, and no framework allocation on the default tick hot path, replacing the crate-wide "no-heap" description of the framework and examples | Documentation review DOC-07 (doc-only) |
