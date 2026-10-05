@@ -123,15 +123,15 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX17 TokenPublishChip (sole ordered publisher) | ✅ PARTIAL (`/11` deterministic append/dispatch order; orchestrator fan-in deferred) | 2
 - LX18 LexErrorChip (finite advance) | diagnostic codes | 2
 
-### T05 Parse (PA01–PA38) — Wave 2
+### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`)
 
 - PA01 TranslationUnitChip | TU carrier, File-Enter edge | 2 FIRST
-- PA02 ExternalDeclarationChip | kinds | 2
-- PA03 DeclarationSpecifiersChip | kinds | 2
+- PA02 ExternalDeclarationChip | ✅ DONE (`/34` PaExternalChip, `c34_parse` 12 tests shared; `{`-vs-`;` dispatch at continuation cursor, third token loud, Ack-only) | 2
+- PA03 DeclarationSpecifiersChip | ✅ DONE (`/34` PaSpecifierChip, `c34_parse`; exactly Keyword `int`, Ack-only) | 2
 - PA04 TypedefDisambiguationChip | TY03 query protocol | 2
-- PA05 DeclaratorChip (+PA06/07 parts) | kinds | 2
+- PA05 DeclaratorChip (+PA06/07 parts) | ✅ DONE (`/34` PaDeclaratorChip fused PA05/07/09, `c34_parse`; exactly `main(void)`, `()` DEFECT, Ack-only) | 2
 - PA08 ArrayDeclaratorChip | kinds | 2–3
-- PA09 FunctionDeclaratorChip | kinds | 2
+- PA09 FunctionDeclaratorChip | ✅ DONE (fused into `/34` PaDeclaratorChip; `(void)`-only parameter core) | 2
 - PA10 AbstractDeclaratorChip | kinds | 2–3
 - PA11 AggregateSpecifierChip | kinds | 2–3
 - PA12 EnumSpecifierChip | kinds | 2–3
@@ -148,11 +148,11 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PA25 CommaExpressionChip | kinds | 2
 - PA26 GenericSelectionParseChip | kinds | 3
 - PA27 StatementDispatchChip | kinds | 2
-- PA28 CompoundStatementChip | scope protocol | 2
+- PA28 CompoundStatementChip | ✅ DONE (`/34` PaBlockChip fused PA28/32, `c34_parse`; 7-token block shape, Ack-only; scope protocol T06-owned) | 2
 - PA29 IfStatementChip | kinds | 2
 - PA30 SwitchStatementChip | kinds | 2–3
 - PA31 LoopStatementChip (may split ×3 later) | kinds | 2
-- PA32 JumpStatementChip | kinds | 2
+- PA32 JumpStatementChip | ✅ DONE (fused into `/34` PaBlockChip; 5-token return shape, Ack-only) | 2
 - PA33 LabelStatementChip | kinds | 2–3
 - PA34 ExpressionStatementChip (no infinite retry) | kinds | 2
 - PA35 StaticAssertParseChip | kinds | 2–3

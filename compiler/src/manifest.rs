@@ -1104,6 +1104,20 @@ pub const LX12_CHIP: ChipId = ChipId(42);
 /// `LiteralRecord`).
 pub const LX13_CHIP: ChipId = ChipId(43);
 
+/// Wave 3 (`/34`) PA external-declaration chip reservation (PA02 scope:
+/// one external declaration at the continuation cursor classified as a
+/// function definition or a declaration, Ack-only).
+pub const PA02_CHIP: ChipId = ChipId(44);
+/// Wave 3 (`/34`) PA declaration-specifiers chip reservation (PA03 scope:
+/// exactly Keyword `int`, Ack-only).
+pub const PA03_CHIP: ChipId = ChipId(45);
+/// Wave 3 (`/34`) PA declarator chip reservation (fused PA05/PA07/PA09
+/// scope: exactly `main(void)`, Ack-only).
+pub const PA05_CHIP: ChipId = ChipId(46);
+/// Wave 3 (`/34`) PA block/return chip reservation (fused PA28/PA32
+/// scope: the 7-token block and the 5-token return shapes, Ack-only).
+pub const PA28_CHIP: ChipId = ChipId(47);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -1134,6 +1148,17 @@ pub const fn is_lx_string_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::LEX_ESCAPE_DECODE.raw()
         || kind.raw() == TaskKind::LEX_CHAR_DECODE.raw()
         || kind.raw() == TaskKind::LEX_STRING_DECODE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/34`) PA decl slice
+/// (external-declaration dispatch, specifiers, declarator, block,
+/// return).
+pub const fn is_pa_decl_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_EXTERNAL_DECL.raw()
+        || kind.raw() == TaskKind::PARSE_SPECIFIERS.raw()
+        || kind.raw() == TaskKind::PARSE_DECLARATOR.raw()
+        || kind.raw() == TaskKind::PARSE_BLOCK.raw()
+        || kind.raw() == TaskKind::PARSE_RETURN.raw()
 }
 
 /// Whether a task kind belongs to the Wave 3 (`/32`) LX float slice.
@@ -1286,6 +1311,7 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_pp_emit_slice_kind(kind)
             || is_lx_float_slice_kind(kind)
             || is_lx_string_slice_kind(kind)
+            || is_pa_decl_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1375,6 +1401,11 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::LEX_ESCAPE_DECODE, 2),
     (TaskKind::LEX_CHAR_DECODE, 2),
     (TaskKind::LEX_STRING_DECODE, 2),
+    (TaskKind::PARSE_EXTERNAL_DECL, 2),
+    (TaskKind::PARSE_SPECIFIERS, 2),
+    (TaskKind::PARSE_DECLARATOR, 2),
+    (TaskKind::PARSE_BLOCK, 2),
+    (TaskKind::PARSE_RETURN, 2),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

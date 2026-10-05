@@ -426,6 +426,33 @@ impl TaskKind {
     /// one `String` `LiteralRecord` with the publish-time token back-link;
     /// completes `Record`).
     pub const LEX_STRING_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 3 (`/34`) PA-decl-slice kind: external-declaration dispatch
+    /// (reads the committed token window at the continuation cursor with
+    /// `ExternalDecl` context; classifies one external declaration as a
+    /// function definition (`{`) or a declaration (`;`); completes `Ack`,
+    /// appends nothing: the PA01 wiring layer owns the PA03/PA05 fan-out).
+    pub const PARSE_EXTERNAL_DECL: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 3 (`/34`) PA-decl-slice kind: declaration-specifiers task
+    /// (payload: exactly one committed `Token`; accepts Keyword `int`
+    /// alone; completes `Ack`, appends nothing; cursor advance stays
+    /// caller-held).
+    pub const PARSE_SPECIFIERS: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 3 (`/34`) PA-decl-slice kind: declarator task (payload: the
+    /// declarator token refs in source order; accepts `main(void)` only —
+    /// the fused PA05/PA07/PA09 M1 scope; completes `Ack`, appends
+    /// nothing; the empty `()` shape fails as a typed DEFECT).
+    pub const PARSE_DECLARATOR: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/34`) PA-decl-slice kind: compound-statement task
+    /// (payload: exactly the 7 M1 block tokens
+    /// `{ return <int> + <int> ; }`; completes `Ack`, appends nothing).
+    pub const PARSE_BLOCK: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/34`) PA-decl-slice kind: return-statement task (payload:
+    /// exactly the 5 M1 return tokens `return <int> + <int> ;`;
+    /// completes `Ack`, appends nothing).
+    pub const PARSE_RETURN: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 21);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -622,6 +649,29 @@ impl TaskKindRegistry {
             (TaskKind::LEX_ESCAPE_DECODE, "lex.escape_decode"),
             (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
             (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/34`) PA-decl-slice registry: the LX-string slice
+    /// plus the frozen external-decl, specifiers, declarator, block, and
+    /// return kinds (all `Frozen`; `PARSE` owners start new codes at
+    /// local 22).
+    pub fn pa_decl_slice() -> Self {
+        let mut registry = Self::lx_string_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::PARSE_EXTERNAL_DECL,
+                "parse.external_declaration",
+            ),
+            (TaskKind::PARSE_SPECIFIERS, "parse.specifiers"),
+            (TaskKind::PARSE_DECLARATOR, "parse.declarator"),
+            (TaskKind::PARSE_BLOCK, "parse.block"),
+            (TaskKind::PARSE_RETURN, "parse.return"),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

@@ -31,13 +31,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// (`/13`), and the Wave 2 SE/IR/PP/VF slices through the Wave 3 PP
 /// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`) and the
 /// Wave 3 LX string slice (`/33`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/33";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/34";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "e8400eb144907abf7932342dbe07b82803d2a5127454d864f5afdcddd1eef455";
+pub const CONTRACT_HASH: &str = "229ae1a73717515670eecf4d9c3dbb713fb05dfccd0308769d2cbd3cb169be74";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -218,6 +218,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "lx.escape-decode",
     "lx.char-typed",
     "lx.string-record",
+    "pa.external-dispatch",
+    "pa.specifier-int",
+    "pa.declarator-void",
+    "pa.block-return",
 ];
 
 /// The `TaskState` variant names, in encoding order.

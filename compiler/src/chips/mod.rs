@@ -64,7 +64,17 @@ pub use self::lex::{
     LxStringInput, StringElementType, StringError, StringPrefix, StringRecord, C11_KEYWORDS,
     LX09_TASK_KIND, LX10_TASK_KIND, LX11_TASK_KIND, LX12_TASK_KIND, LX13_TASK_KIND,
 };
-pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
+pub use self::parse::{
+    project_pa_block_input, project_pa_declarator_input, project_pa_external_input,
+    project_pa_return_input, project_pa_specifier_input, project_pa_tu_input, external_decl_kind,
+    parse_block, parse_declarator, parse_direct_declarator, parse_parameter_list, parse_return,
+    parse_specifier, DeclaratorError, DeclaratorToken, DeclaratorTree, ExternalDeclKind,
+    ExternalToken, LocalNodeShape, PaBlockChip, PaBlockInput, PaBlockProduction, PaDeclaratorChip,
+    PaDeclaratorInput, PaDeclaratorProjectedToken, PaExternalChip, PaExternalInput, PaReturnInput,
+    PaSpecifierChip, PaSpecifierInput, PaTuChip, PaTuInput, ProjectedBlockToken,
+    ProjectedSpecifierToken, SpecifierRecordShape, ParamList, PA02_TASK_KIND, PA03_TASK_KIND,
+    PA05_TASK_KIND, PA28_TASK_KIND, PA32_TASK_KIND,
+};
 pub use self::preprocess::{
     classify_directive_params, classify_operator_text, compose_map, decode_pragma_string,
     emit_preprocessed, line_location, normalize, origin_chain, origin_root,

@@ -1,7 +1,7 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/33` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/34` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/32` with `/33` implemented and test-green
+> 2026-10-06 after landing `/33` with `/34` implemented and test-green
 > but NOT yet fully verified or committed.
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
@@ -9,15 +9,16 @@
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/32` (LX float), hash
-  `0dd8da06535af8cf4ffef87ccbf45b9529c6c3e77e1f283f028c46de4a6e1167`.
-- In worktree, UNCOMMITTED: `/33` LX string (LX11 escape + LX12 char +
-  LX13 string chips), contract already bumped to `t01-c01-c06/33`, hash
-  recomputed
-  (`e8400eb144907abf7932342dbe07b82803d2a5127454d864f5afdcddd1eef455`).
-  `c33_string` green (14 tests), but the final full-suite (§5) run is
+- Committed: `t01-c01-c06/33` (LX string), hash
+  `e8400eb144907abf7932342dbe07b82803d2a5127454d864f5afdcddd1eef455`.
+- In worktree, UNCOMMITTED: `/34` PA decl (PA02 external dispatch +
+  PA03 specifiers + fused PA05/07/09 declarator + fused PA28/32
+  block/return chips), contract already bumped to `t01-c01-c06/34`,
+  hash recomputed
+  (`229ae1a73717515670eecf4d9c3dbb713fb05dfccd0308769d2cbd3cb169be74`).
+  `c34_parse` green (12 tests), but the final full-suite (§5) run is
   still pending — run §5 fully, then commit as
-  `feat: add LX string literal slice as t01-c01-c06/33`.
+  `feat: add T05 parse decl slice as t01-c01-c06/34`.
 - Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
   H04) is MERGED; `/20`–`/32` are committed locally,
   UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
@@ -61,7 +62,8 @@
 | `/30` | PP expansion map | `preprocess/pp_expand_map.rs` | `c30_expand_map` 10 |
 | `/31` | PP emit | `preprocess/pp_emit.rs` | `c31_emit` 11 |
 | `/32` | LX float | `lex/{lx_float_syntax,lx_float_value}.rs` | `c32_float` 12 |
-| `/33` | LX string (UNCOMMITTED) | `lex/{lx_escape,lx_char,lx_string}.rs` | `c33_string` 14 |
+| `/33` | LX string | `lex/{lx_escape,lx_char,lx_string}.rs` | `c33_string` 14 |
+| `/34` | PA decl (UNCOMMITTED) | `parse/{pa_external,pa_specifier,pa_declarator,pa_block}.rs` | `c34_parse` 12 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
@@ -157,7 +159,7 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/33` (run §5 first), then PP remainder in pipeline
+- NEXT UP: commit `/34` (run §5 first), then PP remainder in pipeline
   order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
