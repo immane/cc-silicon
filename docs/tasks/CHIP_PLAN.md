@@ -100,7 +100,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - PP24 BuiltinMacroChip | ✅ DONE (`/27` PpBuiltinChip, `c27_builtin` 9 tests; `__FILE__`/`__LINE__`/`__COUNTER__`(seed 0), frozen-target macros, `__DATE__`/`__TIME__`/unknown as explicit `Unsupported`) | 3
 - PP25 PragmaDispatchChip | ✅ DONE (`/29` PpPragmaChip, `c29_pragma` 9 tests; `once` flag, `pack` push/pop, unknown-pragma benign ignore per C11 6.10.6p1, malformed `_Pragma` typed `Fail`, `_Pragma` string decode, Ack-only read-only) | 3
 - PP27 ExpansionSourceMapChip | ✅ DONE (`/30` PpExpandMapChip, `c30_expand_map` 10 tests; per-token origin chains over committed spans/expansions, `#` raw / `##` product / prescan-vs-raw / blue-paint nesting / nested include origins, dangling links typed `Fail`, Ack-only read-only) | 3
-- PP28 PreprocessedEmitChip | kinds | 3
+- PP28 PreprocessedEmitChip | ✅ DONE (`/31` PpEmitChip, `c31_emit` 11 tests; directive strip, `+ +` no-gluing, byte-identical strings, valid `check_map`, empty-stream newline, multiline newlines, re-lex roundtrip, single `Preprocessed` append) | 3
 
 ### T04 Lex (LX01–LX18) — Wave 2 (M1-LX-01..07 first)
 

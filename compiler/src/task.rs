@@ -380,6 +380,12 @@ impl TaskKind {
     /// `Ack`; dangling links fail as a typed `Invalid`).
     pub const PREPROCESS_EXPAND_MAP: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 34);
+    /// Wave 3 (`/31`) PP-emit-slice kind: preprocessed-emit task (payload:
+    /// pp-token refs in payload order; serializes the final stream to one
+    /// map-mandatory `Preprocessed` artifact whose bytes re-lex to the
+    /// same token stream; completes `Record(Artifact)`).
+    pub const PREPROCESS_EMIT: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 35);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -560,6 +566,19 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/31`) PP-emit-slice registry: the PP-expand-map
+    /// slice plus the frozen preprocessed-emit kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 36).
+    pub fn pp_emit_slice() -> Self {
+        let mut registry = Self::pp_expand_map_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::PREPROCESS_EMIT, "preprocess.emit")];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);

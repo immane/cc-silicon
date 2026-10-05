@@ -1126,15 +1126,18 @@ pub fn commit_proposals(
                                     reason: "artifact map violates mandatory invariants",
                                 });
                             }
-                            // Map-mandatory kinds only (`/16`): the PP chain
-                            // produces `Normalized`/`Spliced`/`CommentFree`;
-                            // `Preprocessed` and map-optional kinds stay
+                            // Map-mandatory kinds only (`/16`, extended by
+                            // `/31`): the PP chain produces
+                            // `Normalized`/`Spliced`/`CommentFree`, and the
+                            // PP28 emit slice produces `Preprocessed`;
+                            // map-optional kinds stay
                             // declared-but-unexercised.
                             if !matches!(
                                 artifact.kind,
                                 crate::bus::ArtifactKind::Normalized
                                     | crate::bus::ArtifactKind::Spliced
                                     | crate::bus::ArtifactKind::CommentFree
+                                    | crate::bus::ArtifactKind::Preprocessed
                             ) {
                                 return Err(CommitError::InvalidPatchShape {
                                     task: tagged.task,

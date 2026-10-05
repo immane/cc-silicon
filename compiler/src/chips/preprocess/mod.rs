@@ -9,6 +9,7 @@ mod pp_conditional;
 mod pp_define;
 mod pp_diagnostic;
 mod pp_directive;
+mod pp_emit;
 mod pp_enter;
 mod pp_expand_map;
 mod pp_invoke;
@@ -33,6 +34,10 @@ pub use self::pp_conditional::{
 pub use self::pp_define::{project_pp_define_input, PpDefineChip, PpDefineInput};
 pub use self::pp_diagnostic::{project_pp_diagnostic_input, PpDiagnosticChip, PpDiagnosticInput};
 pub use self::pp_directive::{project_pp_directive_input, PpDirectiveChip, PpDirectiveInput};
+pub use self::pp_emit::{
+    emit_preprocessed, project_pp_emit_input, EmittedPreprocessed, PpEmitChip, PpEmitInput,
+    PP28_TASK_KIND,
+};
 pub use self::pp_enter::{project_pp_include_enter_input, PpIncludeEnterChip, PpIncludeEnterInput};
 pub use self::pp_expand_map::{
     origin_chain, origin_root, project_pp_expand_map_input, OriginChain, OriginFrame,

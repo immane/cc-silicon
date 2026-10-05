@@ -608,6 +608,31 @@ read-only). New hashed rules `pp.expand-origin-chain`,
 `compiler/tests/c30_expand_map.rs` (10 tests); item list in
 [PP_EXPAND_MAP_SLICE.md](PP_EXPAND_MAP_SLICE.md).
 
+`/31` amendment — Wave 3 slice 6, PP emit (R1 auto-bump; `/30`
+preserved as history): new `PpEmitChip` (chip 38, PP28), pure
+single-task (one dispatch, one `Preprocessed` artifact append,
+`Complete(Record(Artifact))`; no children, so the frozen-join path
+never applies). The final pp-token stream serializes to re-lexable
+bytes: `Eof` tokens and consumed directive lines (an unexpanded `#`/`%:`
+opening a physical line plus the rest of that line) are dropped, every
+other token spelling is emitted byte-identical separated by one space
+(one newline when both neighbors show a line break in their shared
+source bytes), and the output closes with a terminal newline. Separation
+is unconditional, so `+ +` never becomes `++` and adjacent strings stay
+two tokens; no `#line`/GNU markers are emitted (PP23 owns the logical
+location at the wiring layer). The output carries the primary-source (first token's span source) location map, which satisfies
+`check_map` by construction (foreign-source bytes collapse zero-width,
+expansion-reordered offsets clamp forward). Malformed input fails as a
+typed `Fail` (protocol, `Invalid`, config, or internal — never silent).
+`preprocess.emit` (local 35), stage 1, layer 1, `pp_emit_slice()`
+registry (48 entries, cumulative over `pp_expand_map_slice()`); no
+schema change; one allowlist row (`PP28_CHIP`, `Artifacts`,
+`fragments`, `PREPROCESS_EMIT`). New hashed rules
+`pp.emit-directive-strip`, `pp.emit-no-gluing`, `pp.emit-map`. New
+artifact `t01-c01-c06/31` (`ce4dd422…2e2998c1`); acceptance
+`compiler/tests/c31_emit.rs` (11 tests); item list in
+[PP_EMIT_SLICE.md](PP_EMIT_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
