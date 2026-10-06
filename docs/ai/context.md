@@ -1,25 +1,36 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/19`)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/39` in progress, UNCOMMITTED)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after the Wave 2 slice 10 (`/19`) freeze. The frozen contract
-> (`compiler/contracts/CONTRACT_VERSION`) plus `docs/tasks/T01_COMPILER_CONTRACT.md`
-> §7.1 remain authoritative; this file is an index, not a freeze.
+> 2026-10-06 after landing `/38` with `/39` implemented and test-green
+> but NOT yet fully verified or committed.
+> The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
+> `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
+> file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/19`, hash
-  `76155ee8b66bd3a8e60c3e812a25301abcfd4ffffbf6e0dfbda3be25f6b476a4`.
-- Branch: `initial-compiler-development` (PR #13 targets `main`).
-- The M1 C frontend is **closed end-to-end, symbolically modeled,
-  syntax-checked, and store-checked**: seeded source bytes flow
-  PP01→PP02→PP03→PP04→LX(intern→classify→decode)→PA→TY→SE→fold→IR→VF12
-  with no hand-built values (`M1-CL-05` handoff complete at `/15`, meaning
-  modeled at `/17`), VF05 re-verifies the token↔AST contract at `/18`,
-  and VF01 re-verifies ID ownership/span bounds/reserved-emptiness at
-  `/19`.
-- Rule: **one serial slice at a time** — each slice freezes
-  schemas/kinds/stages/allowlist first, then implements. Never dispatch a
-  wave before its freeze lands (rework is guaranteed otherwise).
+- Committed: `t01-c01-c06/38` (VF14 evidence-classify), hash
+  `f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83`.
+- In worktree, UNCOMMITTED: `/39` SE29 function-definition (T07
+  function-definition worker; delivered draft `se_function.rs` was
+  unwired — arbitrated to SEMANTIC local 21 + chip 57),
+  contract already bumped to `t01-c01-c06/39`, hash recomputed
+  (`07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24`).
+  `c39_sefunc` green (8 tests), but the final full-suite (§5) run
+  is still pending — run §5 fully, then commit as
+  `feat: add SE29 function slice as t01-c01-c06/39`.
+- Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
+  H04) is MERGED; `/20`–`/32` are committed locally,
+  UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
+- The M1 C frontend is closed end-to-end with a working PP pipeline:
+  normalize→splice→comment→scan→conditional→define→expand→directive→LX
+  (macros recorded + expanded incl. variadic + builtins; conditionals evaluated;
+  single-pass include implemented). `candidate` drives
+  source bytes to snapshot/trace/interpret evidence (H04 Part A).
+- Dispatcher mode is ACTIVE (user instruction): serial freeze by the
+  integrator, parallel implementation via subagents on disjoint files,
+  integrate + verify + commit per slice, continue without stopping.
+  Open threads in §6 are ordered next-up.
 
 ## 2. Slice history (each amends the version via the R1 auto-bump rule)
 
@@ -38,6 +49,27 @@
 | `/17` | VF12 symbolic interpret | `verify/vf_interpret.rs` | `c17_vf12` 6 |
 | `/18` | VF05 token-AST invariant | `verify/vf_syntax.rs` | `c18_vf05` 6 |
 | `/19` | VF01 store invariant | `verify/vf_store.rs` | `c19_vf01` 7 |
+| `/20` | PP full-token scan | `preprocess/{pp_comment,pp_scan}.rs` (amended) | `c20_ppscan` 8 |
+| `/21` | PP directive dispatch + diagnostic | `preprocess/{pp_directive,pp_diagnostic}.rs` | `c21_directive` 8 |
+| `/22` | PP conditional inclusion | `preprocess/pp_conditional.rs` | `c22_conditional` 8 |
+| `/23` | PP macro definitions + undef (+Macro family) | `preprocess/{pp_define,pp_redefine,pp_undef}.rs` | `c23_macro` 10 |
+| `/24` | PP macro expansion (+`function_like` fix) | `preprocess/{pp_invoke,pp_substitute}.rs` | `c24_expand` 12 |
+| `/25` | PP include resolve + enter | `preprocess/{pp_resolve,pp_enter}.rs` | `c25_include` 8 |
+| `/26` | PP variadic invocation | `preprocess/pp_variadic.rs` | `c26_variadic` 10 |
+| `/27` | PP builtin macros | `preprocess/pp_builtin.rs` | `c27_builtin` 9 |
+| `/28` | PP line directives | `preprocess/pp_line.rs` | `c28_line` 10 |
+| `/29` | PP pragma dispatch | `preprocess/pp_pragma.rs` | `c29_pragma` 9 |
+| `/30` | PP expansion map | `preprocess/pp_expand_map.rs` | `c30_expand_map` 10 |
+| `/31` | PP emit | `preprocess/pp_emit.rs` | `c31_emit` 11 |
+| `/32` | LX float | `lex/{lx_float_syntax,lx_float_value}.rs` | `c32_float` 12 |
+| `/33` | LX string | `lex/{lx_escape,lx_char,lx_string}.rs` | `c33_string` 14 |
+| `/34` | PA decl | `parse/{pa_external,pa_specifier,pa_declarator,pa_block}.rs` | `c34_parse` 12 |
+| `/35` | PA expr | `parse/{pa_binary,pa_unary}.rs` | `c35_expr` 10 |
+| `/36` | PA recovery | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
+| `/37` | T08 const-branch | `constant_layout_init/fold_branch.rs` | `c37_const_branch` 10 |
+| `/38` | VF14 evidence-classify | `verify/vf_evidence.rs` | `c38_vf14` 10 |
+| `/39` | SE29 function-definition (UNCOMMITTED) | `semantic/se_function.rs` | `c39_sefunc` 8 |
+| — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
 
 ## 3. Patterns every new slice must follow
 
@@ -50,18 +82,46 @@
   positions; predicted-ID verification for `Complete` carriers; capacity
   preflight before any mutation; await-all joins with idle drain.
 - **Contract bump**: any protocol/encoding/shape change → new amendment
-  version (`/17`, …), new `NORMATIVE_RULES` ids, recompute hash via
+  version, new `NORMATIVE_RULES` ids, recompute hash via
   `cargo run --manifest-path compiler/Cargo.toml --example freeze_hash`,
   sync `CONTRACT_VERSION`, `contract_version_file()`, `freeze.rs`,
   `c08_gate1.rs` counts, `compiler/README.md`.
-- **Registries/schemas are cumulative**: `*_slice()` fns extend the
-  previous one (`pp_slice()` = 29 entries); `*_slice()` schemas likewise.
-  Never edit a frozen slice fn — add a new one. Frozen kind locals are
-  sacred (a past bulk-rename once corrupted two Gate 1 kinds; tests caught
-  it via registry-length asserts).
-- **Docs per slice**: `docs/tasks/<NAME>_SLICE.md` (freeze items P/Q/R…,
-  execution record, explicit deferrals) + T01 §7.1 amendment paragraph +
-  `CHIP_PLAN.md` status + README version lines.
+- **Registries/schemas are cumulative AND LINEAR**: each `*_slice()` fn
+  extends the previous slice's (chain: `pp_slice` → `vf12` → `vf05` →
+  `vf01` → `pp_directive` → `pp_conditional` → `pp_macro` → `pp_expand`
+  → `pp_include`); never edit a frozen slice fn; a new phase extending an
+  older branch must extend the LATEST (see `/21` chain fix). Frozen kind
+  locals are sacred.
+- **Version-pin files must move with every bump**: `freeze.rs`,
+  `c08_gate1.rs` (version asserts + `STAGE_ASSIGNMENT.len()`),
+  `c04_manifest.rs` + `c08` allowlist lens, `c03_task.rs` + `c05_codec.rs`
+  closed inventories (families/tags), `RECORD_KINDS`, marker asserts in
+  slice tests (`t01-c01-c06/NN`), `h04_candidate.rs` evidence header,
+  both READMEs + this file.
+- **Frozen-join semantics** (`commit.rs::poll_await_joins`, `/9`): any
+  failed awaited child fails the waiter directly, REUSING the first
+  failed child's diagnostic (no new record). Resume-compute therefore
+  runs only in the all-`Completed` case — design fan-out/await slices
+  around this; never plan aggregate-message resumes.
+- **Supersede protocol**: when a freeze supersedes pinned test
+  assertions, the INTEGRATOR updates those pins (never the chip owner,
+  never silent) and records it in the slice execution record.
+- **Chip-lint/clippy gates** (toolchain 1.99): no closures in `compute`
+  (same-file `fn` helpers only); watch `manual_strip`,
+  `type_complexity` (alias long tuples), `needless_range_loop`,
+  `collapsible_match`, `manual_contains`, `manual_range_contains`,
+  `explicit_auto_deref`, `question_mark`, unused imports/vars in tests.
+  Always run `cargo fmt` for the touched package before `--check`.
+- **Subagent dispatch protocol**: one disjoint file per agent; brief must
+  cite the freeze doc sections + template + frozen-join rule; forbid
+  shared-file edits and commits; require temp-wire + revert proof for
+  unwired files; DEFECT (structured, no guessing) on ambiguity. Rework
+  via continued `sessionID`. Verify serially at integration (parallel
+  `cargo` invocations contend). Integrator reviews every diff, writes
+  all tests/docs/version bumps, runs the FULL §5 suite, then commits.
+- **Docs per slice**: `docs/tasks/<NAME>_SLICE.md` (freeze items,
+  execution record, explicit deferrals + amendments) + T01 §7.1 amendment
+  paragraph + `CHIP_PLAN.md` status + README version lines.
 
 ## 4. Layout
 
@@ -69,8 +129,12 @@
   `symbols`, `semantic`, `verify`, `ir_lower`, `constant_layout_init`.
   Group `mod.rs` files are integrator-owned; chip files import the driver
   boundary via `crate::chips::{...}` and siblings via `self::`/`super::`
-  only (chip-lint rejects bare module roots).
-- `compiler/tests/cXX_*.rs`: one acceptance file per slice.
+  only (chip-lint rejects bare module roots). Pure cross-chip helpers are
+  copied per file (precedent: `compose_map`), not shared.
+- `compiler/src/bin/candidate.rs`: H04 Part A driver (host orchestration;
+  runs the M1 pipeline steps incl. PP05/PP09/PP19; no PP06 fan-out yet).
+- `compiler/tests/cXX_*.rs`: one acceptance file per slice;
+  `h04_candidate.rs` for the driver.
 - Reviews live in `docs/reviews/` (read-only records, incl. the 12
   pre-chip audits + the readiness review + repro).
 
@@ -94,13 +158,27 @@ cargo run --locked --manifest-path tools/chip-lint/Cargo.toml -- compiler/src/ch
 git diff --check
 ```
 
+Run `cargo` from the repo root (relative `--manifest-path` breaks one
+directory down). `touch compiler/src/lib.rs` to force a fresh clippy
+pass when results look cached/stale.
+
 ## 6. Open threads (do not treat as settled)
 
-- T02 control subset (blocked on the `/6` co-freeze) + H04 remainder (`-E`/`-I`/`-D`/`-U`/multi-source/torture flags; Part A driver present) — biggest gap.
-- T13 VF remainder on real records (VF02–04/VF13–14; VF01/VF05/VF06/VF12-M1 exist).
-- File-Enter edge auto-firing; `TokenRecord.literal` forward link;
-  `ConversionPlan`; query-point lookup ordering; FunctionEnd/IR28 hook
-  (OB-26); PP diagnostic taxonomy (F4); full scan-state machine;
-  `Preprocessed` production; macro/include/multi-source; quota>1 (unaccepted).
+- NEXT UP: commit `/39` (run §5 first), then PP remainder in pipeline
+  order — then T04 LX
+  remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
+  layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
+  `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells
+  per R2 until a Linux runner exists), T13 VF02–04/VF13 (H6/H9-gated),
+  H04 remainder (`-E`/`-I`/`-D`/`-U`/multi-source/torture flags), H02/H03
+  runner, H05–H10 gate.
+- T02 control subset (blocked on the `/6` co-freeze) — biggest gap after
+  language coverage; do NOT implement control chips on draft semantics.
+- T13 VF remainder on real records (VF02–04/VF13–14 need H6/H9 batch
+  fixtures; VF01/VF05/VF06/VF12-M1 exist).
+- L1 carryover: multi-line-comment tail classifies non-directive (loud
+  downstream failure, recorded in `/21` doc).
+- Quota>1 (unaccepted); probe substrate unprovisioned; no torture corpus.
 - Known tech debt: `poll_await_joins` closure loop is O(waiters²),
-  accepted for the small profile (PCR-13).
+  accepted for the small profile (PCR-13); PP predicate logic is
+  copy-per-chip by precedent (drift-pinned by cross tests).

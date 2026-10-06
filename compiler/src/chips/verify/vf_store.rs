@@ -74,6 +74,8 @@ pub struct ArenaBounds {
     pub diagnostics: u32,
     /// Host requests (unreadable in M1: no frozen schema).
     pub host_requests: u32,
+    /// Macro definitions (`/23`).
+    pub macros: u32,
     /// Artifacts.
     pub artifacts: u32,
     /// Interned names.
@@ -156,6 +158,7 @@ pub fn project_vf01_input(
         results: bus.arenas.results.allocated(),
         diagnostics: bus.arenas.diagnostics.allocated(),
         host_requests: bus.arenas.host_requests.allocated(),
+        macros: bus.arenas.macros.allocated(),
         artifacts: bus.arenas.artifacts.allocated(),
         intern_names: bus.intern.len(),
     };
@@ -229,6 +232,7 @@ fn resolve(reference: &RecordRef, bounds: &ArenaBounds) -> Result<(), &'static s
         RecordRef::Result(id) => id.index() < bounds.results,
         RecordRef::Diagnostic(id) => id.index() < bounds.diagnostics,
         RecordRef::HostRequest(_) => return Err("host-request references are out of M1 scope"),
+        RecordRef::Macro(id) => id.index() < bounds.macros,
         RecordRef::Artifact(id) => id.index() < bounds.artifacts,
         RecordRef::Literal(id) => id.index() < bounds.literals,
         RecordRef::Sem(id) => id.index() < bounds.sem,

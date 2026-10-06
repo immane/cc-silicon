@@ -211,6 +211,20 @@ impl StoreSchema {
         schema
     }
 
+    /// The Wave 2 (`/23`) PP-macro field set: the PP slice plus the macro
+    /// append field (`pp.macros` for `MacroRecord`). Post-seed runtime
+    /// declarations stay excluded from the frozen hash per the two-tier
+    /// model; the macro inventory is pinned by `MACRO_RECORD_FIELDS`.
+    pub fn pp_macro_slice() -> Self {
+        let mut schema = Self::pp_slice();
+        let slice: &[(StoreId, &str)] = &[(StoreId::Pp, "macros")];
+        for &(store, field) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = schema.declare(store, field);
+        }
+        schema
+    }
+
     /// The Wave 2 (`/16`) PP-slice field set: the IR slice plus the PP
     /// scan append field (`sources.spans` for `SpanRecord`; `pp.tokens` and
     /// `artifacts.fragments` are already declared). Post-seed runtime
@@ -854,6 +868,12 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         TaskKind::SEMANTIC_RETURN_STMT,
     ),
     (
+        SE_FUNC_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_FUNCTION_DEF,
+    ),
+    (
         IR_FUNCTION_CHIP,
         StoreId::Ir,
         "functions",
@@ -900,6 +920,60 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         StoreId::Pp,
         "tokens",
         TaskKind::PREPROCESS_SCAN,
+    ),
+    (
+        PP06_CHIP,
+        StoreId::Pp,
+        "macros",
+        TaskKind::PREPROCESS_MACRO_DEFINE,
+    ),
+    (
+        PP08_CHIP,
+        StoreId::Pp,
+        "macros",
+        TaskKind::PREPROCESS_MACRO_UNDEF,
+    ),
+    (
+        PP09_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_INVOKE,
+    ),
+    (
+        PP12_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_SUBSTITUTE,
+    ),
+    (
+        PP16_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_VARIADIC_MACRO,
+    ),
+    (
+        PP24_CHIP,
+        StoreId::Pp,
+        "tokens",
+        TaskKind::PREPROCESS_MACRO_BUILTIN,
+    ),
+    (
+        PP28_CHIP,
+        StoreId::Artifacts,
+        "fragments",
+        TaskKind::PREPROCESS_EMIT,
+    ),
+    (
+        LX12_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_CHAR_DECODE,
+    ),
+    (
+        LX13_CHIP,
+        StoreId::Lex,
+        "literals",
+        TaskKind::LEX_STRING_DECODE,
     ),
 ];
 
@@ -967,6 +1041,132 @@ pub const VF05_CHIP: ChipId = ChipId(21);
 /// Wave 2 (`/19`) VF01 store-invariant chip reservation.
 pub const VF01_CHIP: ChipId = ChipId(22);
 
+/// Wave 2 (`/21`) PP directive-dispatch chip reservation.
+pub const PP05_CHIP: ChipId = ChipId(23);
+
+/// Wave 2 (`/21`) PP directive-diagnostic chip reservation.
+pub const PP26_CHIP: ChipId = ChipId(24);
+
+/// Wave 2 (`/22`) PP conditional-inclusion chip reservation.
+pub const PP19_CHIP: ChipId = ChipId(25);
+
+/// Wave 2 (`/23`) PP macro-definition chip reservation.
+pub const PP06_CHIP: ChipId = ChipId(26);
+
+/// Wave 2 (`/23`) PP macro-redefinition chip reservation.
+pub const PP07_CHIP: ChipId = ChipId(27);
+
+/// Wave 2 (`/23`) PP macro-undef chip reservation.
+pub const PP08_CHIP: ChipId = ChipId(28);
+
+/// Wave 2 (`/24`) PP macro-invocation chip reservation.
+pub const PP09_CHIP: ChipId = ChipId(29);
+
+/// Wave 2 (`/24`) PP macro-substitution chip reservation.
+pub const PP12_CHIP: ChipId = ChipId(30);
+
+/// Wave 2 (`/25`) PP include-resolve chip reservation.
+pub const PP17_CHIP: ChipId = ChipId(31);
+
+/// Wave 2 (`/25`) PP include-enter chip reservation.
+pub const PP18_CHIP: ChipId = ChipId(32);
+
+/// Wave 2 (`/26`) PP variadic-macro chip reservation.
+pub const PP16_CHIP: ChipId = ChipId(33);
+
+/// Wave 2 (`/27`) PP builtin-macro chip reservation.
+pub const PP24_CHIP: ChipId = ChipId(34);
+
+/// Wave 3 (`/28`) PP line-directive chip reservation.
+pub const PP23_CHIP: ChipId = ChipId(35);
+
+/// Wave 3 (`/29`) PP pragma-dispatch chip reservation.
+pub const PP25_CHIP: ChipId = ChipId(36);
+
+/// Wave 3 (`/30`) PP expansion-source-map chip reservation.
+pub const PP27_CHIP: ChipId = ChipId(37);
+
+/// Wave 3 (`/31`) PP preprocessed-emit chip reservation.
+pub const PP28_CHIP: ChipId = ChipId(38);
+
+/// Wave 3 (`/32`) LX float-syntax chip reservation (LX09 scope:
+/// `NumberSpelling → FloatParts` syntax validation, Ack-only).
+pub const LX09_CHIP: ChipId = ChipId(39);
+/// Wave 3 (`/32`) LX float-value chip reservation (LX10 scope:
+/// spelling → correctly-rounded binary32/binary64 value check,
+/// Ack-only; binary128 and wider formats are explicit `Unsupported`).
+pub const LX10_CHIP: ChipId = ChipId(40);
+
+/// Wave 3 (`/33`) LX escape-decode chip reservation (LX11 scope:
+/// `LiteralBody → CodeUnits` validation, Ack-only; no `CodeUnits`
+/// result carrier is frozen yet).
+pub const LX11_CHIP: ChipId = ChipId(41);
+/// Wave 3 (`/33`) LX character-literal chip reservation (LX12 scope:
+/// `Prefix/body → TypedCharacter`, appends one `Character`
+/// `LiteralRecord`).
+pub const LX12_CHIP: ChipId = ChipId(42);
+/// Wave 3 (`/33`) LX string-literal chip reservation (LX13 scope:
+/// `Prefix/body → StringRecord`, appends one `String`
+/// `LiteralRecord`).
+pub const LX13_CHIP: ChipId = ChipId(43);
+
+/// Wave 3 (`/34`) PA external-declaration chip reservation (PA02 scope:
+/// one external declaration at the continuation cursor classified as a
+/// function definition or a declaration, Ack-only).
+pub const PA02_CHIP: ChipId = ChipId(44);
+/// Wave 3 (`/34`) PA declaration-specifiers chip reservation (PA03 scope:
+/// exactly Keyword `int`, Ack-only).
+pub const PA03_CHIP: ChipId = ChipId(45);
+/// Wave 3 (`/34`) PA declarator chip reservation (fused PA05/PA07/PA09
+/// scope: exactly `main(void)`, Ack-only).
+pub const PA05_CHIP: ChipId = ChipId(46);
+/// Wave 3 (`/34`) PA block/return chip reservation (fused PA28/PA32
+/// scope: the 7-token block and the 5-token return shapes, Ack-only).
+pub const PA28_CHIP: ChipId = ChipId(47);
+
+/// Wave 3 (`/35`) PA primary/binary chip reservation (fused PA16/PA22
+/// scope: the 1-token integer primary and the 3-token `<int> + <int>`
+/// shapes, Ack-only).
+pub const PA16_CHIP: ChipId = ChipId(48);
+/// Wave 3 (`/35`) PA unary-expression chip reservation (PA20 scope:
+/// the 2-token `+<int>` / `-<int>` shapes, Ack-only).
+pub const PA20_CHIP: ChipId = ChipId(49);
+/// Wave 3 (`/36`) PA declaration-finish chip reservation (PA14 scope:
+/// the `main(void);` finish with its point-of-declaration
+/// registration certified for the wiring layer, Ack-only).
+pub const PA14_CHIP: ChipId = ChipId(50);
+/// Wave 3 (`/36`) PA parse-recovery chip reservation (PA38 scope:
+/// delimiter sync to `;`/`)`/`}`/`{`-stop/EOF with the finite-advance
+/// guarantee, Ack-only).
+pub const PA38_CHIP: ChipId = ChipId(51);
+/// Wave 3 (`/37`) T08 selected-branch `&&` chip reservation (CL04
+/// scope: condition plus ONLY the short-circuit-selected branch,
+/// Ack-only).
+pub const CL04_AND_CHIP: ChipId = ChipId(52);
+/// Wave 3 (`/37`) T08 selected-branch `||` chip reservation (CL04
+/// scope: condition plus ONLY the short-circuit-selected branch,
+/// Ack-only).
+pub const CL04_OR_CHIP: ChipId = ChipId(53);
+/// Wave 3 (`/37`) T08 selected-branch `?:` chip reservation (CL04
+/// scope: passes the selected magnitude through verbatim, Ack-only).
+pub const CL04_COND_CHIP: ChipId = ChipId(54);
+/// Wave 3 (`/37`) T08 static-assert chip reservation (CL07 scope: one
+/// asserted ICE, nonzero passes, zero fails, non-ICE is
+/// `NotConstantExpression`, Ack-only).
+pub const CL07_ASSERT_CHIP: ChipId = ChipId(55);
+/// Wave 3 (`/38`) T13 evidence-classify chip reservation (VF14 scope:
+/// one Host-fed evidence pin set plus a frozen test-instance ref,
+/// classified over the complete compile/link/run/check vector; PASS
+/// completes `Ack`, every other verdict is exactly one typed `Fail`).
+pub const VF14_CHIP: ChipId = ChipId(56);
+/// Wave 3 (`/39`) T07 function-definition chip reservation (SE29 scope:
+/// one committed `FunctionDefinition` node checked against the M1
+/// `(void)`-only declarator shape, the single committed TY17
+/// `int(void)` signature, the declared `main` symbol, and the
+/// committed `Return` child fact; appends one signature-carrying
+/// `SemRecord` or reuses the committed one).
+pub const SE_FUNC_CHIP: ChipId = ChipId(57);
+
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::SEMANTIC_CONST_EVAL_LITERAL.raw()
@@ -989,6 +1189,127 @@ pub const fn is_lx_slice_kind(kind: TaskKind) -> bool {
 /// Whether a task kind belongs to the Wave 2 (`/12`) PA slice.
 pub const fn is_pa_slice_kind(kind: TaskKind) -> bool {
     kind.raw() == TaskKind::PARSE_TU.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/33`) LX string slice
+/// (escape decode, char decode, string decode).
+pub const fn is_lx_string_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_ESCAPE_DECODE.raw()
+        || kind.raw() == TaskKind::LEX_CHAR_DECODE.raw()
+        || kind.raw() == TaskKind::LEX_STRING_DECODE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/37`) T08 const-branch
+/// slice (selected-branch `&&` / `||` / `?:`, static assert).
+pub const fn is_const_branch_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_AND.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_OR.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_BRANCH_COND.raw()
+        || kind.raw() == TaskKind::CONSTANT_CONST_STATIC_ASSERT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/39`) SE function
+/// slice (function-definition signature check over the committed M1
+/// declarator, signature, symbol, and return-child facts).
+pub const fn is_se_function_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::SEMANTIC_FUNCTION_DEF.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/38`) VF14 evidence
+/// slice (evidence classification over the complete
+/// compile/link/run/check vector).
+pub const fn is_vf_evidence_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::VERIFICATION_EVIDENCE_CLASSIFY.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/36`) PA recovery slice
+/// (declaration-finish, parse-recovery).
+pub const fn is_pa_recovery_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_DECL_FINISH.raw() || kind.raw() == TaskKind::PARSE_RECOVERY.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/35`) PA expr slice
+/// (primary-expression, binary-expression, unary-expression).
+pub const fn is_pa_expr_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_PRIMARY.raw()
+        || kind.raw() == TaskKind::PARSE_BINARY.raw()
+        || kind.raw() == TaskKind::PARSE_UNARY.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/34`) PA decl slice
+/// (external-declaration dispatch, specifiers, declarator, block,
+/// return).
+pub const fn is_pa_decl_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PARSE_EXTERNAL_DECL.raw()
+        || kind.raw() == TaskKind::PARSE_SPECIFIERS.raw()
+        || kind.raw() == TaskKind::PARSE_DECLARATOR.raw()
+        || kind.raw() == TaskKind::PARSE_BLOCK.raw()
+        || kind.raw() == TaskKind::PARSE_RETURN.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/32`) LX float slice.
+pub const fn is_lx_float_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::LEX_FLOAT_SYNTAX.raw() || kind.raw() == TaskKind::LEX_FLOAT_VALUE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/31`) PP emit slice.
+pub const fn is_pp_emit_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_EMIT.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/30`) PP expansion-map slice.
+pub const fn is_pp_expand_map_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_EXPAND_MAP.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/29`) PP pragma slice.
+pub const fn is_pp_pragma_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_PRAGMA_DIRECTIVE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 3 (`/28`) PP line slice.
+pub const fn is_pp_line_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_LINE_DIRECTIVE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/27`) PP builtin slice.
+pub const fn is_pp_builtin_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_BUILTIN.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/26`) PP variadic slice.
+pub const fn is_pp_variadic_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_VARIADIC_MACRO.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/25`) PP include slice.
+pub const fn is_pp_include_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_INCLUDE_RESOLVE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_INCLUDE_ENTER.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/24`) PP macro-expansion slice.
+pub const fn is_pp_expand_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_INVOKE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_SUBSTITUTE.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/23`) PP macro-definition slice.
+pub const fn is_pp_macro_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_MACRO_DEFINE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_REDEFINE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_MACRO_UNDEF.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/22`) PP conditional slice.
+pub const fn is_pp_conditional_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_CONDITIONAL.raw()
+}
+
+/// Whether a task kind belongs to the Wave 2 (`/21`) PP directive slice.
+pub const fn is_pp_directive_slice_kind(kind: TaskKind) -> bool {
+    kind.raw() == TaskKind::PREPROCESS_DIRECTIVE.raw()
+        || kind.raw() == TaskKind::PREPROCESS_DIAGNOSTIC.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/19`) VF01 slice.
@@ -1063,6 +1384,25 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
             || is_vf12_slice_kind(kind)
             || is_vf05_slice_kind(kind)
             || is_vf01_slice_kind(kind)
+            || is_pp_directive_slice_kind(kind)
+            || is_pp_conditional_slice_kind(kind)
+            || is_pp_macro_slice_kind(kind)
+            || is_pp_expand_slice_kind(kind)
+            || is_pp_include_slice_kind(kind)
+            || is_pp_variadic_slice_kind(kind)
+            || is_pp_builtin_slice_kind(kind)
+            || is_pp_line_slice_kind(kind)
+            || is_pp_pragma_slice_kind(kind)
+            || is_pp_expand_map_slice_kind(kind)
+            || is_pp_emit_slice_kind(kind)
+            || is_lx_float_slice_kind(kind)
+            || is_lx_string_slice_kind(kind)
+            || is_pa_decl_slice_kind(kind)
+            || is_pa_expr_slice_kind(kind)
+            || is_pa_recovery_slice_kind(kind)
+            || is_const_branch_slice_kind(kind)
+            || is_vf_evidence_slice_kind(kind)
+            || is_se_function_slice_kind(kind)
     }) {
         return Ok(());
     }
@@ -1131,6 +1471,43 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::VERIFICATION_IR_INTERPRET, 6),
     (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, 2),
     (TaskKind::VERIFICATION_STORE_INVARIANT, 6),
+    (TaskKind::PREPROCESS_DIRECTIVE, 1),
+    (TaskKind::PREPROCESS_DIAGNOSTIC, 1),
+    (TaskKind::PREPROCESS_CONDITIONAL, 1),
+    (TaskKind::PREPROCESS_MACRO_DEFINE, 1),
+    (TaskKind::PREPROCESS_MACRO_REDEFINE, 1),
+    (TaskKind::PREPROCESS_MACRO_UNDEF, 1),
+    (TaskKind::PREPROCESS_MACRO_INVOKE, 1),
+    (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, 1),
+    (TaskKind::PREPROCESS_INCLUDE_RESOLVE, 1),
+    (TaskKind::PREPROCESS_INCLUDE_ENTER, 1),
+    (TaskKind::PREPROCESS_VARIADIC_MACRO, 1),
+    (TaskKind::PREPROCESS_MACRO_BUILTIN, 1),
+    (TaskKind::PREPROCESS_LINE_DIRECTIVE, 1),
+    (TaskKind::PREPROCESS_PRAGMA_DIRECTIVE, 1),
+    (TaskKind::PREPROCESS_EXPAND_MAP, 1),
+    (TaskKind::PREPROCESS_EMIT, 1),
+    (TaskKind::LEX_FLOAT_SYNTAX, 2),
+    (TaskKind::LEX_FLOAT_VALUE, 2),
+    (TaskKind::LEX_ESCAPE_DECODE, 2),
+    (TaskKind::LEX_CHAR_DECODE, 2),
+    (TaskKind::LEX_STRING_DECODE, 2),
+    (TaskKind::PARSE_EXTERNAL_DECL, 2),
+    (TaskKind::PARSE_SPECIFIERS, 2),
+    (TaskKind::PARSE_DECLARATOR, 2),
+    (TaskKind::PARSE_BLOCK, 2),
+    (TaskKind::PARSE_RETURN, 2),
+    (TaskKind::PARSE_PRIMARY, 2),
+    (TaskKind::PARSE_BINARY, 2),
+    (TaskKind::PARSE_UNARY, 2),
+    (TaskKind::PARSE_DECL_FINISH, 2),
+    (TaskKind::PARSE_RECOVERY, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_AND, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_OR, 2),
+    (TaskKind::CONSTANT_CONST_BRANCH_COND, 2),
+    (TaskKind::CONSTANT_CONST_STATIC_ASSERT, 2),
+    (TaskKind::VERIFICATION_EVIDENCE_CLASSIFY, 6),
+    (TaskKind::SEMANTIC_FUNCTION_DEF, 4),
     (TaskKind::SEMANTIC_CONST_EVAL_LITERAL, 1),
     (TaskKind::SEMANTIC_CONST_EVAL_BINARY, 1),
     (TaskKind::CONSTANT_CONST_FOLD, 2),

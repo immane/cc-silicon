@@ -263,6 +263,14 @@ impl TaskKind {
     /// `Record`).
     pub const SEMANTIC_RETURN_STMT: Self =
         Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/39`) SE-function-slice kind: function-definition check
+    /// (payload: exactly one `FunctionDefinition` node; checks the M1
+    /// `(void)`-only declarator shape, the single committed TY17
+    /// `int(void)` signature, the declared `main` symbol, and the
+    /// committed `Return` child fact; appends one signature-carrying
+    /// `SemRecord` or reuses the committed one; completes `Record`).
+    pub const SEMANTIC_FUNCTION_DEF: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 21);
     /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
@@ -288,6 +296,218 @@ impl TaskKind {
     /// completes `Records`).
     pub const PREPROCESS_SCAN: Self =
         Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 2 (`/21`) PP-directive-slice kind: directive-dispatch task
+    /// (payload: all committed pp-token refs; groups lines, fans out one
+    /// diagnostic child per `#error` line and awaits them; any other
+    /// directive fails fast as explicit `Unsupported`; completes `Ack`
+    /// when no directive line exists).
+    pub const PREPROCESS_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 2 (`/21`) PP-directive-slice kind: directive-diagnostic task
+    /// (payload: one post-`#` directive line's refs; `#error` lines only;
+    /// always fails with the joined message — the diagnostic is the
+    /// product).
+    pub const PREPROCESS_DIAGNOSTIC: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 2 (`/22`) PP-conditional-slice kind: conditional-inclusion task
+    /// (payload: all committed pp-token refs; tracks the conditional stack
+    /// with a chip-local PP-int evaluator and completes `Records` of the
+    /// active-line refs, active directive lines included).
+    pub const PREPROCESS_CONDITIONAL: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-definition task (payload:
+    /// one post-`#` `#define` line's refs; appends one fresh `MacroRecord`
+    /// or fans out one redefine child and awaits it; completes `Record` or
+    /// `Ack`).
+    pub const PREPROCESS_MACRO_DEFINE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-redefinition check task
+    /// (payload: one post-`#` line's refs plus exactly one committed
+    /// incumbent `Macro` ref; benign equivalence completes `Ack`,
+    /// anything else fails naming the difference).
+    pub const PREPROCESS_MACRO_REDEFINE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 2 (`/23`) PP-macro-slice kind: macro-undef task (payload: one
+    /// post-`#` `#undef` line's refs; appends one tombstone or
+    /// acknowledges the ignore).
+    pub const PREPROCESS_MACRO_UNDEF: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 25);
+    /// Wave 2 (`/24`) PP-expand-slice kind: macro-invocation task
+    /// (payload: all active pp-token refs; fans out one substitute child
+    /// per top-level invocation and stitches the expanded stream).
+    pub const PREPROCESS_MACRO_INVOKE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 26);
+    /// Wave 2 (`/24`) PP-expand-slice kind: macro-substitution task
+    /// (payload: one `Macro` def ref plus invocation refs; substitutes
+    /// with argument prescan, `#`/`##`, and blue-paint rescan).
+    pub const PREPROCESS_MACRO_SUBSTITUTE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 27);
+    /// Wave 2 (`/25`) PP-include-slice kind: include-resolve task
+    /// (payload: exactly one `HeaderName` ref; pure lookup over committed
+    /// sources; completes `Record(Source)` or fails not-loaded).
+    pub const PREPROCESS_INCLUDE_RESOLVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 28);
+    /// Wave 2 (`/25`) PP-include-slice kind: include-enter task (payload:
+    /// full-stream pp-token refs plus exactly one trailing `Source` ref;
+    /// splices one level of header tokens, keeps everything else verbatim).
+    pub const PREPROCESS_INCLUDE_ENTER: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 29);
+    /// Wave 2 (`/26`) PP-variadic-slice kind: variadic-macro task (single
+    /// kind for both payload shapes: stream mode carries all active
+    /// pp-token refs and fans out one single-mode child per variadic
+    /// invocation; single mode carries one `Macro` def ref plus
+    /// invocation refs and substitutes with `__VA_ARGS__` collection,
+    /// `__VA_OPT__` policy, `#`/`##`, and blue-paint rescan).
+    pub const PREPROCESS_VARIADIC_MACRO: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 30);
+    /// Wave 2 (`/27`) PP-builtin-slice kind: builtin-macro task (payload:
+    /// exactly one `RecordRef::PpToken` naming the builtin use, which must
+    /// be an `Identifier`; expands to exactly one synthesized `PpToken`
+    /// and completes `Records`; unknown or unconfigured names fail as
+    /// explicit `Unsupported`).
+    pub const PREPROCESS_MACRO_BUILTIN: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 31);
+    /// Wave 3 (`/28`) PP-line-slice kind: line-directive task (payload: one
+    /// directive line's pp-token refs in payload order, either `#line
+    /// number "file"?` or a GNU `# lineno "file" flags?` marker;
+    /// validates the logical location and completes `Ack`; malformed
+    /// input fails as a typed `Invalid`).
+    pub const PREPROCESS_LINE_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 32);
+    /// Wave 3 (`/29`) PP-pragma-slice kind: pragma-dispatch task (payload:
+    /// exactly one pragma construct in payload order, either post-`#` refs
+    /// whose first token is Identifier `pragma`, or the four operator
+    /// tokens `_Pragma ( StringLiteral )`; classifies to `once` /
+    /// `pack(push|pop)` / opaque and completes `Ack`; malformed `_Pragma`
+    /// input fails as a typed `Invalid`).
+    pub const PREPROCESS_PRAGMA_DIRECTIVE: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 33);
+    /// Wave 3 (`/30`) PP-expand-map-slice kind: expansion-source-map task
+    /// (payload: pp-token refs in payload order; rebuilds the per-token
+    /// origin chain from committed span/expansion links and completes
+    /// `Ack`; dangling links fail as a typed `Invalid`).
+    pub const PREPROCESS_EXPAND_MAP: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 34);
+    /// Wave 3 (`/31`) PP-emit-slice kind: preprocessed-emit task (payload:
+    /// pp-token refs in payload order; serializes the final stream to one
+    /// map-mandatory `Preprocessed` artifact whose bytes re-lex to the
+    /// same token stream; completes `Record(Artifact)`).
+    pub const PREPROCESS_EMIT: Self =
+        Self(((TaskGroup::PREPROCESS.0 as u16) << Self::LOCAL_BITS) | 35);
+    /// Wave 3 (`/32`) LX-float-slice kind: float-syntax task (payload:
+    /// exactly one `RecordRef::PpToken` of kind `PpNumber`; validates the
+    /// decimal/hex float spelling, suffix included, against the frozen
+    /// syntax rule; completes `Ack` on a valid spelling or fails with a
+    /// typed `Invalid` diagnostic; appends nothing — pp-numbers are never
+    /// treated as valid C constants here).
+    pub const LEX_FLOAT_SYNTAX: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/32`) LX-float-slice kind: float-value task (payload:
+    /// exactly one `RecordRef::PpToken` of kind `PpNumber`; converts the
+    /// committed spelling to the suffix-selected binary32/binary64 format
+    /// with correct round-to-nearest-even; completes `Ack` when the
+    /// spelling converts — range outcomes ride as value flags, never as
+    /// value-level failures — or fails loud (`Invalid` on malformed
+    /// spellings, `Unsupported` on non-float spellings and deferred
+    /// formats); appends nothing: the bits are certified by the pure
+    /// core, and no `FloatBits` result carrier is frozen yet).
+    pub const LEX_FLOAT_VALUE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/33`) LX-string-slice kind: escape-decode task (payload:
+    /// exactly `[Token, PpToken]` of kind `CharLiteral`/`StringLiteral`;
+    /// validates the literal body against the frozen escape rule — simple,
+    /// octal (at most 3 digits), greedy hex, `\u`/`\U` with scalar-range
+    /// checks — and completes `Ack` on a valid body or fails with a typed
+    /// `Invalid` diagnostic; appends nothing: the decoded units are
+    /// certified by the pure `decode_escape_body` core, and no `CodeUnits`
+    /// result carrier is frozen yet).
+    pub const LEX_ESCAPE_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 3 (`/33`) LX-string-slice kind: character-literal task
+    /// (payload: exactly `[Token, PpToken]` of kind `CharLiteral`;
+    /// decodes one `prefix'body'` spelling to its typed value with the
+    /// frozen multicharacter truncation policy and appends exactly one
+    /// `Character` `LiteralRecord` with the publish-time token back-link;
+    /// completes `Record`).
+    pub const LEX_CHAR_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 3 (`/33`) LX-string-slice kind: string-literal task (payload:
+    /// exactly `[Token, PpToken]` of kind `StringLiteral`; decodes one
+    /// `prefix"body"` spelling to code units plus exactly one terminating
+    /// zero with the frozen element-type/width rule and appends exactly
+    /// one `String` `LiteralRecord` with the publish-time token back-link;
+    /// completes `Record`).
+    pub const LEX_STRING_DECODE: Self = Self(((TaskGroup::LEX.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 3 (`/34`) PA-decl-slice kind: external-declaration dispatch
+    /// (reads the committed token window at the continuation cursor with
+    /// `ExternalDecl` context; classifies one external declaration as a
+    /// function definition (`{`) or a declaration (`;`); completes `Ack`,
+    /// appends nothing: the PA01 wiring layer owns the PA03/PA05 fan-out).
+    pub const PARSE_EXTERNAL_DECL: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 3 (`/34`) PA-decl-slice kind: declaration-specifiers task
+    /// (payload: exactly one committed `Token`; accepts Keyword `int`
+    /// alone; completes `Ack`, appends nothing; cursor advance stays
+    /// caller-held).
+    pub const PARSE_SPECIFIERS: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 3 (`/34`) PA-decl-slice kind: declarator task (payload: the
+    /// declarator token refs in source order; accepts `main(void)` only —
+    /// the fused PA05/PA07/PA09 M1 scope; completes `Ack`, appends
+    /// nothing; the empty `()` shape fails as a typed DEFECT).
+    pub const PARSE_DECLARATOR: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/34`) PA-decl-slice kind: compound-statement task
+    /// (payload: exactly the 7 M1 block tokens
+    /// `{ return <int> + <int> ; }`; completes `Ack`, appends nothing).
+    pub const PARSE_BLOCK: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 20);
+    /// Wave 3 (`/34`) PA-decl-slice kind: return-statement task (payload:
+    /// exactly the 5 M1 return tokens `return <int> + <int> ;`;
+    /// completes `Ack`, appends nothing).
+    pub const PARSE_RETURN: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// Wave 3 (`/35`) PA-expr-slice kind: primary-expression task
+    /// (payload: exactly one committed `Token`; accepts an integer
+    /// constant backed by one committed literal; completes `Ack`,
+    /// appends nothing; cursor advance stays caller-held).
+    pub const PARSE_PRIMARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// Wave 3 (`/35`) PA-expr-slice kind: binary-expression task
+    /// (payload: exactly three committed `Token` refs in source order,
+    /// `<int> + <int>` for M1; completes `Ack`, appends nothing).
+    pub const PARSE_BINARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// Wave 3 (`/35`) PA-expr-slice kind: unary-expression task
+    /// (payload: exactly two committed `Token` refs in source order,
+    /// `+<int>` / `-<int>` for M1; completes `Ack`, appends nothing).
+    pub const PARSE_UNARY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// Wave 3 (`/36`) PA-recovery-slice kind: declaration-finish task
+    /// (payload: the declarator-finish token refs in source order —
+    /// exactly `[main, (, void, ), ;]` for M1; completes `Ack`, appends
+    /// nothing; cursor advance and the DeclNode append stay caller-held).
+    pub const PARSE_DECL_FINISH: Self =
+        Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 25);
+    /// Wave 3 (`/36`) PA-recovery-slice kind: parse-recovery task
+    /// (payload: the unconsumed token suffix starting at the fault
+    /// cursor; synchronizes to an explicit `;`/`)`/`}`/`{`-stop/EOF;
+    /// completes `Ack`, appends nothing; caller holds the cursor).
+    pub const PARSE_RECOVERY: Self = Self(((TaskGroup::PARSE.0 as u16) << Self::LOCAL_BITS) | 26);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `&&`
+    /// certification (payload: `[lhs, rhs]` literal refs, `lhs` doubles
+    /// as the condition; evaluates the condition plus ONLY the
+    /// short-circuit-selected branch; completes `Ack`, appends
+    /// nothing).
+    pub const CONSTANT_CONST_BRANCH_AND: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 17);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `||`
+    /// certification (payload: `[lhs, rhs]` literal refs, `lhs` doubles
+    /// as the condition; completes `Ack`, appends nothing).
+    pub const CONSTANT_CONST_BRANCH_OR: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 18);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: selected-branch `?:`
+    /// certification (payload: `[cond, then, else]` literal refs;
+    /// passes the selected magnitude through; completes `Ack`, appends
+    /// nothing).
+    pub const CONSTANT_CONST_BRANCH_COND: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/37`) T08 const-branch-slice kind: static-assert check
+    /// (payload: exactly one `RecordRef::Literal` naming the asserted
+    /// ICE; nonzero passes `Ack`, zero fails as a failed assertion, a
+    /// non-literal payload fails as `NotConstantExpression`; appends
+    /// nothing).
+    pub const CONSTANT_CONST_STATIC_ASSERT: Self =
+        Self(((TaskGroup::CONSTANT_LAYOUT_INIT.0 as u16) << Self::LOCAL_BITS) | 20);
     /// Wave 2 (`/17`) VF12-slice kind: symbolic IR interpret task (payload:
     /// exactly one committed `Function`; walks the M1 covered subset
     /// without executing target code; completes `Record` of the modeled
@@ -303,6 +523,13 @@ impl TaskKind {
     /// be empty; checks the global M1 store contract; completes `Ack`).
     pub const VERIFICATION_STORE_INVARIANT: Self =
         Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 19);
+    /// Wave 3 (`/38`) VF14-slice kind: evidence-classify task (payload:
+    /// exactly six refs `[instance, gate, compile, link, run, check]`;
+    /// classifies the T00 gate outcome over the complete
+    /// compile/link/run/check evidence vector; PASS completes `Ack`,
+    /// every other verdict emits exactly one typed `Fail`).
+    pub const VERIFICATION_EVIDENCE_CLASSIFY: Self =
+        Self(((TaskGroup::VERIFICATION.0 as u16) << Self::LOCAL_BITS) | 20);
     /// Whether this is one of the frozen foundation kinds.
     pub const fn is_foundation(self) -> bool {
         self.0 <= Self::CONTROL_IMPORT_SOURCE.0
@@ -429,7 +656,7 @@ impl TaskKindRegistry {
 
     /// The Wave 2 (`/19`) VF01-slice registry: the VF05 slice plus the
     /// frozen store-invariant kind (all `Frozen`; `VERIFICATION` owners
-    /// start new codes at local 20).
+    /// start new codes at local 21).
     pub fn vf01_slice() -> Self {
         let mut registry = Self::vf05_slice();
         let slice: &[(TaskKind, &str)] = &[(
@@ -468,6 +695,335 @@ impl TaskKindRegistry {
             TaskKind::VERIFICATION_IR_INTERPRET,
             "verification.ir_interpret",
         )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/33`) LX-string-slice registry: the LX-float slice
+    /// plus the frozen escape-decode, char-decode, and string-decode kinds
+    /// (all `Frozen`; `LEX` owners start new codes at local 24).
+    pub fn lx_string_slice() -> Self {
+        let mut registry = Self::lx_float_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_ESCAPE_DECODE, "lex.escape_decode"),
+            (TaskKind::LEX_CHAR_DECODE, "lex.char_decode"),
+            (TaskKind::LEX_STRING_DECODE, "lex.string_decode"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/39`) SE-function-slice registry: the VF14
+    /// evidence slice plus the frozen function-definition kind (all
+    /// `Frozen`; `SEMANTIC` owners start new codes at local 22).
+    pub fn se_function_slice() -> Self {
+        let mut registry = Self::vf_evidence_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::SEMANTIC_FUNCTION_DEF, "semantic.function_def")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/38`) VF14 evidence-slice registry: the
+    /// const-branch slice plus the frozen evidence-classify kind (all
+    /// `Frozen`; `VERIFICATION` owners start new codes at local 21).
+    pub fn vf_evidence_slice() -> Self {
+        let mut registry = Self::const_branch_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::VERIFICATION_EVIDENCE_CLASSIFY,
+            "verification.evidence_classify",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/37`) T08 const-branch-slice registry: the
+    /// PA-recovery slice plus the frozen selected-branch `&&` / `||` /
+    /// `?:` and static-assert kinds (all `Frozen`; `CONSTANT_LAYOUT_INIT`
+    /// owners start new codes at local 21).
+    pub fn const_branch_slice() -> Self {
+        let mut registry = Self::pa_recovery_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_AND,
+                "constant_layout_init.const_branch_and",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_OR,
+                "constant_layout_init.const_branch_or",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_BRANCH_COND,
+                "constant_layout_init.const_branch_cond",
+            ),
+            (
+                TaskKind::CONSTANT_CONST_STATIC_ASSERT,
+                "constant_layout_init.const_static_assert",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/36`) PA-recovery-slice registry: the PA-expr slice
+    /// plus the frozen declaration-finish and recovery kinds (all
+    /// `Frozen`; `PARSE` owners start new codes at local 27).
+    pub fn pa_recovery_slice() -> Self {
+        let mut registry = Self::pa_expr_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PARSE_DECL_FINISH, "parse.decl_finish"),
+            (TaskKind::PARSE_RECOVERY, "parse.recovery"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/35`) PA-expr-slice registry: the PA-decl slice
+    /// plus the frozen primary, binary, and unary kinds (all `Frozen`;
+    /// `PARSE` owners start new codes at local 25).
+    pub fn pa_expr_slice() -> Self {
+        let mut registry = Self::pa_decl_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PARSE_PRIMARY, "parse.primary"),
+            (TaskKind::PARSE_BINARY, "parse.binary"),
+            (TaskKind::PARSE_UNARY, "parse.unary"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/34`) PA-decl-slice registry: the LX-string slice
+    /// plus the frozen external-decl, specifiers, declarator, block, and
+    /// return kinds (all `Frozen`; `PARSE` owners start new codes at
+    /// local 22).
+    pub fn pa_decl_slice() -> Self {
+        let mut registry = Self::lx_string_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PARSE_EXTERNAL_DECL, "parse.external_declaration"),
+            (TaskKind::PARSE_SPECIFIERS, "parse.specifiers"),
+            (TaskKind::PARSE_DECLARATOR, "parse.declarator"),
+            (TaskKind::PARSE_BLOCK, "parse.block"),
+            (TaskKind::PARSE_RETURN, "parse.return"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/32`) LX-float-slice registry: the PP-emit slice
+    /// plus the frozen float-syntax and float-value kinds (all `Frozen`;
+    /// `LEX` owners start new codes at local 21).
+    pub fn lx_float_slice() -> Self {
+        let mut registry = Self::pp_emit_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::LEX_FLOAT_SYNTAX, "lex.float_syntax"),
+            (TaskKind::LEX_FLOAT_VALUE, "lex.float_value"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/31`) PP-emit-slice registry: the PP-expand-map
+    /// slice plus the frozen preprocessed-emit kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 36).
+    pub fn pp_emit_slice() -> Self {
+        let mut registry = Self::pp_expand_map_slice();
+        let slice: &[(TaskKind, &str)] = &[(TaskKind::PREPROCESS_EMIT, "preprocess.emit")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/30`) PP-expand-map-slice registry: the PP-pragma
+    /// slice plus the frozen expansion-source-map kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 35).
+    pub fn pp_expand_map_slice() -> Self {
+        let mut registry = Self::pp_pragma_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_EXPAND_MAP, "preprocess.expand_map")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/29`) PP-pragma-slice registry: the PP-line
+    /// slice plus the frozen pragma-dispatch kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 34).
+    pub fn pp_pragma_slice() -> Self {
+        let mut registry = Self::pp_line_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_PRAGMA_DIRECTIVE,
+            "preprocess.pragma_directive",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 3 (`/28`) PP-line-slice registry: the PP-builtin
+    /// slice plus the frozen line-directive kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 33).
+    pub fn pp_line_slice() -> Self {
+        let mut registry = Self::pp_builtin_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_LINE_DIRECTIVE,
+            "preprocess.line_directive",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/27`) PP-builtin-slice registry: the PP-variadic
+    /// slice plus the frozen builtin-macro kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 32).
+    pub fn pp_builtin_slice() -> Self {
+        let mut registry = Self::pp_variadic_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_MACRO_BUILTIN,
+            "preprocess.macro_builtin",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/26`) PP-variadic-slice registry: the PP-include
+    /// slice plus the frozen variadic-macro kind (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 31).
+    pub fn pp_variadic_slice() -> Self {
+        let mut registry = Self::pp_include_slice();
+        let slice: &[(TaskKind, &str)] = &[(
+            TaskKind::PREPROCESS_VARIADIC_MACRO,
+            "preprocess.variadic_macro",
+        )];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/25`) PP-include-slice registry: the PP-expand
+    /// slice plus the frozen include kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 30).
+    pub fn pp_include_slice() -> Self {
+        let mut registry = Self::pp_expand_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (
+                TaskKind::PREPROCESS_INCLUDE_RESOLVE,
+                "preprocess.include_resolve",
+            ),
+            (
+                TaskKind::PREPROCESS_INCLUDE_ENTER,
+                "preprocess.include_enter",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/24`) PP-expand-slice registry: the PP-macro
+    /// slice plus the frozen invoke/substitute kinds (all `Frozen`;
+    /// `PREPROCESS` owners start new codes at local 28).
+    pub fn pp_expand_slice() -> Self {
+        let mut registry = Self::pp_macro_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_MACRO_INVOKE, "preprocess.macro_invoke"),
+            (
+                TaskKind::PREPROCESS_MACRO_SUBSTITUTE,
+                "preprocess.macro_substitute",
+            ),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/23`) PP-macro-slice registry: the PP-conditional
+    /// slice plus the frozen macro kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 26).
+    pub fn pp_macro_slice() -> Self {
+        let mut registry = Self::pp_conditional_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_MACRO_DEFINE, "preprocess.macro_define"),
+            (
+                TaskKind::PREPROCESS_MACRO_REDEFINE,
+                "preprocess.macro_redefine",
+            ),
+            (TaskKind::PREPROCESS_MACRO_UNDEF, "preprocess.macro_undef"),
+        ];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/22`) PP-conditional-slice registry: the PP-directive
+    /// slice plus the frozen conditional kind (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 23).
+    pub fn pp_conditional_slice() -> Self {
+        let mut registry = Self::pp_directive_slice();
+        let slice: &[(TaskKind, &str)] =
+            &[(TaskKind::PREPROCESS_CONDITIONAL, "preprocess.conditional")];
+        for &(kind, name) in slice {
+            // The table is constant and valid; a failure here would be a bug.
+            let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
+        }
+        registry
+    }
+
+    /// The Wave 2 (`/21`) PP-directive-slice registry: the VF01 slice plus
+    /// the frozen directive/diagnostic kinds (all `Frozen`; `PREPROCESS`
+    /// owners start new codes at local 22).
+    pub fn pp_directive_slice() -> Self {
+        let mut registry = Self::vf01_slice();
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::PREPROCESS_DIRECTIVE, "preprocess.directive"),
+            (TaskKind::PREPROCESS_DIAGNOSTIC, "preprocess.diagnostic"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
@@ -1654,4 +2210,5 @@ pub const RECORD_KINDS: &[&str] = &[
     "literals",
     "sem",
     "scope_events",
+    "macros",
 ];

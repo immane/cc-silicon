@@ -27,15 +27,21 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// Frozen contract version: T01 C01-C06 foundation plus the M1 Gate 1
 /// const-fold slice, the `/8` worker-integration amendment, the `/9`
 /// pre-chip readiness fixes, the Wave 2 PP01 slice (`/10`), the Wave 2 LX
-/// slice (`/11`), the Wave 2 PA slice (`/12`), and the Wave 2 TY slice
-/// (`/13`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/19";
+/// slice (`/11`), the Wave 2 PA slice (`/12`), the Wave 2 TY slice
+/// (`/13`), and the Wave 2 SE/IR/PP/VF slices through the Wave 3 PP
+/// emit slice (`/31`) plus the Wave 3 LX float slice (`/32`), the
+/// Wave 3 LX string slice (`/33`), the Wave 3 PA decl slice (`/34`),
+/// the Wave 3 PA expr slice (`/35`), the Wave 3 PA recovery
+/// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`), and
+/// the Wave 3 VF14 evidence slice (`/38`), and the Wave 3 SE29
+/// function-definition slice (`/39`).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/39";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "76155ee8b66bd3a8e60c3e812a25301abcfd4ffffbf6e0dfbda3be25f6b476a4";
+pub const CONTRACT_HASH: &str = "07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -171,6 +177,67 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf01.refs-resolve",
     "vf01.span-bounds",
     "vf01.reserved-unused-m1",
+    "pp.comment-literal-aware",
+    "pp.scan-full-punctuators",
+    "pp.scan-literal-header-tokens",
+    "pp.directive-dispatch-lines",
+    "pp.error-fails-message",
+    "pp.diagnostic-taxonomy-frozen",
+    "pp.conditional-stack",
+    "pp.expr-ppint-exact",
+    "pp.defined-frozen-false",
+    "pp.macrodef-record",
+    "pp.redefine-benign-rule",
+    "pp.undef-tombstone",
+    "pp.defined-reads-table",
+    "pp.invoke-fanout-stitch",
+    "pp.substitute-rescan-loop",
+    "pp.stringify-paste-exact",
+    "pp.blue-paint-guard",
+    "pp.macro-function-flag",
+    "pp.include-path-policy",
+    "pp.include-single-pass-stitch",
+    "pp.variadic-collect",
+    "pp.va-opt-policy",
+    "pp.variadic-arity",
+    "pp.builtin-file-line",
+    "pp.builtin-counter",
+    "pp.builtin-target",
+    "pp.builtin-date-replayable",
+    "pp.line-logical",
+    "pp.line-gnu-marker",
+    "pp.line-range",
+    "pp.pragma-once",
+    "pp.pragma-pack",
+    "pp.pragma-unknown-ignore",
+    "pp.expand-origin-chain",
+    "pp.origin-paste-prescan",
+    "pp.origin-blue-paint",
+    "pp.emit-directive-strip",
+    "pp.emit-no-gluing",
+    "pp.emit-map",
+    "lx.float-syntax",
+    "lx.float-value-rounding",
+    "lx.float-overflow",
+    "lx.escape-decode",
+    "lx.char-typed",
+    "lx.string-record",
+    "pa.external-dispatch",
+    "pa.specifier-int",
+    "pa.declarator-void",
+    "pa.block-return",
+    "pa.primary-int",
+    "pa.binary-add",
+    "pa.unary-plus-minus",
+    "pa.pod-finish",
+    "pa.recovery-sync",
+    "const.branch-selected",
+    "const.static-assert",
+    "vf.evidence-complete",
+    "vf.evidence-stage",
+    "vf.evidence-never-pass-missing",
+    "se.function-signature",
+    "se.function-body-checked",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -193,6 +260,7 @@ pub const M1_STORE_FAMILY_ARENA: &[(&str, &str, &str, &str)] = &[
     ("sources", "expansions", "expansion", "expansions"),
     ("names", "entries", "name", "intern-table"),
     ("pp", "tokens", "pp_token", "pp_tokens"),
+    ("pp", "macros", "macro", "macros"),
     ("lex", "tokens", "token", "tokens"),
     ("lex", "literals", "literal", "literals"),
     ("parse", "nodes", "node", "nodes"),
@@ -292,7 +360,15 @@ pub const REQUIRED_KIND_NAMES: &[&str] = &["integer_constant_expression"];
 pub const CONST_LEGALITY_NAMES: &[&str] = &["legal", "not_constant_expression", "unsupported"];
 
 /// Frozen `/11` `PpTokenKind` names, in declaration order.
-pub const PPTOKEN_KIND_NAMES: &[&str] = &["identifier", "pp_number", "punctuator", "eof"];
+pub const PPTOKEN_KIND_NAMES: &[&str] = &[
+    "identifier",
+    "pp_number",
+    "punctuator",
+    "string_literal",
+    "char_literal",
+    "header_name",
+    "eof",
+];
 
 /// Frozen `/11` `TokenKind` names, in declaration order.
 pub const TOKEN_KIND_NAMES: &[&str] = &["keyword", "identifier", "punctuator", "integer", "eof"];
@@ -360,6 +436,15 @@ pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
 
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
 pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+/// Frozen `/23` macro-record field inventory (hash-participating).
+pub const MACRO_RECORD_FIELDS: &[&str] = &[
+    "spelling",
+    "params",
+    "function_like",
+    "variadic",
+    "replacement",
+    "undefined",
+];
 
 /// Frozen `/15` `BlockRecord` fields, in declaration order.
 pub const BLOCK_RECORD_FIELDS: &[&str] = &["function", "ordinal"];
@@ -492,6 +577,7 @@ impl FrozenSchema {
         push_str_list(&mut w, VALUE_RECORD_FIELDS);
         push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
         push_str_list(&mut w, SPAN_RECORD_FIELDS);
+        push_str_list(&mut w, MACRO_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);

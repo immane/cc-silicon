@@ -17,9 +17,9 @@ use crate::arena::{ReservedArena, TypedArena};
 use crate::diagnostic::DiagnosticRecord;
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
-    HostRequestId, InitId, InstructionId, LayoutId, LiteralId, NameId, NodeId, PpTokenId, ResultId,
-    ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId, VRegId,
-    ValueId,
+    HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId, PpTokenId,
+    ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId,
+    VRegId, ValueId,
 };
 use crate::intern::InternTable;
 use crate::limits::{LimitError, Limits};
@@ -178,15 +178,47 @@ pub struct PpTokenRecord {
     pub spelling: Vec<u8>,
 }
 
-/// Preprocessing-token kinds (`/11` M1-closed produced subset in doc).
+/// A T03-owned macro definition (`/23` PP macro-definition slice freeze).
+///
+/// Names and parameters stay raw spelling bytes (never interned): lookup
+/// compares spellings, so no cross-batch intern-ID prediction is ever
+/// needed. Lookup takes the greatest `MacroId` with equal spelling; a
+/// latest tombstone (`undefined`) — or absence — means undefined.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MacroRecord {
+    /// Macro name spelling (raw bytes).
+    pub spelling: Vec<u8>,
+    /// Parameter spellings in order (`[]` for object-like).
+    pub params: Vec<Vec<u8>>,
+    /// Function-like (`(` immediately followed the name; distinguishes a
+    /// zero-parameter function-like macro from object-like).
+    pub function_like: bool,
+    /// Variadic (`...`/`__VA_ARGS__` present; use deferred to PP16).
+    pub variadic: bool,
+    /// Replacement list (committed pp-token IDs).
+    pub replacement: Vec<PpTokenId>,
+    /// `#undef` tombstone (no definition while set).
+    pub undefined: bool,
+}
+
+/// Preprocessing-token kinds (`/11` M1 closed set extended in `/20`
+/// with literal and header-name kinds for the full-token scan; LX decode
+/// of the new kinds stays deferred).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PpTokenKind {
     /// `int`, `main`, `void`, `return` at PP level (keywords not yet distinguished).
     Identifier,
     /// `2`, `3` (M1 decimal only; other numeric forms are explicit unsupported).
     PpNumber,
-    /// `(`, `)`, `{`, `+`, `;`, `}`.
+    /// `(`, `)`, `{`, `+`, `;`, `}` (M1 subset; the full C11 table lives
+    /// chip-local in the `/20` scanner and produces the same kind).
     Punctuator,
+    /// `"..."` with escapes preserved (`/20`; LX decode deferred).
+    StringLiteral,
+    /// `'...'` with escapes preserved (`/20`; LX decode deferred).
+    CharLiteral,
+    /// `<...>` or `"..."` after `#include` (`/20`; PP17 consumes it).
+    HeaderName,
     /// End of input (zero-width span at the source end).
     Eof,
 }
@@ -584,6 +616,9 @@ pub struct Arenas {
     pub expansions: TypedArena<ExpansionId, ExpansionRecord>,
     /// Preprocessing tokens (`/11` T03/T04 co-freeze: typed on freeze).
     pub pp_tokens: TypedArena<PpTokenId, PpTokenRecord>,
+    /// Macro definitions and `#undef` tombstones (`/23` slice freeze:
+    /// typed on freeze).
+    pub macros: TypedArena<MacroId, MacroRecord>,
     /// C tokens (`/11` LX-slice freeze: typed on freeze).
     pub tokens: TypedArena<TokenId, TokenRecord>,
     /// Scopes (`/13` slice freeze: typed on freeze).

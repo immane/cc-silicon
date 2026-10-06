@@ -395,25 +395,27 @@ fn span_offsets_encode_as_fixed_u64_le() {
 }
 
 #[test]
-fn record_ref_tags_24_26_are_literal_sem_scope_event() {
+fn record_ref_tags_24_27_are_literal_sem_scope_event_macro() {
     use cc_silicon_compiler::snapshot::{
         decode_record_ref, decode_record_ref_raw, encode_record_ref, encode_record_ref_raw,
-        RECORD_REF_TAG_LITERAL, RECORD_REF_TAG_SCOPE_EVENT, RECORD_REF_TAG_SEM,
+        RECORD_REF_TAG_LITERAL, RECORD_REF_TAG_MACRO, RECORD_REF_TAG_SCOPE_EVENT,
+        RECORD_REF_TAG_SEM,
     };
     // Frozen assignment (authorizing freeze instruction + `RecordRef::wire_tag`):
-    // Literal = 24, Sem = 25, ScopeEvent = 26.
+    // Literal = 24, Sem = 25, ScopeEvent = 26, Macro (`/23`) = 27.
     assert_eq!(RECORD_REF_TAG_LITERAL, 24);
     assert_eq!(RECORD_REF_TAG_SEM, 25);
     assert_eq!(RECORD_REF_TAG_SCOPE_EVENT, 26);
-    // Raw round-trip for the three appended tags.
-    for tag in [24u8, 25, 26] {
+    assert_eq!(RECORD_REF_TAG_MACRO, 27);
+    // Raw round-trip for the four appended tags.
+    for tag in [24u8, 25, 26, 27] {
         let bytes = encode_record_ref_raw(tag, 11).unwrap();
         assert_eq!(bytes[0], tag);
         assert_eq!(decode_record_ref_raw(&bytes).unwrap(), (tag, 11));
     }
-    // Tags above 26 are rejected on both paths.
-    assert!(encode_record_ref_raw(27, 0).is_err());
-    assert!(decode_record_ref_raw(&[27, 0, 0, 0, 0]).is_err());
+    // Tags above 27 are rejected on both paths.
+    assert!(encode_record_ref_raw(28, 0).is_err());
+    assert!(decode_record_ref_raw(&[28, 0, 0, 0, 0]).is_err());
     // Typed decode constructs the real variants with re-encode identity.
     for reference in [
         cc_silicon_compiler::ids::RecordRef::Literal(
@@ -423,6 +425,9 @@ fn record_ref_tags_24_26_are_literal_sem_scope_event() {
         cc_silicon_compiler::ids::RecordRef::ScopeEvent(
             cc_silicon_compiler::ids::ScopeEventId::from_index(6),
         ),
+        cc_silicon_compiler::ids::RecordRef::Macro(cc_silicon_compiler::ids::MacroId::from_index(
+            7,
+        )),
         cc_silicon_compiler::ids::RecordRef::Source(
             cc_silicon_compiler::ids::SourceId::from_index(3),
         ),

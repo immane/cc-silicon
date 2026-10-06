@@ -6,10 +6,13 @@
 // VF06/VF05→IR→VF12→VF01), and prints Part A evidence (snapshot hash,
 // trace hash, modeled constant). It performs no compilation itself, never
 // shells out to another C compiler, and refuses target emission (`-S`,
-// `-c`) while the target is unverified (fail-closed, Part B). Flag
-// spellings are illustrative until the H04 driver contract freezes;
-// `-E`, `-I`/`-D`/`-U`, and multi-source compilations are explicit
-// deferred errors, never silent fallbacks.
+// `-c`) while the target is unverified (fail-closed, Part B). Part B adds
+// host-only `-E` preprocessed emission through the frozen PP28 worker
+// (no contract change, no version bump), and H04 `-D`/`-U` seeds the frozen
+// macro table in flag order before preprocessing (host-only, no contract
+// change, no version bump). Remaining flag spellings are illustrative
+// until the H04 driver contract freezes; `-I` and multi-source
+// compilations are explicit deferred errors, never silent fallbacks.
 //
 // Exit codes: 0 = evidence produced; 1 = candidate diagnostic (the input
 // is rejected with a structured message, no evidence); 2 = driver error
@@ -19,9 +22,10 @@
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
-    PaTuChip, PpCommentChip, PpNormalizeChip, PpScanChip, PpSpliceChip, SeBinChip, SeLitChip,
-    SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip,
-    Vf12Chip, Worker, WorkerRegistry,
+    PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
+    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip,
+    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
+    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -29,9 +33,9 @@ use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP,
-    SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP,
-    VF06_CHIP, VF12_CHIP,
+    PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP,
+    PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
+    TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -39,6 +43,17 @@ use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec}
 use cc_silicon_compiler::task::{
     Payload, ResultValue, TaskDraft, TaskKind, TaskKindRegistry, TaskState,
 };
+
+/// H04 Part B `-E` terminal host step (pure orchestration; chip does the
+/// work, host owns file/stdout persistence).
+#[path = "candidate/emit_helper.rs"]
+mod emit_helper;
+
+/// H04 `-D`/`-U` flag parsing helper (pure host-side argv parsing plus the
+/// frozen `MacroRecord` shapes; value scanning and record commit stay here
+/// with the integrator so chips own every semantic decision).
+#[path = "candidate/macro_flags.rs"]
+mod macro_flags;
 
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
@@ -53,13 +68,21 @@ struct Invocation {
     snapshot: bool,
     trace: bool,
     interpret: bool,
+    /// Preprocessed emission (`-E`, Part B).
+    emit: bool,
+    /// `-D`/`-U` macro seeds in flag order (last-wins by commit order).
+    macro_flags: Vec<macro_flags::MacroFlagSeed>,
 }
 
 fn usage() -> &'static str {
-    "usage: candidate [-std=c11] [-O0] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
+    "usage: candidate [-std=c11] [-O0] [-D NAME[=value]] [-U NAME] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
+     usage: candidate -E [-D NAME[=value]] [-U NAME] [-o <path>] file.c\n\
      Part A evidence driver (M1): snapshot/trace emission and IR interpretation.\n\
+     -D NAME defines NAME as 1; -D NAME=value defines NAME with that replacement text (empty value defines it as empty).\n\
+     -U NAME undefines NAME; repeated -D/-U for one name resolve last-wins in flag order.\n\
+     -E emits the preprocessed source (PP28) to stdout or -o <path> (Part B, host-only).\n\
      -S and -c are refused while the target is unverified (fail-closed, Part B).\n\
-     -E, -I/-D/-U, and multi-source compilations are deferred (explicit error)."
+     -I and multi-source compilations are deferred (explicit error)."
 }
 
 fn parse_args(args: &[String]) -> Result<Invocation, String> {
@@ -69,6 +92,8 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         snapshot: false,
         trace: false,
         interpret: false,
+        emit: false,
+        macro_flags: Vec::new(),
     };
     let mut inputs = Vec::new();
     let mut index = 0;
@@ -81,9 +106,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
                 "{arg} refused: target emission is fail-closed while the target is unverified (Part B, probe-gated)"
             ));
         } else if arg == "-E" {
-            return Err(
-                "-E refused in Part A: preprocessed emission (PP28) is deferred".to_string(),
-            );
+            invocation.emit = true;
         } else if arg == "-o" {
             index += 1;
             let path = args
@@ -114,16 +137,45 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
             if level != "0" {
                 return Err(format!("-O {level} unsupported in Part A (only -O0)"));
             }
-        } else if arg == "-I"
-            || arg.starts_with("-I")
-            || arg == "-D"
-            || arg.starts_with("-D")
-            || arg == "-U"
-            || arg.starts_with("-U")
-        {
-            return Err(format!(
-                "{arg} deferred: macro/include support is not in Part A"
-            ));
+        } else if arg == "-I" || arg.starts_with("-I") {
+            return Err(format!("{arg} deferred: include support is not in Part A"));
+        } else if let Some((kind, body)) = macro_flags::split_flag(arg) {
+            let body: &str = if body.is_empty() {
+                index += 1;
+                match args.get(index) {
+                    Some(next) => next.as_str(),
+                    None => {
+                        return Err(if kind == 'D' {
+                            "-D requires a macro name".to_string()
+                        } else {
+                            "-U requires a macro name".to_string()
+                        });
+                    }
+                }
+            } else {
+                body
+            };
+            if kind == 'D' {
+                let seed = macro_flags::parse_define_body(body)?;
+                // Fail fast on values the frozen scan rejects so a bad `-D`
+                // value stays a driver error (exit 2), not a pipeline
+                // diagnostic. The commit path below re-scans the same bytes.
+                if let Err(draft) = cc_silicon_compiler::chips::scan(seed.value.as_slice()) {
+                    return Err(format!(
+                        "-D {} has an invalid value: {}",
+                        String::from_utf8_lossy(&seed.name),
+                        draft.message
+                    ));
+                }
+                invocation
+                    .macro_flags
+                    .push(macro_flags::MacroFlagSeed::Define(seed));
+            } else {
+                let seed = macro_flags::parse_undef_body(body)?;
+                invocation
+                    .macro_flags
+                    .push(macro_flags::MacroFlagSeed::Undef(seed));
+            }
         } else if arg == "--emit-ir-snapshot" {
             invocation.snapshot = true;
         } else if arg == "--emit-trace" {
@@ -144,7 +196,14 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         ));
     }
     invocation.input = inputs.pop().expect("one input checked above");
-    if !invocation.snapshot && !invocation.trace && !invocation.interpret {
+    if invocation.emit {
+        if invocation.snapshot || invocation.trace || invocation.interpret {
+            return Err(
+                "-E clashes with evidence selection (--emit-ir-snapshot/--emit-trace/--interpret-ir)"
+                    .to_string(),
+            );
+        }
+    } else if !invocation.snapshot && !invocation.trace && !invocation.interpret {
         invocation.snapshot = true;
         invocation.trace = true;
         invocation.interpret = true;
@@ -153,8 +212,8 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::vf01_slice();
-    bus.schema = StoreSchema::pp_slice();
+    bus.kinds = TaskKindRegistry::pp_emit_slice();
+    bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
         .expect("fold manifest registers");
@@ -163,6 +222,12 @@ fn install(bus: &mut CompilerBus) {
         &PpSpliceChip,
         &PpCommentChip,
         &PpScanChip,
+        &PpConditionalChip,
+        &PpInvokeChip,
+        &PpSubstituteChip,
+        &PpDirectiveChip,
+        &PpDiagnosticChip,
+        &PpEmitChip,
         &LxInternChip,
         &LxClassifyChip,
         &LxDecodeLiteralChip,
@@ -189,6 +254,12 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_SPLICE, PP_SPLICE_CHIP, 1),
         (TaskKind::PREPROCESS_COMMENT, PP_COMMENT_CHIP, 1),
         (TaskKind::PREPROCESS_SCAN, PP_SCAN_CHIP, 1),
+        (TaskKind::PREPROCESS_CONDITIONAL, PP19_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_INVOKE, PP09_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, PP12_CHIP, 1),
+        (TaskKind::PREPROCESS_DIRECTIVE, PP05_CHIP, 1),
+        (TaskKind::PREPROCESS_DIAGNOSTIC, PP26_CHIP, 1),
+        (TaskKind::PREPROCESS_EMIT, PP28_CHIP, 1),
         (TaskKind::LEX_INTERN, LX_INTERN_CHIP, 2),
         (TaskKind::LEX_CLASSIFY, LX_CLASSIFY_CHIP, 2),
         (TaskKind::LEX_DECODE_LITERAL, LX_DECODE_CHIP, 2),
@@ -307,7 +378,201 @@ fn nodes_of(bus: &CompilerBus, kind: NodeKind) -> Vec<NodeId> {
     ids
 }
 
-fn run(input: &str) -> Result<Evidence, String> {
+fn build_workers() -> Result<WorkerRegistry, String> {
+    let mut workers = WorkerRegistry::new();
+    workers
+        .register(PpNormalizeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpSpliceChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpCommentChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpScanChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpConditionalChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpInvokeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpSubstituteChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpDirectiveChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpDiagnosticChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpEmitChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxInternChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxClassifyChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(LxDecodeLiteralChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PaTuChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyTypeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyScopeChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TySymbolChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(TyConvChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeLitChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeBinChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeRetChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf06Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf05Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(IrFunctionChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf12Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(Vf01Chip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(FoldChip)
+        .map_err(|error| format!("fold worker registration failed: {error}"))?;
+    Ok(workers)
+}
+
+/// Commit `-D`/`-U` seeds in flag order before the PP pipeline.
+///
+/// Host-side initial input (like source bytes): names are validated by
+/// `macro_flags`, values are tokenized by the frozen `scan` path, and
+/// records use the frozen `define_record`/`undef_record` shapes. Each
+/// non-empty `-D` value gets its own `<command-line>` source so
+/// replacement spans are raw offsets into committed bytes (an empty value
+/// commits no tokens: defined-as-empty, distinct from `-U`). Lookup takes
+/// the greatest `MacroId` with equal spelling, so flag order is last-wins
+/// with no dedup here. Values were trial-scanned in `parse_args`, so a
+/// scan failure here is unreachable in practice and surfaces as a driver
+/// error string.
+fn commit_macro_flags(
+    bus: &mut CompilerBus,
+    seeds: &[macro_flags::MacroFlagSeed],
+) -> Result<(), String> {
+    use cc_silicon_compiler::bus::{PpTokenRecord, SpanRecord};
+    let limits = bus.limits();
+    let command_line = bus
+        .intern_name(b"<command-line>")
+        .map_err(|error| format!("name table exhausted: {error}"))?;
+    for seed in seeds {
+        match seed {
+            macro_flags::MacroFlagSeed::Define(define) => {
+                let scanned =
+                    cc_silicon_compiler::chips::scan(define.value.as_slice()).map_err(|draft| {
+                        format!(
+                            "-D {} has an invalid value: {}",
+                            String::from_utf8_lossy(&define.name),
+                            draft.message
+                        )
+                    })?;
+                let source = if define.value.is_empty() {
+                    None
+                } else {
+                    Some(
+                        bus.alloc_source(command_line, define.value.clone())
+                            .map_err(|error| format!("command-line source rejected: {error}"))?,
+                    )
+                };
+                let mut replacement = Vec::with_capacity(scanned.len());
+                for token in &scanned {
+                    let owner = source.ok_or_else(|| {
+                        "non-empty -D value has no command-line source".to_string()
+                    })?;
+                    bus.ensure_total_records(1)
+                        .map_err(|error| format!("span commit rejected: {error}"))?;
+                    let span = bus
+                        .arenas
+                        .spans
+                        .alloc(
+                            SpanRecord {
+                                source: owner,
+                                start: token.start as u64,
+                                end: token.end as u64,
+                                expansion: None,
+                            },
+                            &limits,
+                        )
+                        .map_err(|error| format!("span commit rejected: {error}"))?;
+                    bus.ensure_total_records(1)
+                        .map_err(|error| format!("pp-token commit rejected: {error}"))?;
+                    let id = bus
+                        .arenas
+                        .pp_tokens
+                        .alloc(
+                            PpTokenRecord {
+                                kind: token.kind,
+                                span,
+                                spelling: define.value[token.start..token.end].to_vec(),
+                            },
+                            &limits,
+                        )
+                        .map_err(|error| format!("pp-token commit rejected: {error}"))?;
+                    replacement.push(id);
+                }
+                let record = macro_flags::define_record(define.name.clone(), replacement);
+                bus.ensure_total_records(1)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+                bus.arenas
+                    .macros
+                    .alloc(record, &limits)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+            }
+            macro_flags::MacroFlagSeed::Undef(undef) => {
+                let record = macro_flags::undef_record(undef.name.clone());
+                bus.ensure_total_records(1)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+                bus.arenas
+                    .macros
+                    .alloc(record, &limits)
+                    .map_err(|error| format!("macro commit rejected: {error}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Shared preprocessing prefix: source bytes through PP01→PP04, PP19
+/// conditional, PP09 expansion, and the PP05 directive gate. Returns the
+/// final pp-token stream (`expanded_tokens`, post-conditional,
+/// post-expansion, post-directive) that both the evidence pipeline and the
+/// `-E` emit step thread onward. Host owns the file read; chips own every
+/// semantic decision. `-D`/`-U` seeds commit in flag order before the
+/// first PP step so conditionals and expansion observe them.
+fn pp_prefix(
+    input: &str,
+    seeds: &[macro_flags::MacroFlagSeed],
+) -> Result<(CompilerBus, WorkerRegistry, Trace, Vec<RecordRef>), String> {
     let bytes = std::fs::read(input).map_err(|error| format!("cannot read {input}: {error}"))?;
     let mut bus = CompilerBus::new(CompilerConfig::new(
         TargetSpec::aarch64_unknown_linux_gnu_unverified(),
@@ -317,73 +582,7 @@ fn run(input: &str) -> Result<Evidence, String> {
         Limits::fixture(),
     ));
     install(&mut bus);
-    let workers = {
-        let mut workers = WorkerRegistry::new();
-        workers
-            .register(PpNormalizeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpSpliceChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpCommentChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PpScanChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxInternChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxClassifyChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(LxDecodeLiteralChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(PaTuChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyTypeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyScopeChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TySymbolChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(TyConvChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeLitChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeBinChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(SeRetChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf06Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf05Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(IrFunctionChip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf12Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(Vf01Chip)
-            .map_err(|error| format!("worker registration failed: {error}"))?;
-        workers
-            .register(FoldChip)
-            .map_err(|error| format!("fold worker registration failed: {error}"))?;
-        workers
-    };
+    let workers = build_workers()?;
     let mut trace = Trace::new();
     // Source import (host file access; the name is the file stem).
     let stem = std::path::Path::new(input)
@@ -396,6 +595,9 @@ fn run(input: &str) -> Result<Evidence, String> {
     let source = bus
         .alloc_source(name, bytes)
         .map_err(|error| format!("source rejected: {error}"))?;
+    // H04 `-D`/`-U` seeds commit before the first PP step (flag order,
+    // last-wins by MacroId).
+    commit_macro_flags(&mut bus, seeds)?;
     // Preprocess from real source bytes (no seeded fixtures).
     let artifact = |value: ResultValue| match value {
         ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
@@ -437,14 +639,64 @@ fn run(input: &str) -> Result<Evidence, String> {
         ResultValue::Records(refs) => refs,
         other => return Err(format!("expected pp-token refs, got {other:?}")),
     };
-    // Lex over every scanned pp-token (no fixed positions).
+    // Conditional inclusion over the scanned stream (M1 sources carry no
+    // conditionals and pass through; inactive lines are dropped).
+    let active_tokens = match step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::PREPROCESS_CONDITIONAL,
+        PP19_CHIP,
+        Payload::from_refs(pp_tokens),
+    )? {
+        ResultValue::Records(refs) => refs,
+        other => return Err(format!("expected active refs, got {other:?}")),
+    };
+    // Macro expansion over the active stream (M1 sources carry no
+    // invocations and stitch to themselves; per-line PP06 fan-out stays
+    // a host task until the expansion-runner slice).
+    let expanded_tokens = match step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::PREPROCESS_MACRO_INVOKE,
+        PP09_CHIP,
+        Payload::from_refs(active_tokens),
+    )? {
+        ResultValue::Records(refs) => refs,
+        other => return Err(format!("expected expanded refs, got {other:?}")),
+    };
+    // Directive dispatch over every expanded pp-token (M1 sources carry no
+    // directives and acknowledge here; `#error` fails with its message).
+    step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::PREPROCESS_DIRECTIVE,
+        PP05_CHIP,
+        Payload::from_refs(expanded_tokens.clone()),
+    )?;
+    Ok((bus, workers, trace, expanded_tokens))
+}
+
+/// Part B `-E` terminal: the shared prefix, then the frozen PP28 worker
+/// over the final pp-token stream. Returns the emitted preprocessed bytes;
+/// persistence stays with the caller (host owns artifact persistence).
+fn run_emit(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Vec<u8>, String> {
+    let (mut bus, workers, mut trace, final_tokens) = pp_prefix(input, seeds)?;
+    emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
+}
+
+fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, String> {
+    let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input, seeds)?;
+    // Lex over every expanded pp-token (no fixed positions).
     step(
         &mut bus,
         &workers,
         &mut trace,
         TaskKind::LEX_INTERN,
         LX_INTERN_CHIP,
-        Payload::from_refs(pp_tokens.clone()),
+        Payload::from_refs(expanded_tokens.clone()),
     )?;
     step(
         &mut bus,
@@ -452,7 +704,7 @@ fn run(input: &str) -> Result<Evidence, String> {
         &mut trace,
         TaskKind::LEX_CLASSIFY,
         LX_CLASSIFY_CHIP,
-        Payload::from_refs(pp_tokens),
+        Payload::from_refs(expanded_tokens),
     )?;
     let mut tokens: Vec<TokenId> = bus.arenas.tokens.iter().map(|(id, _)| id).collect();
     tokens.sort_by_key(|id| id.index());
@@ -658,7 +910,31 @@ fn main() {
             std::process::exit(2);
         }
     };
-    match run(&invocation.input) {
+    if invocation.emit {
+        match run_emit(&invocation.input, &invocation.macro_flags) {
+            Ok(bytes) => match &invocation.output {
+                Some(path) => {
+                    if let Err(error) = std::fs::write(path, &bytes) {
+                        eprintln!("candidate: cannot write {path}: {error}");
+                        std::process::exit(2);
+                    }
+                }
+                None => {
+                    use std::io::Write as _;
+                    if let Err(error) = std::io::stdout().lock().write_all(&bytes) {
+                        eprintln!("candidate: cannot write stdout: {error}");
+                        std::process::exit(2);
+                    }
+                }
+            },
+            Err(message) => {
+                eprintln!("candidate: {message}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    match run(&invocation.input, &invocation.macro_flags) {
         Ok(evidence) => {
             let mut report = format!("candidate evidence ({CONTRACT_VERSION})\n");
             report.push_str(&format!("input: {}\n", evidence.input));

@@ -237,8 +237,15 @@ fn names_store_entry_resolves_for_group_manifests() {
 #[test]
 fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
     // Seed: the T08 fold-chip row (`/7`), the PP01 row (`/10`), the three
-    // LX rows (`/11`), the PA row (`/12`), and the six TY rows (`/13`).
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 23);
+    // LX rows (`/11`), the PA row (`/12`), the six TY rows (`/13`), the two
+    // PP macro rows (`/23`), the two PP expansion rows (`/24`), the PP
+    // variadic row (`/26`), the PP builtin row (`/27`), the PP emit row
+    // (`/31`), and the two LX char/string rows (`/33`; `/25` and the Ack-only
+    // PP line (`/28`), pragma (`/29`), expansion-map (`/30`), LX float
+    // (`/32`), LX escape (`/33`), PA decl (`/34`), PA expr (`/35`),
+    // PA recovery (`/36`), T08 const-branch (`/37`), and VF14 evidence
+    // (`/38`) slices add no rows) plus the SE29 function row (`/39`).
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(

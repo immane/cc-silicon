@@ -46,23 +46,69 @@ pub mod types;
 pub mod verify;
 
 pub use self::constant_layout_init::{
-    const_bits_required, project_fold_input, FoldChip, FoldInput,
+    const_bits_required, eval_assert, eval_branch, project_assert_input, project_branch_input,
+    project_fold_input, AssertCond, AssertInput, BranchAndChip, BranchCondChip, BranchInput,
+    BranchOp, BranchOperand, BranchOrChip, BranchValue, FoldChip, FoldInput, StaticAssertChip,
+    CL04_AND_TASK_KIND, CL04_COND_TASK_KIND, CL04_OR_TASK_KIND, CL07_ASSERT_TASK_KIND,
 };
 pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
 pub use self::lex::{
-    decimal_magnitude, is_keyword, project_lx_classify_input, project_lx_decode_input,
-    project_lx_intern_input, LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip,
-    LxInternChip, LxInternInput, C11_KEYWORDS,
+    convert_float_parts, decimal_magnitude, decode_char_units, decode_escape_body,
+    decode_string_body, element_for_prefix, encode_units_le, fold_char_value, is_keyword,
+    parse_float_parts, project_lx_char_input, project_lx_classify_input, project_lx_decode_input,
+    project_lx_escape_input, project_lx_float_syntax_input, project_lx_float_value_input,
+    project_lx_intern_input, project_lx_string_input, spelling_to_value_parts, split_char_spelling,
+    split_literal_body, split_string_prefix, u32_magnitude, CharPrefix, CodeUnits, EscapeError,
+    FloatConvertOutcome, FloatSyntaxError, FloatValueError, LxCharChip, LxCharInput,
+    LxClassifyChip, LxClassifyInput, LxDecodeInput, LxDecodeLiteralChip, LxEscapeChip,
+    LxEscapeInput, LxFloatSyntaxChip, LxFloatSyntaxExponent, LxFloatSyntaxInput,
+    LxFloatSyntaxParts, LxFloatSyntaxSuffix, LxFloatValueChip, LxFloatValueInput,
+    LxFloatValueParts, LxFloatValueSuffix, LxInternChip, LxInternInput, LxStringChip,
+    LxStringInput, StringElementType, StringError, StringPrefix, StringRecord, C11_KEYWORDS,
+    LX09_TASK_KIND, LX10_TASK_KIND, LX11_TASK_KIND, LX12_TASK_KIND, LX13_TASK_KIND,
 };
-pub use self::parse::{project_pa_tu_input, PaTuChip, PaTuInput};
+pub use self::parse::{
+    binary_precedence, external_decl_kind, pa14_task_kind, pa38_task_kind, parse_binary_expression,
+    parse_block, parse_declaration_finish, parse_declarator, parse_direct_declarator,
+    parse_parameter_list, parse_primary, parse_return, parse_specifier, parse_unary,
+    project_pa_binary_input, project_pa_block_input, project_pa_declarator_input,
+    project_pa_external_input, project_pa_pod_input, project_pa_primary_input,
+    project_pa_recovery_input, project_pa_return_input, project_pa_specifier_input,
+    project_pa_tu_input, project_pa_unary_input, recover_cursor, BinaryError, DeclaratorError,
+    DeclaratorToken, DeclaratorTree, ExprNodeShape, ExternalDeclKind, ExternalToken,
+    LocalNodeShape, PaBinaryChip, PaBinaryInput, PaBinaryProduction, PaBlockChip, PaBlockInput,
+    PaBlockProduction, PaDeclaratorChip, PaDeclaratorInput, PaDeclaratorProjectedToken,
+    PaExternalChip, PaExternalInput, PaPodChip, PaPodInput, PaPrimaryInput, PaRecoveryChip,
+    PaRecoveryInput, PaReturnInput, PaSpecifierChip, PaSpecifierInput, PaTuChip, PaTuInput,
+    PaUnaryChip, PaUnaryInput, ParamList, PodError, PodFinish, PodRegistrationShape, PodToken,
+    ProjectedBlockToken, ProjectedExprToken, ProjectedPodToken, ProjectedRecoveryToken,
+    ProjectedSpecifierToken, ProjectedUnaryToken, RecoveredCursor, RecoveryError,
+    SpecifierRecordShape, SyncKind, UnaryError, UnaryNodeShape, UnaryOp, PA02_TASK_KIND,
+    PA03_TASK_KIND, PA05_TASK_KIND, PA14_CANDIDATE_CHIP, PA14_CANDIDATE_LOCAL, PA14_TASK_KIND,
+    PA14_TASK_KIND_CANDIDATE, PA16_TASK_KIND, PA20_TASK_KIND, PA22_TASK_KIND, PA28_TASK_KIND,
+    PA32_TASK_KIND, PA38_CANDIDATE_CHIP, PA38_LOCAL, PA38_TASK_KIND,
+};
 pub use self::preprocess::{
-    compose_map, normalize, project_pp_comment_input, project_pp_input, project_pp_scan_input,
-    project_pp_splice_input, replace_comments, scan, splice, PpCommentChip, PpCommentInput,
-    PpInput, PpNormalizeChip, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput, M1_PUNCTUATORS,
+    classify_directive_params, classify_operator_text, compose_map, decode_pragma_string,
+    emit_preprocessed, line_location, normalize, origin_chain, origin_root,
+    project_pp_builtin_input, project_pp_comment_input, project_pp_emit_input,
+    project_pp_expand_map_input, project_pp_input, project_pp_line_input, project_pp_pragma_input,
+    project_pp_scan_input, project_pp_splice_input, replace_comments, scan, splice,
+    EmittedPreprocessed, LogicalLocation, OriginChain, OriginFrame, PpBuiltinChip, PpBuiltinInput,
+    PpCommentChip, PpCommentInput, PpConditionalChip, PpConditionalInput, PpDefineChip,
+    PpDefineInput, PpDiagnosticChip, PpDiagnosticInput, PpDirectiveChip, PpDirectiveInput,
+    PpEmitChip, PpEmitInput, PpExpandMapChip, PpExpandMapInput, PpIncludeEnterChip,
+    PpIncludeEnterInput, PpIncludeResolveChip, PpIncludeResolveInput, PpInput, PpInvokeChip,
+    PpInvokeInput, PpLineChip, PpLineInput, PpNormalizeChip, PpPragmaChip, PpPragmaInput,
+    PpRedefineChip, PpRedefineInput, PpScanChip, PpScanInput, PpSpliceChip, PpSpliceInput,
+    PpSubstituteChip, PpSubstituteInput, PpUndefChip, PpUndefInput, PpVariadicChip,
+    PpVariadicInput, PpVariadicMode, PragmaClass, PragmaStringError, ScannedToken, M1_PUNCTUATORS,
+    PP23_TASK_KIND, PP25_TASK_KIND, PP27_TASK_KIND, PP28_TASK_KIND, PP_LINE_MAX,
 };
 pub use self::semantic::{
-    project_se_binary_input, project_se_literal_input, project_se_return_input, SeBinChip,
-    SeBinaryInput, SeLitChip, SeLiteralInput, SeRetChip, SeReturnInput,
+    project_se_binary_input, project_se_function_input, project_se_literal_input,
+    project_se_return_input, SeBinChip, SeBinaryInput, SeFuncChip, SeFunctionInput, SeLitChip,
+    SeLiteralInput, SeRetChip, SeReturnInput, SE_FUNC_TASK_KIND,
 };
 pub use self::symbols::{
     in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input,
@@ -74,8 +120,10 @@ pub use self::types::{
     TyConvInput, TyTypeChip, TyTypeInput,
 };
 pub use self::verify::{
-    project_vf01_input, project_vf05_input, project_vf06_input, project_vf12_input, Vf01Chip,
-    Vf01Input, Vf05Chip, Vf05Input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input,
+    classify_vf14_evidence, decode_gate_raw, decode_result_value, project_vf01_input,
+    project_vf05_input, project_vf06_input, project_vf12_input, project_vf14_input, StageEvidence,
+    Vf01Chip, Vf01Input, Vf05Chip, Vf05Input, Vf06Chip, Vf06Input, Vf12Chip, Vf12Input, Vf14Chip,
+    Vf14Input, Vf14Outcome, Vf14Stage, VF14_TASK_KIND,
 };
 
 use crate::bus::{CompilerBus, TaggedProposal};

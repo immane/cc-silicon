@@ -22,8 +22,8 @@
 |---|---|---|
 | Wave 0 (done) | Foundation C01–C06 + Gate 1 types (`/7`) + worker integration (`/8`) + readiness fixes (`/9`) | — |
 | Wave 1 | ONE chip: T08 fold (CL02/CL03 integer subset) on frozen types, enforced template (`/9`: narrow projection, ZST, stage/layer, lint) | template enforced with `c09_readiness` (13 tests); SE02/SE07 and IR03 need unfrozen inputs/outputs and belong to Wave 2 |
-| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04, source-bytes end-to-end) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
-| Wave 3 (full C) | Remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
+| Wave 2 (M1 frontend) | T03 PP ✅ (`/10` PP01 + `/16` PP02–04 M1 + `/20` full-token scan + `/21` dispatch + `/22` conditionals + `/23` macro definitions + `/24` expansion + `/25` include) → T04 LX ✅ (`/11`) → T05 PA ✅ (`/12`) → T06 TY ✅ (`/13`) → T07 SE ✅ (`/14` incl. VF06) → T09 IR ✅ (`/15`; M1-CL-05 handoff complete) → T13 VF12 ✅ (`/17`; symbolic model of return `5`) + VF05 ✅ (`/18`; token-AST contract) + VF01 ✅ (`/19`; store contract) + VF02–04/VF13–14 remainder | Per-slice serial freezes (schemas+kinds+stages+allowlist) in chain order; each slice lands with its own fixture |
+| Wave 3 (full C) | T03 PP16 ✅ (`/26` variadic) + PP24 ✅ (`/27` builtins) + PP23 ✅ (`/28` line) + PP25 ✅ (`/29` pragma) + PP27 ✅ (`/30` expansion map) → remainder of T02–T10 + T13 VF07–11 | All language schemas frozen; full kind/stage tables; `AppendRecords` for all families |
 | Wave 4 (probe-gated) | T11 all; target-dependent T08/T10/T12 parts | Linux probe attested + C02 values incorporated |
 | Wave 5 (corpus-gated) | T12 EX34–36 splits, torture-driven gaps | T00 census frozen; new chips registered with ledger entries |
 
@@ -74,33 +74,33 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 ### T03 Preprocess (PP01–PP28) — Wave 2 (PP01 slice first)
 
 - PP01 SourceNormalizeChip: bytes → Normalized+map | ✅ DONE (`/10` PpNormalizeChip, `c10_pp01` 7 tests; lone-CR explicit unsupported; multi-source deferred)
-- PP02 LineSpliceChip: Normalized → Spliced | kinds | 2
-- PP03 CommentReplaceChip: Spliced → CommentFree | scan-state store | 2
-- PP04 PpTokenScanChip: stream → PpToken | token-range repr | 2
-- PP05 DirectiveDispatchChip: line tokens → DirectiveTask | kinds | 2–3
-- PP06 MacroDefinitionChip → MacroDef | kinds | 3
-- PP07 MacroRedefinitionChip | kinds | 3
-- PP08 MacroUndefChip | kinds | 3
-- PP09 MacroInvocationChip | kinds | 3
-- PP10 MacroArgumentCollectChip | kinds | 3
-- PP11 MacroArgumentExpandChip | kinds | 3
-- PP12 MacroSubstituteChip | kinds | 3
-- PP13 MacroStringifyChip | kinds | 3
-- PP14 MacroPasteChip | kinds | 3
-- PP15 MacroRescanChip | kinds | 3
-- PP16 VariadicMacroChip | kinds, VA_OPT policy | 3
-- PP17 IncludeResolveChip | kinds, path policy | 3
-- PP18 IncludeEnterExitChip | kinds, host protocol | 3
-- PP19 ConditionalDirectiveChip | kinds | 3
-- PP20 DefinedOperatorChip | kinds | 3
-- PP21 PpExpressionParseChip | kinds | 3
-- PP22 PpExpressionEvaluateChip (PP-int domain, never C evaluator) | kinds | 3
-- PP23 LineDirectiveChip | kinds | 3
-- PP24 BuiltinMacroChip | frozen-target macros | 3
-- PP25 PragmaDispatchChip | kinds | 3
-- PP26 PpDiagnosticChip | kinds | 3
-- PP27 ExpansionSourceMapChip | origin-chain carrier | 3
-- PP28 PreprocessedEmitChip | kinds | 3
+- PP02 LineSpliceChip: Normalized → Spliced | ✅ DONE (`/16` PpSpliceChip, real splice with composed maps) | 2
+- PP03 CommentReplaceChip: Spliced → CommentFree | ✅ DONE (`/16` M1 scope + `/20` literal/header-name protection, shared predicate with PP04) | 2
+- PP04 PpTokenScanChip: stream → PpToken | ✅ DONE (`/16` M1 subset + `/20` full C11 table, literals, header names) | 2
+- PP05 DirectiveDispatchChip: line tokens → DirectiveTask | ✅ DONE (`/21` PpDirectiveChip, `c21_directive` 8 tests; raw walk-back recognition, fan-out + await-all, frozen taxonomy) | 2–3
+- PP26 PpDiagnosticChip | ✅ DONE (`/21` PpDiagnosticChip; `#error` fails with the joined message, negative-only by design) | 2
+- PP06 MacroDefinitionChip → MacroDef | ✅ DONE (`/23` PpDefineChip, `c23_macro` 10 tests; per-line fan-out, fresh/await/resume, adjacency rule) | 3
+- PP07 MacroRedefinitionChip | ✅ DONE (`/23` PpRedefineChip; benign-equivalence verifier, names the differing part) | 3
+- PP08 MacroUndefChip | ✅ DONE (`/23` PpUndefChip; tombstones + ignore-unknown) | 3
+- PP09 MacroInvocationChip | ✅ DONE (`/24` PpInvokeChip, `c24_expand` 12 tests; fan-out + stitch, directive-verbatim) | 3
+- PP10 MacroArgumentCollectChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
+- PP11 MacroArgumentExpandChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
+- PP12 MacroSubstituteChip | ✅ DONE (`/24` PpSubstituteChip; prescan + `#`/`##` + blue-paint rescan) | 3
+- PP13 MacroStringifyChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
+- PP14 MacroPasteChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
+- PP15 MacroRescanChip | folded into the `/24` substituter (promotion criteria in the slice doc) | 3
+- PP16 VariadicMacroChip | ✅ DONE (`/26` PpVariadicChip, `c26_variadic` 10 tests; stream fan-out + single substitution, C23 VA_OPT, no GNU swallowing) | 3
+- PP17 IncludeResolveChip | ✅ DONE (`/25` PpIncludeResolveChip, `c25_include` 8 tests; exact/basename policy, host-passive) | 3
+- PP18 IncludeEnterExitChip | ✅ DONE (`/25` PpIncludeEnterChip; single-pass stitch, nested survives) | 3
+- PP19 ConditionalDirectiveChip | ✅ DONE (`/22` PpConditionalChip, `c22_conditional` 8 tests; stack + inline PP-int evaluator, defined frozen-false; PP20–22 folded as pure helpers) | 2–3
+- PP20 DefinedOperatorChip | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
+- PP21 PpExpressionParseChip | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
+- PP22 PpExpressionEvaluateChip (PP-int domain, never C evaluator) | folded into the `/22` evaluator (promotion criteria in the slice doc) | 3
+- PP23 LineDirectiveChip | ✅ DONE (`/28` PpLineChip, `c28_line` 10 tests; `#line` ± file, GNU markers, `2^31-1` boundary, zero/overflow/bad-escape `Fail`, physical-vs-logical, Ack-only read-only) | 3
+- PP24 BuiltinMacroChip | ✅ DONE (`/27` PpBuiltinChip, `c27_builtin` 9 tests; `__FILE__`/`__LINE__`/`__COUNTER__`(seed 0), frozen-target macros, `__DATE__`/`__TIME__`/unknown as explicit `Unsupported`) | 3
+- PP25 PragmaDispatchChip | ✅ DONE (`/29` PpPragmaChip, `c29_pragma` 9 tests; `once` flag, `pack` push/pop, unknown-pragma benign ignore per C11 6.10.6p1, malformed `_Pragma` typed `Fail`, `_Pragma` string decode, Ack-only read-only) | 3
+- PP27 ExpansionSourceMapChip | ✅ DONE (`/30` PpExpandMapChip, `c30_expand_map` 10 tests; per-token origin chains over committed spans/expansions, `#` raw / `##` product / prescan-vs-raw / blue-paint nesting / nested include origins, dangling links typed `Fail`, Ack-only read-only) | 3
+- PP28 PreprocessedEmitChip | ✅ DONE (`/31` PpEmitChip, `c31_emit` 11 tests; directive strip, `+ +` no-gluing, byte-identical strings, valid `check_map`, empty-stream newline, multiline newlines, re-lex roundtrip, single `Preprocessed` append) | 3
 
 ### T04 Lex (LX01–LX18) — Wave 2 (M1-LX-01..07 first)
 
@@ -112,53 +112,53 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - LX06 IntegerSuffixChip | ✅ DONE (`/11` None-only gate) | 2
 - LX07 IntegerValueChip (big-int, no host overflow) | ✅ DONE (`/11` decimal_magnitude in decode) | 2
 - LX08 IntegerTypeSelectChip → `Int` only | ✅ DONE (`/11` Int-only in decode) | 2
-- LX09 FloatSyntaxChip | float schemas | 3
-- LX10 FloatValueChip (correct rounding) | target formats | 3–4
-- LX11 EscapeDecodeChip | — | 3
-- LX12 CharacterLiteralChip | char schemas | 3
-- LX13 StringLiteralChip | string schemas | 3
+- LX09 FloatSyntaxChip | ✅ DONE (`/32` LxFloatSyntaxChip, `c32_float` 12 tests shared with LX10; decimal/hex exponent, point, `f`/`F`/`l`/`L` suffix lexing, integer/GNU shapes fail loud, Ack-only) | 3
+- LX10 FloatValueChip (correct rounding) | ✅ DONE (`/32` LxFloatValueChip, `c32_float`; RNE binary32/binary64 over integer arithmetic, halfway-even/`0.1`/overflow-inf/subnormal oracle bits, `l` binary128 deferred `Unsupported`, range-as-flags Ack-only) | 3–4
+- LX11 EscapeDecodeChip | ✅ DONE (`/33` LxEscapeChip, `c33_string` 14 tests shared with LX12/LX13; simple/octal-3/greedy-hex/UCN validation, Ack-only, no carrier) | 3
+- LX12 CharacterLiteralChip | ✅ DONE (`/33` LxCharChip, `c33_string`; none/L/u/U prefixes, multichar truncation policy, `Character` record radix 16 + token back-link) | 3
+- LX13 StringLiteralChip | ✅ DONE (`/33` LxStringChip, `c33_string`; single terminator, embedded NUL preserved, narrow/UTF-16-surrogate/UTF-32/wchar widths, `String` record radix 0 + back-link) | 3
 - LX14 AdjacentStringChip | provenance carrier (T03/T04) | 3
 - LX15 LiteralExtensionChip | GNU modes | 3–5
 - LX16 TokenLocationChip | ✅ DONE (`/11` committed-span reuse, no T04 span writes) | 2
 - LX17 TokenPublishChip (sole ordered publisher) | ✅ PARTIAL (`/11` deterministic append/dispatch order; orchestrator fan-in deferred) | 2
 - LX18 LexErrorChip (finite advance) | diagnostic codes | 2
 
-### T05 Parse (PA01–PA38) — Wave 2
+### T05 Parse (PA01–PA38) — Wave 2 + Wave 3 decl slice (`/34`) + expr slice (`/35`) + recovery slice (`/36`)
 
 - PA01 TranslationUnitChip | TU carrier, File-Enter edge | 2 FIRST
-- PA02 ExternalDeclarationChip | kinds | 2
-- PA03 DeclarationSpecifiersChip | kinds | 2
+- PA02 ExternalDeclarationChip | ✅ DONE (`/34` PaExternalChip, `c34_parse` 12 tests shared; `{`-vs-`;` dispatch at continuation cursor, third token loud, Ack-only) | 2
+- PA03 DeclarationSpecifiersChip | ✅ DONE (`/34` PaSpecifierChip, `c34_parse`; exactly Keyword `int`, Ack-only) | 2
 - PA04 TypedefDisambiguationChip | TY03 query protocol | 2
-- PA05 DeclaratorChip (+PA06/07 parts) | kinds | 2
+- PA05 DeclaratorChip (+PA06/07 parts) | ✅ DONE (`/34` PaDeclaratorChip fused PA05/07/09, `c34_parse`; exactly `main(void)`, `()` DEFECT, Ack-only) | 2
 - PA08 ArrayDeclaratorChip | kinds | 2–3
-- PA09 FunctionDeclaratorChip | kinds | 2
+- PA09 FunctionDeclaratorChip | ✅ DONE (fused into `/34` PaDeclaratorChip; `(void)`-only parameter core) | 2
 - PA10 AbstractDeclaratorChip | kinds | 2–3
 - PA11 AggregateSpecifierChip | kinds | 2–3
 - PA12 EnumSpecifierChip | kinds | 2–3
 - PA13 MemberDeclarationChip | kinds | 3
-- PA14 DeclarationFinishChip | POD protocol | 2
+- PA14 DeclarationFinishChip | ✅ DONE (`/36` PaPodChip, `c36_recovery` 11 tests shared; `main(void);` with POD registration certified, comma/init deferred, missing `;` a defect, Ack-only) | 2
 - PA15 InitializerParseChip | init-tree schema | 2–3
-- PA16 PrimaryExpressionChip | kinds | 2
+- PA16 PrimaryExpressionChip | ✅ DONE (`/35` PaBinaryChip fused PA16/22, `c35_expr` 10 tests shared; one integer constant backed by one literal, Ack-only) | 2
 - PA17/18/19 Postfix/Call/MemberSubscript | kinds | 2
-- PA20 UnaryExpressionChip | kinds | 2
+- PA20 UnaryExpressionChip | ✅ DONE (`/35` PaUnaryChip, `c35_expr`; `+<int>` / `-<int>` only, Ack-only) | 2
 - PA21 CastExpressionChip | kinds | 2
-- PA22 BinaryExpressionChip (precedence climb) | kinds | 2 FIRST
+- PA22 BinaryExpressionChip (precedence climb) | ✅ DONE (`/35` PaBinaryChip fused PA16/22, `c35_expr`; single `<int> + <int>` step at `min_bp = 0`, 4-token `2 + +3` rejected, Ack-only) | 2 FIRST
 - PA23 ConditionalExpressionChip | kinds | 2
 - PA24 AssignmentExpressionChip | kinds | 2
 - PA25 CommaExpressionChip | kinds | 2
 - PA26 GenericSelectionParseChip | kinds | 3
 - PA27 StatementDispatchChip | kinds | 2
-- PA28 CompoundStatementChip | scope protocol | 2
+- PA28 CompoundStatementChip | ✅ DONE (`/34` PaBlockChip fused PA28/32, `c34_parse`; 7-token block shape, Ack-only; scope protocol T06-owned) | 2
 - PA29 IfStatementChip | kinds | 2
 - PA30 SwitchStatementChip | kinds | 2–3
 - PA31 LoopStatementChip (may split ×3 later) | kinds | 2
-- PA32 JumpStatementChip | kinds | 2
+- PA32 JumpStatementChip | ✅ DONE (fused into `/34` PaBlockChip; 5-token return shape, Ack-only) | 2
 - PA33 LabelStatementChip | kinds | 2–3
 - PA34 ExpressionStatementChip (no infinite retry) | kinds | 2
 - PA35 StaticAssertParseChip | kinds | 2–3
 - PA36 AttributeParseChip | kinds | 3
 - PA37 ExtensionSyntaxDispatchChip → T12 | kinds | 3
-- PA38 ParseRecoveryChip (sync `;/)/}`, EOF) | kinds | 2
+- PA38 ParseRecoveryChip (sync `;/)/}`, EOF) | ✅ DONE (`/36` PaRecoveryChip, `c36_recovery`; `;` consumed, `)`/`}`/`{`-stop/EOF not consumed, finite advance `0 < index <= len`, Ack-only) | 2
 - All need: `NodeKind` + `NodeRecord` + request/result encoding + kind registrations (one serial freeze).
 
 ### T06 Symbol/Type (TY01–TY34) — Wave 2
@@ -206,18 +206,18 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - SE22 LoopJumpChip / SE23 SwitchCaseChip / SE24 LabelGotoChip / SE25 ConditionStatementChip | kinds | 2–3
 - SE26 EffectSequencingChip (stable order, UB not defined away) | effect schemas | 2–3
 - SE27 VolatileAccessChip / SE28 AtomicAccessChip | effect schemas | 2–3
-- SE29 FunctionDefinitionChip (signature carrier, no Return-role) | kinds | 2
+- SE29 FunctionDefinitionChip (signature carrier, no Return-role) | ✅ DONE (`/39` SeFuncChip, `c39_sefunc` 8 tests; M1 `(void)`-only check with K&R/mismatch `Unsupported`, reuse, stage 4) | 2
 - SE30 AlignmentSpecifierChip | layout protocol | 3
 - All (except SE02/SE07): `SemRecord` carrier/link encoding + conversion matrix.
 
-### T08 Const/Layout/Init (CL01–CL26) — Wave 1 (fold) → 2
+### T08 Const/Layout/Init (CL01–CL26) — Wave 1 (fold) + const-branch slice (`/37`)
 
 - CL01 ConstantContextChip (legality gate) | const kinds | 2
 - CL02 ConstantUnaryChip / CL03 ConstantBinaryChip (int subset; no host overflow; one fold worker proves the pattern) | — | 1
-- CL04 ConstantBranchChip | kinds | 2
+- CL04 ConstantBranchChip | ✅ DONE (`/37` BranchAnd/Or/CondChips, `c37_const_branch` 10 tests shared; condition plus ONLY the short-circuit-selected branch, canonical `0`/`1` for `&&`/`||`, magnitude passthrough for `?:`, unselected operand never gated, Ack-only) | 2
 - CL05 ConstantCastChip | conversion schemas | 2–3
 - CL06 AddressConstantChip | symbol protocol | 3
-- CL07 StaticAssertChip | kinds | 2–3
+- CL07 StaticAssertChip | ✅ DONE (`/37` StaticAssertChip, `c37_const_branch`; nonzero passes, zero fails, non-literal payload is `NotConstantExpression`, Ack-only) | 2–3
 - CL08 ScalarLayoutChip … CL13 FlexibleArrayChip (six layout facets) | layout schemas | 2–3
 - CL14 MemberOffsetChip | layout schemas | 2–3
 - CL15 VlaBoundChip / CL25 VlaLifetimeChip | VLA schemas | 3
@@ -296,7 +296,7 @@ Format: `ID name: in → out | needs (unfrozen) | wave/status`.
 - VF07 CfgInvariant / VF08 IrInvariant / VF09 SsaInvariant / VF10 MachineInvariant / VF11 AbiInvariant | IR/machine records | 3 (out of M1)
 - VF12 IrInterpret (M1: symbolic, models return `5`) | ✅ DONE (`/17` Vf12Chip, `c17_vf12` 6 tests; single entry block, `Constant`+`Return`, completes modeled `Const`; wider ops deferred) | 2
 - VF13 ReplayCompare (canonical projection) | trace protocol | 2
-- VF14 EvidenceClassify (never PASS on missing evidence) | T00 protocol | 2–3
+- VF14 EvidenceClassify (never PASS on missing evidence) | ✅ DONE (`/38` Vf14Chip, `c38_vf14` 10 tests; complete-vector classify with total invalid→missing→undecodable→fail precedence; instance resolvability-only + M1 carrier map deferred as DEFECT-VF14-01/02) | 2–3
 
 ## 5. Unblock checklist (serial T01 work before each wave)
 

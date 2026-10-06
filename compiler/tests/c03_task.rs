@@ -10,8 +10,8 @@ use cc_silicon_compiler::commit::{commit_proposals, consume_result, CommitError}
 use cc_silicon_compiler::diagnostic::DiagGroup;
 use cc_silicon_compiler::diagnostic::DiagnosticDraft;
 use cc_silicon_compiler::ids::{
-    ArtifactId, BlockId, ChipId, ContinuationId, DiagnosticId, LiteralId, NodeId, RecordFamily,
-    RecordRef, ScopeEventId, ScopeId, SemId, SourceId, TaskId, TokenId,
+    ArtifactId, BlockId, ChipId, ContinuationId, DiagnosticId, LiteralId, MacroId, NodeId,
+    RecordFamily, RecordRef, ScopeEventId, ScopeId, SemId, SourceId, TaskId, TokenId,
 };
 use cc_silicon_compiler::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath};
 use cc_silicon_compiler::task::{
@@ -758,6 +758,8 @@ fn record_ref_wire_tags_are_frozen() {
         RecordRef::ScopeEvent(ScopeEventId::from_index(0)).wire_tag(),
         26
     );
+    // Frozen `/23` append: `Macro` = 27.
+    assert_eq!(RecordRef::Macro(MacroId::from_index(0)).wire_tag(), 27);
     assert_eq!(
         RecordRef::Literal(LiteralId::from_index(3)).label(),
         "literals"
@@ -767,6 +769,7 @@ fn record_ref_wire_tags_are_frozen() {
         RecordRef::ScopeEvent(ScopeEventId::from_index(3)).label(),
         "scope_events"
     );
+    assert_eq!(RecordRef::Macro(MacroId::from_index(3)).label(), "macros");
     // Family mapping and typed construction round-trip.
     assert_eq!(
         RecordRef::Literal(LiteralId::from_index(1)).family(),
@@ -785,22 +788,24 @@ fn record_ref_wire_tags_are_frozen() {
         RecordRef::Sem(SemId::from_index(9))
     );
     // Identifier inventory follows wire-tag order.
-    assert_eq!(RECORD_KINDS.len(), 27);
+    assert_eq!(RECORD_KINDS.len(), 28);
     assert_eq!(RECORD_KINDS[23], "artifacts");
     assert_eq!(RECORD_KINDS[24], "literals");
     assert_eq!(RECORD_KINDS[25], "sem");
     assert_eq!(RECORD_KINDS[26], "scope_events");
+    assert_eq!(RECORD_KINDS[27], "macros");
 }
 
 #[test]
 fn record_family_ordinals_are_explicit_and_misaligned_with_wire_tags() {
-    assert_eq!(RecordFamily::ALL.len(), 27);
+    assert_eq!(RecordFamily::ALL.len(), 28);
     for (position, family) in RecordFamily::ALL.iter().enumerate() {
         assert_eq!(family.ordinal(), position as u8);
     }
     assert_eq!(RecordFamily::Literal.ordinal(), 6);
     assert_eq!(RecordFamily::ScopeEvent.ordinal(), 9);
     assert_eq!(RecordFamily::Sem.ordinal(), 12);
+    assert_eq!(RecordFamily::Macro.ordinal(), 27);
     // Misaligned by design: family ordinals never equal the wire tags, so no
     // arithmetic converts between the two inventories.
     assert_ne!(

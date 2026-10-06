@@ -384,6 +384,493 @@ deferred. New hashed rules `vf01.refs-resolve`, `vf01.span-bounds`,
 (`76155ee8…476a4`); acceptance `compiler/tests/c19_vf01.rs` (7 tests);
 item list in [VF01_STORE_SLICE.md](VF01_STORE_SLICE.md).
 
+`/20` amendment — Wave 2 slice 11, PP full-token scan (R1 auto-bump;
+`/19` preserved as history): in-place amendments of `PpCommentChip` (chip
+18) and `PpScanChip` (chip 19) with literal/header-name-aware comment
+replacement and the full C11 punctuator table plus string/char/header
+tokens and dotted pp-numbers, under one shared frozen predicate
+(rev-55 subset; single-tick whole-input model, no chunk persistence);
+three new `PpTokenKind` variants (`StringLiteral`, `CharLiteral`,
+`HeaderName`) with wire names in the hash; snapshot kind maps extended
+both ways; LX classify rejects the new kinds as explicit `Unsupported`.
+Same kinds/stages/registry (29 entries), same manifests, same schemas.
+New hashed rules `pp.comment-literal-aware`,
+`pp.scan-full-punctuators`, `pp.scan-literal-header-tokens`. New artifact
+`t01-c01-c06/20` (`e5600564…f97c8b`); acceptance
+`compiler/tests/c20_ppscan.rs` (8 tests, plus 4 `/16` assertions updated
+to the superseded expectations); item list in
+[PP_FULL_SCAN_SLICE.md](PP_FULL_SCAN_SLICE.md).
+
+`/21` amendment — Wave 2 slice 12, PP directive dispatch (R1 auto-bump;
+`/20` preserved as history): new `PpDirectiveChip` (chip 23) grouping the
+committed pp-token stream into raw lines, classifying directive lines by
+raw walk-back (comment-killed and mid-line `#` stay dead; same-line block
+comments skipped; bare `#` is an explicit no-op), fanning out one PP26
+child per `#error` line with await-all and failing fast as explicit
+`Unsupported` on the frozen diagnostic taxonomy otherwise; new
+`PpDiagnosticChip` (chip 24) failing every `#error` line with its joined
+message (negative-only by design; the frozen join reuses the first failed
+child's diagnostic, so no aggregate record is minted).
+`preprocess.directive` (local 20) + `preprocess.diagnostic` (local 21),
+stage 1, layers 1, `pp_directive_slice()` registry (34 entries, cumulative
+over `vf01_slice()`); no schema change; no writes. New hashed rules
+`pp.directive-dispatch-lines`, `pp.error-fails-message`,
+`pp.diagnostic-taxonomy-frozen`. New artifact `t01-c01-c06/21`
+(`fba01a2b…754b5`); acceptance `compiler/tests/c21_directive.rs`
+(8 tests); item list in [PP_DIRECTIVE_SLICE.md](PP_DIRECTIVE_SLICE.md).
+
+`/22` amendment — Wave 2 slice 13, PP conditional inclusion (R1
+auto-bump; `/21` preserved as history): new `PpConditionalChip` (chip
+25) tracking the conditional stack over directive lines, evaluating
+`#if`/`#elif` with a chip-local exact-`i128` PP-int evaluator
+(recursive descent + `defined`-frozen-`false`; PP20–PP22 folded as pure
+helpers with promotion criteria), completing `Records` of active-line
+refs with conditional lines fully consumed and EOF always kept;
+fail-closed on malformed/unterminated/stray directives and on hard
+expression errors. `preprocess.conditional` (local 22), stage 1, layer
+1, `pp_conditional_slice()` registry (35 entries, cumulative over
+`pp_directive_slice()`); no schema change; no writes. New hashed rules
+`pp.conditional-stack`, `pp.expr-ppint-exact`,
+`pp.defined-frozen-false`. New artifact `t01-c01-c06/22`
+(`b8400fca…6af5dc`); acceptance `compiler/tests/c22_conditional.rs`
+(8 tests); item list in [PP_CONDITIONAL_SLICE.md](PP_CONDITIONAL_SLICE.md).
+
+`/23` amendment — Wave 2 slice 14, PP macro definitions (R1 auto-bump;
+`/22` preserved as history): new `Macro` record family (wire tag 27,
+ordinal 27; byte-spelling names/params so no intern prediction;
+tombstones for `#undef`) with full commit/snapshot/hash pipeline; new
+`PpDefineChip` (chip 26, per-line fan-out by caller, fresh-append or
+PP07-await), `PpRedefineChip` (chip 27, benign-equivalence verifier),
+`PpUndefChip` (chip 28, tombstones + ignore-unknown); PP19 amended to
+read the table for `defined`/`#ifdef` (the `/22` frozen-`false` rule
+superseded as predicted). `preprocess.macro_define` (23) +
+`macro_redefine` (24) + `macro_undef` (25), stage 1, layers 1,
+`pp_macro_slice()` registry (38 entries, cumulative over
+`pp_conditional_slice()`); schema gains `(Pp, "macros")`; allowlist
+rows for the two writers. New hashed rules `pp.macrodef-record`,
+`pp.redefine-benign-rule`, `pp.undef-tombstone`,
+`pp.defined-reads-table`. New artifact `t01-c01-c06/23`
+(`cf8f2194…5b1ca0`); acceptance `compiler/tests/c23_macro.rs`
+(10 tests); item list in [PP_MACRO_DEFINE_SLICE.md](PP_MACRO_DEFINE_SLICE.md).
+
+`/24` amendment — Wave 2 slice 15, PP macro expansion (R1 auto-bump;
+`/23` preserved as history): new `PpInvokeChip` (chip 29) fanning out
+one PP12 child per top-level invocation over the active stream
+(directive lines verbatim) and stitching the expanded stream, plus new
+`PpSubstituteChip` (chip 30) substituting with argument prescan (raw
+`#`/`##` bypass), exact `#`/`##` (frozen-scanner paste validation),
+recursive blue-paint rescan with a macro-count+2 breaker, and verbatim
+ID reuse; PP10/PP11/PP13/PP14/PP15 folded as pure helpers with
+promotion criteria. `preprocess.macro_invoke` (26) +
+`macro_substitute` (27), stage 1, layers 1, `pp_expand_slice()`
+registry (40 entries, cumulative over `pp_macro_slice()`); no new
+families; allowlist rows for both `Pp.tokens` writers. Record-level
+correction in the same slice: `MacroRecord.function_like` added
+(zero-param function-like must not expand bare) with rule
+`pp.macro-function-flag`. New hashed rules `pp.invoke-fanout-stitch`,
+`pp.substitute-rescan-loop`, `pp.stringify-paste-exact`,
+`pp.blue-paint-guard`, `pp.macro-function-flag`. New artifact
+`t01-c01-c06/24` (`8f1ba410…bfbf53`); acceptance
+`compiler/tests/c24_expand.rs` (12 tests); item list in
+[PP_EXPAND_SLICE.md](PP_EXPAND_SLICE.md).
+
+`/25` amendment — Wave 2 slice 16, PP include (R1 auto-bump; `/24`
+preserved as history): new `PpIncludeResolveChip` (chip 31, pure
+resolver over committed sources with exact/basename matching) and
+`PpIncludeEnterChip` (chip 32, single-pass stitch replacing each
+`#include` line with the header's scanned tokens, everything else
+verbatim, nested includes surviving for the control-loop slice);
+chips stay host-passive (missing files fail `not-loaded` for the host
+loop; AwaitHost/CT02 async stays T02-owned). `preprocess.
+include_resolve` (local 28) + `include_enter` (29), stage 1, layers 1,
+`pp_include_slice()` registry (42 entries, cumulative over
+`pp_expand_slice()`); no schema change; no writes. New hashed rules
+`pp.include-path-policy`, `pp.include-single-pass-stitch`. New artifact
+`t01-c01-c06/25` (`71317621…30d9a`); acceptance
+`compiler/tests/c25_include.rs` (8 tests); item list in
+[PP_INCLUDE_SLICE.md](PP_INCLUDE_SLICE.md).
+
+`/26` amendment — Wave 3 slice 1, PP variadic (R1 auto-bump; `/25`
+preserved as history): new `PpVariadicChip` (chip 33, PP16) with two
+payload shapes under one kind — stream mode fans out one single-mode
+child per variadic-definition invocation behind a single `AwaitChildren`
+(frozen join: first `Failed` child fails the waiter reusing its
+diagnostic; stitch runs only all-`Completed`) and single mode
+substitutes one variadic invocation (`...` collection, `__VA_ARGS__`,
+C23 `__VA_OPT__` policy — content kept iff the tail holds at least one
+token, empty tail legal — `#`/`##` with prescan, blue-paint rescan with
+a macro-count+2 breaker). Non-variadic definitions with matching arity
+pass through verbatim (PP09 owns them); variadic-shaped misuse fails
+naming PP16; GNU `, ## __VA_ARGS__` swallowing stays unimplemented
+(dialect-gated follow-up). `preprocess.variadic_macro` (local 30),
+stage 1, layer 1, `pp_variadic_slice()` registry (43 entries,
+cumulative over `pp_include_slice()`); no schema change; one allowlist
+row (`Pp.tokens` for single-mode appends). New hashed rules
+`pp.variadic-collect`, `pp.va-opt-policy`, `pp.variadic-arity`. New
+artifact `t01-c01-c06/26` (`59bdf0f5…9031a006`); acceptance
+`compiler/tests/c26_variadic.rs` (10 tests); item list in
+[PP_VARIADIC_SLICE.md](PP_VARIADIC_SLICE.md).
+
+`/27` amendment — Wave 3 slice 2, PP builtins (R1 auto-bump; `/26`
+preserved as history): new `PpBuiltinChip` (chip 34, PP24), pure
+single-task (one dispatch, at most one quota-1 `PpToken` append,
+`Complete(Records)`; no children, so the frozen-join path never
+applies). One builtin use expands to one synthesized token with the use
+token's span: `__FILE__` spells the quoted source name, `__LINE__`
+spells the physical line (PP23 logical location pending — the
+projector prefers the frozen PP23 carrier once it lands),
+`__COUNTER__` spells the projected base (task-associated counter
+record when present, else the task-local seed 0; no counter carrier
+exists on the bus, so every dispatch replays 0 until one lands),
+frozen-target predefined macros read off the projected target model
+(triple arch/os, ELF, LP64, little-endian, `__STDC__`,
+dialect-derived `__STDC_VERSION__`) plus nothing from the host.
+`__DATE__`/`__TIME__` fail as explicit `Unsupported` (replayable values
+need a frozen config date/time record the config does not carry) and
+any other name fails as unknown-builtin `Unsupported`; every failure
+names PP24. `preprocess.macro_builtin` (local 31), stage 1, layer 1,
+`pp_builtin_slice()` registry (44 entries, cumulative over
+`pp_variadic_slice()`); no schema change; one allowlist row
+(`Pp.tokens` for the synthesized append). New hashed rules
+`pp.builtin-file-line`, `pp.builtin-counter`, `pp.builtin-target`,
+`pp.builtin-date-replayable`. New artifact `t01-c01-c06/27`
+(`1c4c6547…9708faa`); acceptance `compiler/tests/c27_builtin.rs`
+(9 tests); item list in [PP_BUILTIN_SLICE.md](PP_BUILTIN_SLICE.md).
+
+`/28` amendment — Wave 3 slice 3, PP line (R1 auto-bump; `/27`
+preserved as history): new `PpLineChip` (chip 35, PP23), pure
+single-task (one dispatch, no bus writes, `Complete(Ack)`; no children,
+so the frozen-join path never applies). One directive line's pp-token
+refs validate to a `LogicalLocation`: `#line number "file"?` or a GNU
+`# lineno "file" flags?` marker (`#` accepts the `%:` spelling; flag
+values accepted and ignored). Numbers must be all-ASCII-digit spellings
+in `1..=2^31-1` (zero, overflow, and non-digit forms like `1e5` fail);
+files must be `"..."` strings decoded with only `\\` and `\"` escapes;
+a missing file means retain-current-file (`file: None`). The physical
+source (first token's span owner) and the declared logical line/file
+stay distinct; the wiring layer persists the location (no store field
+lands). `preprocess.line_directive` (local 32), stage 1, layer 1,
+`pp_line_slice()` registry (45 entries, cumulative over
+`pp_builtin_slice()`); no schema change; no allowlist row (Ack-only,
+read-only). New hashed rules `pp.line-logical`, `pp.line-gnu-marker`,
+`pp.line-range`. New artifact `t01-c01-c06/28`
+(`5af3f3fb…48acc71`); acceptance `compiler/tests/c28_line.rs`
+(10 tests); item list in [PP_LINE_SLICE.md](PP_LINE_SLICE.md).
+
+`/29` amendment — Wave 3 slice 4, PP pragma (R1 auto-bump; `/28`
+preserved as history): new `PpPragmaChip` (chip 36, PP25), pure
+single-task (one dispatch, no bus writes, `Complete(Ack)`; no children,
+so the frozen-join path never applies). One pragma construct's pp-token
+refs classify to a `PragmaClass`: post-`#` refs starting at Identifier
+`pragma`, or the four operator tokens `_Pragma ( StringLiteral )`.
+`_Pragma("...")` strings decode with quotes stripped, simple escapes
+mapped, and an optional `u8`/`u`/`U`/`L` prefix tolerated; `once` is the
+header-guard flag, `pack` with a `push`/`pop` operator is the
+alignment-stack op (further pack arguments uninterpreted), and every
+other well-formed pragma — supported-set or unknown — is opaque and
+benignly ignored per C11 6.10.6p1. Malformed `_Pragma` operands (wrong
+arity, non-string literal, missing quotes, raw newline/quote, dangling
+backslash, non-simple escapes) fail as typed `Invalid`; wrong-dispatch
+input fails as a protocol fault. The classification is returned to the
+wiring layer (no store field lands). `preprocess.pragma_directive`
+(local 33), stage 1, layer 1, `pp_pragma_slice()` registry (46 entries,
+cumulative over `pp_line_slice()`); no schema change; no allowlist row
+(Ack-only, read-only). New hashed rules `pp.pragma-once`,
+`pp.pragma-pack`, `pp.pragma-unknown-ignore`. New artifact
+`t01-c01-c06/29` (`c500d9ff…e019324`); acceptance
+`compiler/tests/c29_pragma.rs` (9 tests); item list in
+[PP_PRAGMA_SLICE.md](PP_PRAGMA_SLICE.md).
+
+`/30` amendment — Wave 3 slice 5, PP expansion map (R1 auto-bump; `/29`
+preserved as history): new `PpExpandMapChip` (chip 37, PP27), pure
+single-task (one dispatch, no bus writes, `Complete(Ack)`; no children,
+so the frozen-join path never applies). For every payload pp-token ref
+in payload order the chip rebuilds the per-token origin chain from the
+frozen `SpanRecord` links and the committed `ExpansionRecord` records:
+the frame's `spelling` span names the raw form (`#` operands read this
+side), the `expanded` span names the product/prescanned form (`##`
+products land here), `spelling` and `expanded` stay side by side per
+frame (prescan-vs-raw), `parent` linkage plus per-frame
+`ordinal`/`depth` recover the blue-paint rescan nesting, and every
+frame resolves to a `SpanRecord` whose `source` names the physical file
+at that nesting level (nested include origins). An unexpanded token
+carries no frames. Dangling links (unprojected span, dangling
+expansion or parent), expansion cycles, and over-long walks fail as
+typed `Invalid`; wrong dispatch fails as a protocol fault. Nothing is
+persisted: no `OriginChain` carrier exists yet, so the chains are
+returned through `origin_chain` / `origin_root` for the wiring layer
+(no store field lands). `preprocess.expand_map` (local 34), stage 1,
+layer 1, `pp_expand_map_slice()` registry (47 entries, cumulative over
+`pp_pragma_slice()`); no schema change; no allowlist row (Ack-only,
+read-only). New hashed rules `pp.expand-origin-chain`,
+`pp.origin-paste-prescan`, `pp.origin-blue-paint`. New artifact
+`t01-c01-c06/30` (`76bf628e…f2f3592`); acceptance
+`compiler/tests/c30_expand_map.rs` (10 tests); item list in
+[PP_EXPAND_MAP_SLICE.md](PP_EXPAND_MAP_SLICE.md).
+
+`/31` amendment — Wave 3 slice 6, PP emit (R1 auto-bump; `/30`
+preserved as history): new `PpEmitChip` (chip 38, PP28), pure
+single-task (one dispatch, one `Preprocessed` artifact append,
+`Complete(Record(Artifact))`; no children, so the frozen-join path
+never applies). The final pp-token stream serializes to re-lexable
+bytes: `Eof` tokens and consumed directive lines (an unexpanded `#`/`%:`
+opening a physical line plus the rest of that line) are dropped, every
+other token spelling is emitted byte-identical separated by one space
+(one newline when both neighbors show a line break in their shared
+source bytes), and the output closes with a terminal newline. Separation
+is unconditional, so `+ +` never becomes `++` and adjacent strings stay
+two tokens; no `#line`/GNU markers are emitted (PP23 owns the logical
+location at the wiring layer). The output carries the primary-source (first token's span source) location map, which satisfies
+`check_map` by construction (foreign-source bytes collapse zero-width,
+expansion-reordered offsets clamp forward). Malformed input fails as a
+typed `Fail` (protocol, `Invalid`, config, or internal — never silent).
+`preprocess.emit` (local 35), stage 1, layer 1, `pp_emit_slice()`
+registry (48 entries, cumulative over `pp_expand_map_slice()`); no
+schema change; one allowlist row (`PP28_CHIP`, `Artifacts`,
+`fragments`, `PREPROCESS_EMIT`). New hashed rules
+`pp.emit-directive-strip`, `pp.emit-no-gluing`, `pp.emit-map`. New
+artifact `t01-c01-c06/31` (`ce4dd422…2e2998c1`); acceptance
+`compiler/tests/c31_emit.rs` (11 tests); item list in
+[PP_EMIT_SLICE.md](PP_EMIT_SLICE.md).
+
+`/32` amendment — Wave 3 slice 7, LX float (R1 auto-bump; `/31`
+preserved as history): two Ack-only workers closing the float USE
+(T04:17–18). `LxFloatSyntaxChip` (chip 39, LX09) validates one
+committed pp-number spelling (decimal with optional `e`/`E`
+exponent, hex with mandatory `p`/`P` exponent, optional
+`f`/`F`/`l`/`L` suffix); `LxFloatValueChip` (chip 40, LX10) checks
+the same spelling converts to its suffix-selected format
+(`f`/`F` → binary32, absent → binary64) with correct
+round-to-nearest-even over integer arithmetic only. Both read
+exactly one `RecordRef::PpToken` of kind `PpNumber` (DOC-10),
+complete `Ack`, append nothing (no `LiteralRecord`: the M1 record
+stays integer-only), and fail loud (`Invalid` on malformed shapes,
+`Unsupported` on integer-shaped spellings and on the deferred
+binary128 `l`/`L` path). Range rides as value flags, never as
+value-level failure. The frozen interchange is the spelling (no
+frozen `FloatParts`/`FloatBits` carrier yet; each chip keeps its own
+local shape by copy precedent). `lex.float_syntax` (local 19) and
+`lex.float_value` (local 20), stage 2, layer 2,
+`lx_float_slice()` registry (50 entries, cumulative over
+`pp_emit_slice()`); no schema change; no allowlist rows (Ack-only).
+New hashed rules `lx.float-syntax`, `lx.float-value-rounding`,
+`lx.float-overflow`. New artifact `t01-c01-c06/32`
+(`0dd8da06…4a6e1167`); acceptance `compiler/tests/c32_float.rs`
+(12 tests); item list in [LX_FLOAT_SLICE.md](LX_FLOAT_SLICE.md).
+
+`/33` amendment — Wave 3 slice 8, LX string (R1 auto-bump; `/32`
+preserved as history): three workers closing the escape/char/string USE
+(T04:19–21). `LxEscapeChip` (chip 41, LX11) validates one literal body
+against the frozen escape rule (simple/octal-3/greedy-hex/UCN with
+scalar-range checks) and completes `Ack`, appending nothing (no
+`CodeUnits` carrier frozen yet); `LxCharChip` (chip 42, LX12) decodes
+one `prefix'body'` spelling to its typed value with the frozen
+multicharacter policy (prefix-width masking, big-endian concatenation,
+low 32 bits) and appends one `Character` `LiteralRecord` (radix `16`,
+suffix `None`, `Int` candidate, publish-time token back-link);
+`LxStringChip` (chip 43, LX13) decodes one `prefix"body"` spelling to
+code units plus exactly one terminating zero with the frozen
+element-type/width rule (narrow 1, `u` UTF-16 with surrogate pairs, `U`
+UTF-32, `L` from the frozen `wchar_t` width) and appends one `String`
+`LiteralRecord` (radix `0` non-numeric marker, suffix `None`, `Int`
+candidate, back-link). All three read the committed PP spelling/kind
+(payload `[Token, PpToken]`, the `/11` precedent); escapes fail loud,
+empty chars fail, `""` decodes to `[0]`, embedded NULs are preserved.
+The three escape copies stay chip-local by the `compose_map` copy
+precedent (convergence deferred; deltas pinned loud). The commit
+`Literal` gate admits exactly the M1 integer shape plus the two `/33`
+shapes. `lex.escape_decode` (local 21), `lex.char_decode` (22),
+`lex.string_decode` (23), stage 2, layer 2, `lx_string_slice()`
+registry (53 entries, cumulative over `lx_float_slice()`); no schema
+change; two allowlist rows (LX12/LX13 `lex.literals`; LX11 Ack-only).
+New hashed rules `lx.escape-decode`, `lx.char-typed`,
+`lx.string-record`. New artifact `t01-c01-c06/33`
+(`e8400eb1…eef455`); acceptance `compiler/tests/c33_string.rs`
+(14 tests); item list in [LX_STRING_SLICE.md](LX_STRING_SLICE.md).
+
+`/34` amendment — Wave 3 slice 9, PA decl (R1 auto-bump; `/33`
+preserved as history): four Ack-only workers splitting the M1
+declaration path into individually testable productions (T05
+PA02/PA03/PA05/PA07/PA09/PA28/PA32 M1 scope). `PaExternalChip` (chip
+44, PA02) classifies one external declaration at the continuation
+cursor (`ExternalDecl` context, 8-token lookahead window) as a
+function definition (`{`) or a declaration (`;`); any third
+discriminator — including EOF, `=`, `,`, or a K&R parameter name — is
+an explicit `Fail`, never a guessed default. `PaSpecifierChip` (chip
+45, PA03) accepts exactly Keyword `int` (one committed token) and
+rejects every other bundle as `Unsupported`. `PaDeclaratorChip` (chip
+46, fused PA05/PA07/PA09) accepts exactly `main(void)` (zero
+parameters, prototype) and fails the ambiguous `()` shape as a typed
+`Task`-channel DEFECT; pointer/parenthesized/array/non-`void`/non-`main`
+shapes are explicit `Unsupported`. `PaBlockChip` (chip 47, fused
+PA28/PA32) dispatches on the task kind: exactly
+`{ return <int> + <int> ; }` (7 tokens) or exactly
+`return <int> + <int> ;` (5 tokens), each integer leaf backed by one
+committed literal; `return;`, `{}`, and every other shape fail
+`Unsupported`. All four complete `Ack` and append nothing (no cursor
+carrier — OB-30 stays open, caller holds the cursor; no node links —
+committed nodes stay PA01-owned until the full catalog split).
+`parse.external_declaration` (local 17), `parse.specifiers` (18),
+`parse.declarator` (19), `parse.block` (20), `parse.return` (21),
+stage 2, layer 2, `pa_decl_slice()` registry (58 entries, cumulative
+over `lx_string_slice()`); no schema change; no allowlist rows
+(Ack-only). New hashed rules `pa.external-dispatch`,
+`pa.specifier-int`, `pa.declarator-void`, `pa.block-return`. New
+artifact `t01-c01-c06/34` (`229ae1a7…169be74`); acceptance
+`compiler/tests/c34_parse.rs` (12 tests); item list in
+[PA_DECL_SLICE.md](PA_DECL_SLICE.md).
+
+`/35` amendment — Wave 3 slice 10, PA expr (R1 auto-bump; `/34`
+preserved as history): two Ack-only workers splitting the M1
+expression path into individually testable productions (T05
+PA16/PA20/PA22 M1 scope). `PaBinaryChip` (chip 48, fused PA16/PA22)
+dispatches on the task kind: PA16 accepts exactly one integer-constant
+token backed by one committed literal; PA22 accepts exactly
+`<int> + <int>` (kinds `[Integer, Punctuator, Integer]`, middle
+spelling `+` through the committed PP token, both integers
+literal-backed) as a single left-associative precedence-climb step at
+`min_bp = 0` (`binary_precedence` resolves `+` to `(10, 11)` only).
+`PaUnaryChip` (chip 49, PA20) accepts exactly `+<int>` / `-<int>`
+(operator through the committed PP bytes, operand integer-backed).
+Every other shape — `-`, `*`, multi-operator chains, the 4-token
+`2 + +3` sequence as a single PA22 shape (its `+3` suffix is the PA20
+shape; composition is wiring-layer work), identifiers, juxtaposition —
+fails `Unsupported`; missing literals and non-running tasks fail on the
+`Task` channel; literal *values* are never interpreted
+(T07/T08-owned). Both complete `Ack` and append nothing (no cursor
+carrier — OB-30 stays open, caller holds the cursor; no node links —
+committed nodes stay PA01-owned until the full catalog split).
+`parse.primary` (local 22), `parse.binary` (23), `parse.unary` (24),
+stage 2, layer 2, `pa_expr_slice()` registry (61 entries, cumulative
+over `pa_decl_slice()`); no schema change; no allowlist rows
+(Ack-only). New hashed rules `pa.primary-int`, `pa.binary-add`,
+`pa.unary-plus-minus`. New artifact `t01-c01-c06/35`
+(`88107dd3…7f8983`); acceptance `compiler/tests/c35_expr.rs`
+(10 tests); item list in [PA_EXPR_SLICE.md](PA_EXPR_SLICE.md).
+
+`/36` amendment — Wave 3 slice 11, PA recovery (R1 auto-bump; `/35`
+preserved as history): two Ack-only workers closing the M1
+declaration tail and the single-fault resumption path (T05 PA14/PA38
+M1 scope). `PaPodChip` (chip 50, PA14) accepts exactly `main(void);`
+and certifies the point-of-declaration registration (name, spelling,
+declarator span) for the wiring layer, which owns the T06 declare
+fan-out and the PA15 initializer ordering; comma lists and
+initializers fail `Unsupported`, a missing `;` is the
+unterminated-declaration defect on the `Task` channel (never an
+implicit semicolon). `PaRecoveryChip` (chip 51, PA38) synchronizes
+the fault suffix to an explicit delimiter with grounded
+paren/bracket/brace counters: `;` consumed, `)` / `}` / `{`-stop /
+EOF not consumed (the `{`-stop refuses to enter a following function
+body); every `Ok` path satisfies the finite-advance guarantee `0 <
+index <= tokens.len()`; a fault already at `Eof`, an empty window,
+or a window with no sync token fails loudly instead of spinning.
+Both complete `Ack` and append nothing (no cursor carrier — OB-30
+stays open, caller holds the cursor; no node links; no child-task
+fan-out — failed-frame cleanup and scope balancing stay T06
+integration work). The two delivered files both claimed `PARSE`
+local 25 / `ChipId(50)`; the integrator arbitrated the collision
+linearly against the `/35` head (local 24, chip 49) into
+`parse.decl_finish` (local 25) + `parse.recovery` (local 26), stage
+2, layer 2, `pa_recovery_slice()` registry (63 entries, cumulative
+over `pa_expr_slice()`); no schema change; no allowlist rows
+(Ack-only). New hashed rules `pa.pod-finish`, `pa.recovery-sync`.
+New artifact `t01-c01-c06/36` (`c8d2135b…b766e6`); acceptance
+`compiler/tests/c36_recovery.rs` (11 tests); item list in
+[PA_RECOVERY_SLICE.md](PA_RECOVERY_SLICE.md).
+
+`/37` amendment — Wave 3 slice 12, T08 const-branch (R1 auto-bump;
+`/36` preserved as history): four Ack-only workers certifying the M1
+selected-branch and static-assert path (T08 CL04/CL07 M1 scope).
+`BranchAndChip` (chip 52, CL04) evaluates the condition plus ONLY the
+short-circuit-selected `&&` branch (`0 && <bad>` acks canonical `0`;
+`2 && 3` acks canonical `1`); `BranchOrChip` (chip 53, CL04) mirrors
+for `||` (`3 || <bad>` acks `1`; `0 || 3` acks `1`, `0 || 0` acks
+`0`); `BranchCondChip` (chip 54, CL04) passes the selected `?:`
+magnitude through verbatim (`1 ? 3 : <bad>` is never evaluated);
+`StaticAssertChip` (chip 55, CL07) passes nonzero, fails zero as a
+failed assertion, and fails a non-literal payload as
+`NotConstantExpression` (never ICE, never a silent pass). The
+unselected operand is never subset-checked, never budget-checked, and
+may even dangle; every selected operand passes the M1 exercised-subset
+gate (decimal `Integer`, no suffix, `Int` candidate — else explicit
+`Unsupported`) and the configured bit-budget gate (else typed
+`ConstOverflow` `Fail`). All four complete `Ack` and append nothing
+(no branch-result commit carrier — committing branch values stays
+future work; no node links; no child-task fan-out). The delivered
+draft claimed `CONSTANT_CONST_FOLD` descriptively for all four shells
+plus chip IDs 52–55; the integrator verified the `/36` head (no
+`CONSTANT` local past 16, `PA38_CHIP = ChipId(51)`) and froze
+`const_branch_and` (local 17) + `const_branch_or` (18) +
+`const_branch_cond` (19) + `const_static_assert` (20), stage 2, layer
+2, `const_branch_slice()` registry (67 entries, cumulative over
+`pa_recovery_slice()`); no schema change; no allowlist rows
+(Ack-only). New hashed rules `const.branch-selected`,
+`const.static-assert`. New artifact `t01-c01-c06/37`
+(`59721bd8…2fc8c`); acceptance `compiler/tests/c37_const_branch.rs`
+(10 tests); item list in [CONST_BRANCH_SLICE.md](CONST_BRANCH_SLICE.md).
+
+`/38` amendment — Wave 3 slice 13, VF14 evidence-classify (R1
+auto-bump; `/37` preserved as history): one read-only verifier
+classifying the T00 gate outcome over the complete
+compile/link/run/check evidence vector (T13 VF14 scope).
+`Vf14Chip` (chip 56) completes `Ack` when every required stage is
+present and passing; any present failure — in particular compile-ok
+with run-fail — is FAIL at the earliest failing stage in pipeline
+order (typed `Fail`, never PASS); a required-but-missing stage is
+rejected (typed `Fail`, never PASS); an undecodable carrier or an
+invalid stage gate is rejected (typed `Fail`, never PASS).
+Precedence is total: invalid gate, then earliest missing required
+stage, then earliest undecodable slot anywhere, then earliest failing
+slot anywhere. The payload convention is exactly six refs
+`[instance, gate, compile, link, run, check]`; the gate is a
+single-byte `Const` (0 compile / 1 link / 2 run / 3 check, required
+evidence is the pipeline prefix); evidence slots decode the frozen
+M1-scope carrier map (`Ack`→pass, `Diagnostic`→fail,
+`Empty`→absent, `Record`/`Records`→undecodable, never PASS); the
+instance ref is resolvability-checked only, never interpreted
+(`HostTestEvidence` schema stays deferred as DEFECT-VF14-01, the
+boolean carrier as DEFECT-VF14-02). No batch logic, no H6
+dependency: exactly one transition proposal per handle. The
+delivered draft defined file-local candidate kind/chip consts plus a
+`candidate_kind()` helper; the integrator verified the `/37` head
+(no `VERIFICATION` local past 19, `VF14` chip 56 free after
+`CL07_ASSERT_CHIP = 55`) and froze `evidence_classify` (local 20),
+stage 6, layer 6, `vf_evidence_slice()` registry (68 entries,
+cumulative over `const_branch_slice()`); no schema change
+(PP-slice reuse); no allowlist rows (zero writes).
+New hashed rules `vf.evidence-complete`, `vf.evidence-stage`,
+`vf.evidence-never-pass-missing`. New artifact `t01-c01-c06/38`
+(`f18068f9…0d83`); acceptance `compiler/tests/c38_vf14.rs`
+(10 tests); item list in [VF_EVIDENCE_SLICE.md](VF_EVIDENCE_SLICE.md).
+
+`/39` amendment — Wave 3 slice 14, SE29 function-definition (R1
+auto-bump; `/38` preserved as history): one semantic worker checking
+the M1 function definition (T07 SE29 scope). `SeFuncChip` (chip 57)
+reads one committed `FunctionDefinition` node, checks the M1
+`(void)`-only declarator shape (any identifier list is an old-style
+K&R parameter list, explicit `Unsupported`), the single committed
+TY17 `int(void)` signature (zero is missing input, more than one is
+an ambiguous-handoff DEFECT, a non-`(void)` shape is `Unsupported`),
+the declared `main` symbol (missing or untyped is a loud failure, a
+divergently-typed symbol is `Unsupported` as prototype-inconsistent),
+and the committed `Return` child fact (missing is a loud failure, a
+mistyped one is `Unsupported`, a nonzero effect mask is a typed
+failure; the `Return` node owns the return-role facts). It then
+appends one signature-carrying `SemRecord` (no `Return`-role plan) or
+reuses the committed one (exactly-one per node). The delivered draft
+defined a file-local chip const plus a `semantic_function_def_kind()`
+helper; the integrator verified the `/38` head (no `SEMANTIC` local
+past 20, chip 57 free after `VF14_CHIP = ChipId(56)`) and froze
+`function_def` (local 21), stage 4, layer 4,
+`se_function_slice()` registry (69 entries, cumulative over
+`vf_evidence_slice()`); no schema change (SE-slice reuse); one
+allowlist row (`SE_FUNC_CHIP` → `sem.records` for
+`SEMANTIC_FUNCTION_DEF`, 32 → 33 rows).
+New hashed rules `se.function-signature`,
+`se.function-body-checked`. New artifact `t01-c01-c06/39`
+(`07f4eade…f224`); acceptance `compiler/tests/c39_sefunc.rs`
+(8 tests); item list in [SE_FUNC_SLICE.md](SE_FUNC_SLICE.md).
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
