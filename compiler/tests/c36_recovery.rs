@@ -21,6 +21,7 @@ use cc_silicon_compiler::chips::{
     PaPodChip, PaRecoveryChip, PodError, PodToken, ProjectedPodToken, ProjectedRecoveryToken,
     Worker, WorkerRegistry, PA14_TASK_KIND, PA38_TASK_KIND,
 };
+use cc_silicon_compiler::chips::{PaPodInput, PaRecoveryInput};
 use cc_silicon_compiler::diagnostic::DiagGroup;
 use cc_silicon_compiler::ids::{ChipId, NameId, RecordRef, TaskId, TokenId};
 use cc_silicon_compiler::limits::Limits;
@@ -34,7 +35,6 @@ use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec}
 use cc_silicon_compiler::task::{
     Payload, Proposal, ResultValue, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry, TaskState,
 };
-use cc_silicon_compiler::chips::{PaPodInput, PaRecoveryInput};
 use std::collections::BTreeMap;
 
 fn new_bus() -> CompilerBus {
@@ -264,10 +264,7 @@ fn recovery_kinds_stage_registry_manifest_frozen() {
         assert!(check_stage_layer_agreement(manifest, &routing).is_ok());
     }
     assert_eq!(PaPodChip.manifest().task_kinds, vec![PA14_TASK_KIND]);
-    assert_eq!(
-        PaRecoveryChip.manifest().task_kinds,
-        vec![PA38_TASK_KIND]
-    );
+    assert_eq!(PaRecoveryChip.manifest().task_kinds, vec![PA38_TASK_KIND]);
 }
 
 // --- 2. pod accept -----------------------------------------------------------
@@ -400,8 +397,7 @@ fn recovery_nesting_suppresses_inner_delimiters() {
     assert_eq!(got.index, 7);
     assert_eq!(got.sync, SyncKind::Semicolon);
     // A stray `]` is not a sync; the later `;` syncs.
-    let bracket =
-        recover_cursor(&recovery_input(&[(K, b""), (P, b"]"), (P, b";")])).unwrap();
+    let bracket = recover_cursor(&recovery_input(&[(K, b""), (P, b"]"), (P, b";")])).unwrap();
     assert_eq!(bracket.index, 3);
     // A kind-only punctuator with no spelling never syncs.
     let err = recover_cursor(&recovery_input(&[(K, b""), (P, b""), (K, b"")])).unwrap_err();
@@ -514,11 +510,17 @@ fn seed_token(
 /// window `bad + ;` in source order; returns `(pod, window)` token IDs.
 fn seed_m1_recovery(bus: &mut CompilerBus) -> (Vec<TokenId>, Vec<TokenId>) {
     let file = bus.intern_name(b"m1.c").unwrap();
-    let source = bus.alloc_source(file, b"main(void);bad+;".to_vec()).unwrap();
+    let source = bus
+        .alloc_source(file, b"main(void);bad+;".to_vec())
+        .unwrap();
     let main = bus.intern_name(b"main").unwrap();
     let void = bus.intern_name(b"void").unwrap();
     let bad = bus.intern_name(b"bad").unwrap();
-    let (i, k, p) = (TokenKind::Identifier, TokenKind::Keyword, TokenKind::Punctuator);
+    let (i, k, p) = (
+        TokenKind::Identifier,
+        TokenKind::Keyword,
+        TokenKind::Punctuator,
+    );
     let (id, pu) = (PpTokenKind::Identifier, PpTokenKind::Punctuator);
     let pod = vec![
         seed_token(bus, source, i, b"main", id, Some(main)),

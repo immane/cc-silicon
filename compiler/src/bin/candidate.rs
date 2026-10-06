@@ -23,9 +23,9 @@ use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
     PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
-    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip, SeLitChip,
-    SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip,
-    Vf12Chip, Worker, WorkerRegistry,
+    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip,
+    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
+    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -138,9 +138,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
                 return Err(format!("-O {level} unsupported in Part A (only -O0)"));
             }
         } else if arg == "-I" || arg.starts_with("-I") {
-            return Err(format!(
-                "{arg} deferred: include support is not in Part A"
-            ));
+            return Err(format!("{arg} deferred: include support is not in Part A"));
         } else if let Some((kind, body)) = macro_flags::split_flag(arg) {
             let body: &str = if body.is_empty() {
                 index += 1;
@@ -490,15 +488,14 @@ fn commit_macro_flags(
     for seed in seeds {
         match seed {
             macro_flags::MacroFlagSeed::Define(define) => {
-                let scanned = cc_silicon_compiler::chips::scan(define.value.as_slice()).map_err(
-                    |draft| {
+                let scanned =
+                    cc_silicon_compiler::chips::scan(define.value.as_slice()).map_err(|draft| {
                         format!(
                             "-D {} has an invalid value: {}",
                             String::from_utf8_lossy(&define.name),
                             draft.message
                         )
-                    },
-                )?;
+                    })?;
                 let source = if define.value.is_empty() {
                     None
                 } else {
@@ -509,8 +506,9 @@ fn commit_macro_flags(
                 };
                 let mut replacement = Vec::with_capacity(scanned.len());
                 for token in &scanned {
-                    let owner = source
-                        .ok_or_else(|| "non-empty -D value has no command-line source".to_string())?;
+                    let owner = source.ok_or_else(|| {
+                        "non-empty -D value has no command-line source".to_string()
+                    })?;
                     bus.ensure_total_records(1)
                         .map_err(|error| format!("span commit rejected: {error}"))?;
                     let span = bus
