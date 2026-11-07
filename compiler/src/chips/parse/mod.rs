@@ -8,11 +8,16 @@
 
 mod pa_binary;
 mod pa_block;
+mod pa_cast;
+mod pa_decl_spec;
 mod pa_declarator;
+mod pa_ext_dispatch;
 mod pa_external;
+mod pa_init;
 mod pa_pod;
 mod pa_recovery;
 mod pa_specifier;
+mod pa_stmt;
 mod pa_tu;
 mod pa_unary;
 
