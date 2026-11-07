@@ -59,7 +59,7 @@ not duplicate A1 files or edit any shared source.
 | A-PTS-04 | Constants, layout, and initialization contract requirements | `ses_e4b30c6e5ffeoGAOvCl05owaVE` | `docs/reviews/dispatch/A14_CONST_LAYOUT_INIT_CONTRACT.md` | COMPLETE — reviewed |
 | A-PTS-05 | IR, CFG, memory, effects, and versioning contract requirements | `ses_e4b30c6acffeHz3otvCtC3f3wX` | `docs/reviews/dispatch/A15_IR_CONTRACT_REQUIREMENTS.md` | COMPLETE — reviewed |
 | A-PTS-06 | T02 control/commit/join/cancel requirements | `ses_e4b30c6abffewzdszkmEnseEF7` | `docs/reviews/dispatch/A16_CONTROL_PROTOCOL_REQUIREMENTS.md` | COMPLETE — reviewed |
-| A-PTS-07 | T13 verification and evidence requirements | `ses_e4b30c6abffdjF9dd1iHy9meKZ` | `docs/reviews/dispatch/A17_VERIFICATION_REQUIREMENTS.md` | REPORT PRESENT — worker hit capacity after write; integrator review pending |
+| A-PTS-07 | T13 verification and evidence requirements | `ses_e4b30c6abffdjF9dd1iHy9meKZ` | `docs/reviews/dispatch/A17_VERIFICATION_REQUIREMENTS.md` | COMPLETE — reviewed (worker hit capacity after writing the full report) |
 | A-CLI-01 | Diagnostic/error taxonomy and ownership requirements | `ses_e4b30c6abffcIR5nNES0MCqAwz` | `docs/reviews/dispatch/A18_DIAGNOSTIC_TAXONOMY.md` | COMPLETE — reviewed |
 | A-TST-02 | V2 independent acceptance design | `ses_e4b30c6aaffevkjrn6N4dN5hUj` | `docs/reviews/dispatch/A19_V2_INDEPENDENT_TESTS.md` | COMPLETE — reviewed |
 | A-TST-03 | V3 independent acceptance design | `ses_e4b30c6aaffdiGUBSxpqe8l6K6` | `docs/reviews/dispatch/A20_V3_INDEPENDENT_TESTS.md` | COMPLETE — reviewed (179-case matrix) |
@@ -74,15 +74,15 @@ not duplicate A1 files or edit any shared source.
 | ID | Priority | Finding | Evidence | Disposition |
 |---|---|---|---|---|
 | D-01 | **P0** | Candidate accepts non-M1 operators/delimiters and misinterprets them: `return 2*3;` and `return 2-3;` both return 5; malformed `main(void]{...;)` is accepted. `PaTuChip` checks token kinds and only four spellings, not punctuator spellings. | A04 §1.2, §6.3; `pa_tu.rs:193-233` | **FIXED / VERIFIED** by B1-01 |
-| D-02 | **P0** | SE29 `FunctionDefinition` `SemRecord` is not dispatched by the candidate; VF06 checks only three node kinds. M1 A3 is not complete. | A05 §3.2 G3; `candidate.rs:252-289`, `vf_invariant.rs:180-184` | B2 after A17 review |
-| D-03 | **P0** | Candidate panics (exit 101) on non-UTF-8 argv; no structured driver error. | A10 §1.3 F-01; A24 L-01 | B1-02 |
+| D-02 | **P0** | SE29 `FunctionDefinition` `SemRecord` is not dispatched by the candidate; VF06 checks only three node kinds. M1 A3 is not complete. | A05 §3.2 G3; `candidate.rs:252-289`, `vf_invariant.rs:180-184` | **CCR SUBMITTED** (B2-01); implementation waits on `/40` freeze |
+| D-03 | **P0** | Candidate panics (exit 101) on non-UTF-8 argv; no structured driver error. | A10 §1.3 F-01; A24 L-01 | **FIXED / VERIFIED** by B1-02 |
 | D-04 | **P1** | Current dirty-tree clippy gate fails with 142 diagnostics from five declared parse drafts; four additional drafts are not compiled at all. | A13 §5-6 | Integrator freezes draft disposition |
 | D-05 | **P1** | Duplicate candidate local 27 / `ChipId(58)` across several drafts; PA15 has two implementations (`pa_init.rs`, `pa_expr_ext.rs`). | A04 §7; A13 §5 | A12/A13 ownership map |
 | D-06 | **P1** | All 65 chips use local `Worker`/`handle(&CompilerBus)`, not `RestrictedChip`/`ChipAdapter`; contract has two competing chip boundaries. | A02 F01 | Contract freeze decision |
 | D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | Target track, blocked |
 | D-08 | **P1** | H05 isolated execution is absent; no timeout/resource/cancellation/crash boundary. | A10; A24 H-01 | H05 work order after security review |
 | D-09 | **P1** | `ConstRecord` has no `ty`; documented immediate-type rule cannot be enforced. A14 proposes a tagged v2 record. | A05 G4; A14 §4.2 | Schema freeze |
-| D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | B1-03 |
+| D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | **FIXED / VERIFIED** by B1-03; dated audit retained with banner |
 | D-11 | **P2** | `-std`/`-O` are validated but not propagated; exit code 2 conflates usage/unsupported/Part B refusal; output writes are non-atomic. | A10 §1.3 F-02..F-04, F-12 | B2 candidate hardening |
 | D-12 | **P0** | `AppendRecords` wire proposals encode only the draft count in snapshots; different append batches with equal counts hash identically. This contradicts `snapshot.wire-payloads-encoded`. | A23 A23-F01; `snapshot.rs:446-455` | Contract freeze B2 |
 | D-13 | **P1** | Scheduler order uses task-group ordinal, not `STAGE_ASSIGNMENT`; T01 three-key order conflicts with M1 D5 four-key stage-first order. | A23 finding 5; `routing.rs:34-38` | Contract decision B2 |
