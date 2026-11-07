@@ -55,6 +55,7 @@ Distinguish two kinds of backend: `cc-silicon::Backend` is the compute backend t
 | [Gate 1 first-slice checklist](GATE_1_M1_FIRST_SLICE.md) | **Proposed** freeze work list for the M1 const-fold chain (M1-CL-05): typed literal/const schemas, slice task kinds/stages/allowlist, narrow `AppendRecords` materialization, freeze tests, version rule. Not a freeze, authorizes no chip code | T01 §7.1 `/6` foundation; M1 proposal rev 40; CDR rev 56 |
 | [Chip plan](CHIP_PLAN.md) | **Plan**: readiness grades, wave assignment, and per-chip unblock conditions for all 332 table rows. Not a freeze, authorizes no chip code | All T02–T13 tables; `TASK_TEMPLATE.md`; T01 §7; Gate 1 |
 | [Wave dispatch](WAVE_DISPATCH.md) | **Design**: serial-bootstrap → 100+ parallel generation pipeline, agent contract, merge loop, R1/R2/R3 rules (accepted 2026-10-06) | `CHIP_PLAN.md`; `PARALLEL_EXECUTION.md` |
+| [Mass-parallel dispatch plan](MASS_PARALLEL_DISPATCH.md) | **Dispatch planning**: 110 audit/design task slots, up to 132 candidate production packages after freeze, a target-backend parallel pool, exact work orders, readiness gates, and batch integration; not implementation authorization or completion evidence | Current frozen contract; `WAVE_DISPATCH.md`; `PARALLEL_EXECUTION.md` |
 
 T00's Host work items H00–H10 are defined in
 [T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4. They are host/tooling

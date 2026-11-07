@@ -6,6 +6,10 @@
 | Principle | One human round (this document + three rules below), then autonomous waves |
 | Capacity | 100+ concurrent chip authors; one serial integrator |
 
+Detailed task-pool budgets, readiness gates, work orders, resource limits, and
+integration trains are described in [the mass-parallel dispatch plan](MASS_PARALLEL_DISPATCH.md).
+That plan is not a schema freeze, implementation authorization, or evidence of readiness.
+
 ## 1. Pipeline
 
 ```text

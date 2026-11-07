@@ -26,6 +26,7 @@ use exact interface names and frozen identifiers on purpose.
 - [Task master plan](tasks/README.md)
 - [Per-chip template](tasks/TASK_TEMPLATE.md)
 - [Parallel execution rules](tasks/PARALLEL_EXECUTION.md)
+- [Mass-parallel dispatch plan](tasks/MASS_PARALLEL_DISPATCH.md)
 - [Compiler development guardrails](tasks/COMPILER_DEVELOPMENT_GUARDRAILS.md)
 
 ## Normative references
