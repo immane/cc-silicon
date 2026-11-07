@@ -2,7 +2,8 @@
 // chips/pa_tu.rs — T05 PA01 TU-parse worker (Wave 2 slice 3, `/12`)
 //
 // Reads 13 committed C tokens in source order, validates the exact M1 shape
-// (`int main(void){return 2+3;}` plus EOF), appends the nine-node M1 tree in
+// (`int main(void){return 2+3;}` plus EOF) including every keyword,
+// identifier, punctuator, and EOF spelling, appends the nine-node M1 tree in
 // pre-order, and completes with the TU root reference. Any other token
 // sequence is explicit `Unsupported`: the full parser stays deferred. Token
 // ranges, the declarator name, and the literal leaves all reference
@@ -23,15 +24,17 @@ use crate::task::{
 };
 use std::collections::BTreeMap;
 
-/// One projected token: kind plus resolved spelling for named tokens.
+/// One projected token: kind, interned name, and committed surface spelling.
 #[derive(Clone, Debug)]
 pub struct ProjectedToken {
     /// C-token kind.
     pub kind: TokenKind,
     /// Interned name, if any.
     pub name: Option<NameId>,
-    /// Spelling bytes for named tokens.
+    /// Spelling bytes for named tokens (interned spelling).
     pub spelling: Vec<u8>,
+    /// Committed PP spelling (surface spelling for punctuators and EOF).
+    pub pp_spelling: Vec<u8>,
 }
 
 /// Narrow projection for the TU-parse computation.
@@ -83,12 +86,19 @@ pub fn project_pa_tu_input(
                 .name
                 .and_then(|name| bus.intern.get(name).ok().map(|bytes| bytes.to_vec()))
                 .unwrap_or_default();
+            let pp_spelling = bus
+                .arenas
+                .pp_tokens
+                .get(body.pp_token)
+                .map(|pp| pp.spelling.clone())
+                .unwrap_or_default();
             bodies.insert(
                 *id,
                 ProjectedToken {
                     kind: body.kind,
                     name: body.name,
                     spelling,
+                    pp_spelling,
                 },
             );
         }
@@ -128,6 +138,7 @@ impl Worker for PaTuChip {
                 FieldPath::new(StoreId::Tasks, "active.owner"),
                 FieldPath::new(StoreId::Lex, "tokens"),
                 FieldPath::new(StoreId::Lex, "literals"),
+                FieldPath::new(StoreId::Pp, "tokens"),
                 FieldPath::new(StoreId::Names, "entries"),
                 FieldPath::new(StoreId::Parse, "nodes"),
             ],
@@ -136,7 +147,10 @@ impl Worker for PaTuChip {
             backend_class: BackendClass::CpuReference,
             phase: ChipPhase::Propagation,
             deterministic: true,
-            tests: vec!["compiler/tests/c12_parse.rs"],
+            tests: vec![
+                "compiler/tests/c12_parse.rs",
+                "compiler/tests/c40_pa_guard.rs",
+            ],
             dependencies: vec![],
         }
     }
@@ -165,6 +179,16 @@ const M1_KINDS: &[TokenKind] = &[
     TokenKind::Punctuator,
     TokenKind::Punctuator,
     TokenKind::Eof,
+];
+
+/// Expected M1 punctuator spellings at their fixed token positions.
+const M1_PUNCTUATORS: &[(usize, &[u8])] = &[
+    (2, b"("),
+    (4, b")"),
+    (5, b"{"),
+    (8, b"+"),
+    (10, b";"),
+    (11, b"}"),
 ];
 
 /// One pre-order node row: kind, parent, children, token range, name, literal.
@@ -230,6 +254,22 @@ impl PaTuChip {
                     DiagnosticDraft::unsupported("non-M1 keyword/identifier spelling"),
                 )];
             }
+        }
+        // Fixed-shape gate: punctuator spellings and the EOF token shape.
+        for (position, spelling) in M1_PUNCTUATORS {
+            if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported("non-M1 punctuator spelling"),
+                )];
+            }
+        }
+        let eof = &input.bodies[&input.tokens[12]];
+        if !eof.pp_spelling.is_empty() || eof.name.is_some() {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("non-M1 EOF token shape"),
+            )];
         }
         // Integer leaves need exactly one committed literal each.
         let mut leaves = Vec::new();
