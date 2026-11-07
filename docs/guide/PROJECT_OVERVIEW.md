@@ -44,8 +44,8 @@ by chip.
 | Piece | Where | State |
 |---|---|---|
 | Generic execution framework (bus, chips, motherboard, backend, clock, testbench) | `src/` | **Implemented**, with tests and a runnable counter example |
-| Compiler contract foundation (storage, IDs, task protocol, target model, manifest check, snapshots, dispatcher) | `compiler/` | **Implemented and frozen** as `t01-c01-c06/6`; language behavior still unwritten |
-| C language pipeline (preprocessing through target emission, ~331 planned chips) | `docs/tasks/T02`–`T13` | **Planned only** — task descriptions and acceptance plans, no code |
+| Compiler contract foundation (storage, IDs, task protocol, target model, manifest check, snapshots, dispatcher) | `compiler/` | **Implemented and frozen** as `t01-c01-c06/39`; includes partial PP/LX/PA/TY/SE/IR/VF slices and a candidate Part A driver, but no complete compiler |
+| C language pipeline (preprocessing through target emission, ~331 planned chips) | `docs/tasks/T02`–`T13` | **Partial slices only** — many workers exist, but most planned handlers, target emission, and acceptance remain ahead |
 
 A common misunderstanding is worth clearing up early: the frozen
 contract is **an agreement about shapes, names, and protocol rules**,
@@ -91,9 +91,10 @@ delegating to another C compiler). That gate has **not been run**; the
 corpus has not even been fetched yet.
 
 The nearer milestone is M1: compile `int main(void){return 2+3;}`
-through the candidate's own pipeline and get exit code 5. That is also
-**still ahead of us** — it is the first visible proof that the whole
-chain connects.
+through the candidate's own pipeline and get exit code 5. The candidate
+already produces deterministic Part A evidence for this fixture, but the
+complete M1 acceptance and all target execution remain ahead. Part B is
+blocked on the Linux probe and attestation.
 
 ## Sources
 

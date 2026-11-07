@@ -24,26 +24,31 @@ documents today, not running code:
 
 ## Freeze work still needed (before broad chip implementation)
 
-The foundation (`/6`) is frozen, but a parallel workforce cannot start
+The foundation (`/39`) is frozen, but a parallel workforce cannot start
 on all 331 chips yet: the interfaces those chips program against are
-not all frozen. Roughly, in dependency order:
+not all frozen. Partial slice kinds, records, materialization, and
+stage/allowlist rows exist; broader group schemas and control lifecycle
+remain ahead. Roughly, in dependency order:
 
-1. **Group task kinds.** Only the four foundation kinds exist. Each
-   language group needs its kind names, codes, and ownership frozen
-   (task packages T02–T13 propose them; the integrator disposes).
-2. **Language record schemas.** The arenas are reserved but schemaless.
-   Each family's typed record fields and ordering must be frozen by
-   its owning group.
-3. **Typed record drafts + materialization.** The draft handle exists;
-   the closed draft vocabulary and the reserve/resolve/materialize
-   chain must be frozen, which unblocks `AppendRecords`.
+1. **Group task kinds.** Foundation and several slice kinds exist. Each
+   language group still needs its remaining kind names, codes, and
+   ownership frozen (task packages T02–T13 propose them; the integrator
+   disposes).
+2. **Language record schemas.** Some arenas are typed; others remain
+   reserved. Each family's typed record fields and ordering must be
+   frozen by its owning group.
+3. **Typed record drafts + materialization.** Typed append
+   materialization exists for frozen families; the remaining draft
+   vocabulary and the reserve/resolve/materialize chain must be frozen
+   before broader `AppendRecords` use.
 4. **Group store fields + snapshot bodies.** Group-declared store
    fields and the canonical encoding of each record body follow from
    the schemas above.
-5. **Scheduling chain.** Kind→stage assignment, canonical stage
-   queues, per-kind worker routing, and the control-chip lifecycle
-   (start/import/cancel/budget) must be frozen together — these change
-   observable behavior and each needs an explicit decision and version.
+5. **Scheduling chain.** Kind→stage assignment and per-kind worker
+   routing exist in part; canonical stage queues and the control-chip
+   lifecycle (start/import/cancel/budget) must be frozen together —
+   these change observable behavior and each needs an explicit decision
+   and version.
 6. **Join/progress edge semantics.** One documented timing difference
    needs a ruling before it is frozen.
 7. **Diagnostics.** Per-group language error codes and attribution.
@@ -74,8 +79,8 @@ rate has been measured.
   (status, scope, required reading, frozen vs. unfrozen interfaces,
   allowed files, acceptance, current blockers) — without changing
   task IDs, content, or links.
-- Resolve stale version references (e.g. historical `/5` mentions
-  alongside frozen `/6`) by labeling them as history, not by silent
+- Resolve stale version references (e.g. historical `/5`–`/38` mentions
+  alongside frozen `/39`) by labeling them as history, not by silent
   replacement.
 - Keep dated review conclusions in `reviews/`; when the guide cites
   one, say whether the issue is still open.

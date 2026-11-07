@@ -128,8 +128,9 @@ still out of scope.
   lock; it does not produce one and never touches the network.
 - **No GCC/Clang/DejaGnu execution and no pass-rate output.** Reference-baseline
   orchestration is future H02 work.
-- **Not wired into CI.** `.github/workflows/ci.yml` is out of scope for this task
-  and was not modified. The package is standalone like `tools/chip-lint`.
+- **CI wiring exists.** `.github/workflows/ci.yml` now runs `tools/torture`
+  formatting, Clippy, and tests in addition to the other packages. This note's
+  original H00 change did not modify CI; that historical scope is superseded.
 
 ## Validation evidence
 
@@ -151,8 +152,7 @@ Results are recorded in the handoff message for this change.
    freeze the lock — or leave it draft.
 2. H01 owner: fill `substrate.*` with the real Linux CI/VM runner, toolchain,
    sysroot, assembler, and linker.
-3. Integration owner: decide whether to add the package to CI and whether the
-   lock schema needs a shared contract entry. This scaffold does not claim that
-   decision.
+3. Integration owner: decide whether the lock schema needs a shared contract
+   entry. CI wiring already exists; it is not an open decision.
 4. Legal review: confirm the recorded license/provenance per asset and that no
    GPL material is redistributed in the MIT tree. The tool cannot do this.

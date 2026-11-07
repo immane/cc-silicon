@@ -1,95 +1,93 @@
 # Project Status
 
-Last checked against the repository state at the time of writing. When
-this page and the code disagree, the code wins; the links below are the
-places to re-verify.
+Last checked against the repository state on 2026-11-07. When this page and
+the code disagree, the code wins; the links below are the places to
+re-verify. This page records observed state, not a new acceptance run.
 
 ## At a glance
 
 | Area | State | Evidence |
 |---|---|---|
-| Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 compile-fail doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`, C01–C06 + M1 Gate 1) | **Implemented, frozen `/7`** | 158 integration tests + doctests; identity and hash in `contracts/CONTRACT_VERSION` |
-| C language chips (T02–T13, 331 planned tasks) | **Not implemented, except the Gate 1 types are ready** | Task descriptions only; Wave 1 slice chips (T07 request, T08 fold) unblocked on the frozen `/7` const-fold types; no chip source exists yet |
-| AArch64 target values | **Unverified** | Identity frozen; probe never run |
+| Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/39`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
+| C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
+| AArch64 target values | **Unverified** | Identity frozen; probe never run; concrete values fail closed |
 | ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
-| Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 8 tests; catches common violations only |
+| Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 16 tests after Stage B; catches common violations only |
+| Test/CI coverage | Root, chip-lint, compiler, torture, chip scan | `.github/workflows/ci.yml`; real target probe remains manual-only |
 
-No compiler capability, target verification result, or GCC pass rate
-is claimed anywhere in this repository — and this page claims none
-either.
+No complete compiler capability, verified target ABI, or GCC pass rate is
+claimed by this repository or this page.
 
-## What "frozen /7" does and does not mean
+## What "frozen `/39`" means
 
-The frozen artifact is `t01-c01-c06/7` (`/6` preserved as history):
+The frozen artifact is `t01-c01-c06/39`:
 
 ```text
-version=t01-c01-c06/7
-hash=a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c
+version=t01-c01-c06/39
+hash=07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
 
 **It does mean:**
 
-- The shared vocabulary is fixed: record families, task states, the
-  five result variants, proposal names and wire tags, store and group
-  inventories, limits, target identity, and the normative rule IDs.
-- Changing any of them requires a contract amendment and a new
-  version — silent redefinition is a breach, not a refactor.
+- Shared vocabulary is fixed: record families, task states, result variants,
+  proposal names/wire tags, stores, limits, target identity, stage rows,
+  allowlist rows, and normative rule IDs.
+- Changing them requires a contract amendment and a new version; silent
+  redefinition is a breach.
 - Consistency tests pin these inventories to their implementations
-  (`compiler/tests/freeze.rs`, currently 14 tests).
+  (`compiler/tests/freeze.rs`).
 
 **It does not mean:**
 
-- That any C code can be compiled. No language chip exists.
-- That the frozen shapes are proven correct. The hash is a fingerprint
-  of names and shapes, not a semantic proof; chip logic can change
-  without changing the hash.
-- That every future chip interface is frozen. The `/7` addition covers
-  only the Gate 1 const-fold slice (literal/const schemas, three task
-  kinds, chain-order stages, one allowlist row); all other
-  per-language record schemas, group task kinds, worker routing, and
-  stage queues are still ahead (see [Roadmap](ROADMAP.md)).
+- That any C source can be compiled to an executable. Only partial language
+  slices and a Part A evidence path exist.
+- That the hash proves semantic correctness. It fingerprints names and shapes,
+  not chip logic.
+- That all future chip interfaces are frozen. Broad per-language record/task
+  schemas, most handlers, stage queues, target codegen, and ABI values remain
+  ahead.
 
-## Test inventory (so numbers are checkable, not slogans)
+## Observed test inventory
 
-Compiler foundation integration tests by file:
+The following counts were observed during the 2026-11-07 dispatch audit. They
+are discovery/run observations from that audit, not a permanent promise; the
+source tree and `compiler/tests/` are authoritative and now include additional
+Stage B regression files.
 
-| File | Tests | Covers |
-|---|---|---|
-| `c01_arena.rs` | 7 | Storage arenas and stable IDs |
-| `c02_target.rs` | 11 | Target model (identity frozen, values unverified) |
-| `c03_task.rs` | 46 | Task/result/proposal protocol |
-| `c04_manifest.rs` | 15 | Manifest declarations and validation |
-| `c05_codec.rs` | 21 | Canonical snapshot/trace encoding |
-| `c06_routing.rs` | 15 | Dispatcher, budgets, recovery |
-| `c07_limits.rs` | 18 | Configuration limits |
-| `c08_gate1.rs` | 11 | M1 Gate 1 const-fold slice (G1-CL-01 chain + gates) |
-| `freeze.rs` | 14 | Hash recomputation + inventory consistency |
+| Package | Observed |
+|---|---|
+| Root framework | 21 tests (15 integration + 6 doctests) |
+| Compiler | 654 tests listed at the audit; **682 tests across 49 suites passed after Stage B** (adds c40–c44 regression tests) |
+| Chip-lint | 12 tests at audit; 16 after B1-05 |
+| Torture verifier | 73 tests |
+| Probe self-tests | 57 tests; real probe not run |
 
-Framework: `tests/paradigm.rs` (15 tests) plus 6 doctests, including
-compile-fail checks on the `silicon_chip!` macro.
+## Known limitations
 
-## Known limitations, stated plainly
-
-- The ownership allowlist is an empty skeleton; stage assignment
-  accepts everything; canonical stage queues do not exist yet.
-- `AppendRecords` proposals are rejected pending the records track;
-  store patches record intent in a patch log.
-- Language record arenas are reserved but schemaless — only live IDs
-  are snapshotted, not record bodies.
-- The join behavior differs in one documented edge from the await-all
-  direction in an early draft; this needs a ruling before it is
-  frozen (see [Roadmap](ROADMAP.md)).
-- Adapters, host code, and custom backends remain trusted boundaries:
+- No complete PP→LX→PA→TY→SE→CL→IR→target pipeline.
+- Integrated preprocessing/lexing is narrow: source macros/includes are not
+  orchestrated end-to-end, `#if` macro expansion has a known defect, and the
+  integrated lexer is M1-integer-only.
+- Many parse/type/semantic/IR/verification catalog rows are absent; several
+  parse drafts are registered nowhere or claim colliding IDs.
+- The ABI/target probe has never run; no concrete target value may drive
+  codegen.
+- H05 isolated execution is absent; no untrusted binary may be run at scale.
+- `AppendRecords` snapshot bodies, scheduler/limit invariants, and replay
+  restore have known gaps tracked in the dispatch ledger.
+- Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 
 ## Sources
 
 - Root status table: [README.md](../../README.md) § Project status
 - Task master plan: [tasks/README.md](../tasks/README.md)
+- Dispatch ledger: [tasks/DISPATCH_LEDGER.md](../tasks/DISPATCH_LEDGER.md)
 - Frozen identity: [compiler/contracts/CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION)
 - Guardrails (accepted policy, not a freeze):
   [tasks/COMPILER_DEVELOPMENT_GUARDRAILS.md](../tasks/COMPILER_DEVELOPMENT_GUARDRAILS.md)

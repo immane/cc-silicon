@@ -85,8 +85,10 @@ game. Its six frozen components (C01–C06) are:
    to the chip responsible for it, within a per-tick proposal budget
    and bounded recovery.
 
-The frozen identity is `t01-c01-c06/6`
+The frozen identity is `t01-c01-c06/39`
 (see [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION)).
+It also carries partial PP/LX/PA/TY/SE/IR/VF slices; the complete pipeline
+is not implemented.
 The hash pins the normative shapes and rule IDs — not the source code,
 not the chip logic, and not a proof of correctness.
 

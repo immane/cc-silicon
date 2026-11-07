@@ -4,10 +4,12 @@ This package owns the **compiler application contract foundation** on top of
 the domain-free [`cc-silicon`](../) framework. It is the frozen T01 artifact
 and the shared schema every compiler task package must obey.
 
-It is **not a C compiler** and contains **no C language chips**. It compiles
-and tests the storage profile, IDs, task/result protocol, target/config
-schema, manifest extension, deterministic serializer, and the minimal routing
-shell. Language work (T02–T13) builds on this foundation.
+It is **not a complete C compiler**. It compiles and tests the storage profile,
+IDs, task/result protocol, target/config schema, manifest extension,
+deterministic serializer, and the routing shell, and it contains partial
+PP/LX/PA/TY/SE/IR/VF language-worker slices plus a candidate Part A evidence
+driver. There is no source-to-executable pipeline. Language work (T02–T13)
+continues on this foundation.
 
 ## Status
 
@@ -37,7 +39,7 @@ probe_substrate=linux-ci-vm (planned, not provisioned)
 corpus_fetch=on-demand hash-locked
 reference_baseline=authorized, not available, not candidate evidence
 hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)
-hash_excludes=runtime-registrations, routing-content, group-declared-store-fields, chip-logic
+hash_excludes=runtime-registrations, routing-content, post-seed-declarations, chip-logic
 verified_state=private-VerifiedState; attest validates caller-supplied report data and hash, not authenticity or physical provenance
 ```
 
@@ -53,7 +55,7 @@ schema. Enumerations are encoded by **variant name**, not by numeric
 discriminant or wire tag: the `*_NAMES` lists and `RECORD_KINDS` pin names and
 order, while the numeric snapshot tags (`snapshot.rs`) are hardcoded and are not
 derived from or cross-checked against those lists. A tag change does not change
-the frozen hash; numeric-value hashing remains a future `/6` item.
+the frozen hash; numeric-value hashing remains an open normalization item.
 
 It is **not a source-code hash and not a semantic-equivalence proof**. Logic
 inside a function can change without changing any identifier. The hash also
@@ -120,8 +122,11 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c07 + freeze
+  tests/           c01..c39 + freeze + h04_candidate + Stage B regression tests
 ```
+
+The test breakdown below is a dated 2026-10-04 record, not the current test
+inventory; see `compiler/tests/` for the current files.
 
 ## Commands and results (2026-10-04)
 
@@ -205,19 +210,21 @@ owner change. Root CI covers the compiler today.
 
 1. **Target probe not run.** C02 concrete ABI values are UNVERIFIED; target
    code chips (T11) must not start; `ensure_codegen_ready` fails closed.
-2. **Per-group schemas are proposals.** Concrete task/result payload variants
-   and language-store record fields are not frozen. Each group owner must
-   submit a freeze request (add kinds to `TaskKindRegistry`, fields to
-   `StoreSchema`, records to a reserved arena) before its chips can run.
-3. **T02 control chips are not implemented.** The routing shell has no worker
-   handlers; CT01–CT14 are pending.
-4. **No host/toolchain/runner.** H00–H03 (corpus lock, runner, DejaGnu
-   integration) do not exist, so no torture rate can be claimed.
+2. **Per-group schemas remain partial.** Frozen slices have kinds/records/stage
+   rows; broader group payload variants and language-store record fields are not
+   all frozen. Each group owner must submit a freeze request before new chips
+   can run.
+3. **T02 control chips are not implemented.** `WorkerRegistry`, `drive_task`,
+   and `handler_for` exist and selected workers are registered by the candidate,
+   but the CT01–CT14 topology is pending.
+4. **Host/toolchain/runner remains incomplete.** H00 is scaffold only, H01 has
+   never run, H02/H03 are absent, and no isolated runner or torture rate exists.
 
 ## Explicit limitations and deferred items
 
-- **No C compiler exists.** No language chips, no code generation, no corpus
-  run, no pass rate.
+- **No complete C compiler exists.** Partial language-worker slices and a
+  Part A evidence driver exist, but there is no code generation, target
+  execution, corpus run, or pass rate.
 - Attestation validates report data, not authenticity or physical provenance;
   TOCTOU applies to the report file (documented above and in `target.rs`). It
   also performs no plausibility cross-checks beyond field presence, frozen
@@ -233,12 +240,11 @@ owner change. Root CI covers the compiler today.
   `Enqueue`-parent IDs within one batch, store-patch `RecordRef`s are not
   existence-checked, and no reservation/apply-map protocol or normative rule
   exists yet (M1 proposal OB-49).
-- The `/6` hash-scope reconciliation is open: the accepted two-tier model
-  (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed
-  `StoreSchema::declare()` stays excluded) is not yet encoded, so
-  `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields`
-  token must change atomically with `FrozenSchema::encode` and `freeze.rs` at
-  `/6` (M1 proposal OB-34).
+- The `/39` two-tier hash model is current: the frozen `foundation +
+  M1AppendSchema` seed participates in the hash, while post-seed
+  `StoreSchema::declare()` declarations remain excluded. The manifest text and
+  `CONTRACT_VERSION` use `post-seed-declarations`; any future scope change must
+  update `FrozenSchema::encode`, `freeze.rs`, and the version/hash atomically.
 - Integration gap (N1): the H01 normalizer emits the four AAPCS64 fields
   (`abi.gp_arg_regs`, `abi.fp_arg_regs`, `abi.stack_align`,
   `abi.variadic_register_save_area`) as `unresolved`, and `verified`/`report_hash`
@@ -257,7 +263,8 @@ owner change. Root CI covers the compiler today.
   mechanical commit; materialization is owned by each group's commit
   integration (documented in `commit.rs`).
 - The manifest validator is a lint, not a parser or proof.
-- Routing has no installed worker handlers; T02 installs them.
+- The routing shell and host-driver worker registry exist; the full T02
+  CT01–CT14 control topology is not installed.
 - `bootstrap_task` is integration/job-bootstrap only (CT01) and is documented
   as such; worker chips may only propose `Enqueue` through the commit path.
 - Global resource limits are guaranteed on the checked bus/commit entry points
@@ -271,7 +278,7 @@ owner change. Root CI covers the compiler today.
   `cancel` and `tick_budget_reached` pins have defined behavior in the shell
   (`Cancelled` and `BudgetExhausted` respectively).
 - Frozen hash coverage excludes runtime registrations, live routing content,
-  and group-declared store fields added after `StoreSchema::foundation`; those
+  and post-seed store declarations added after `StoreSchema::foundation`; those
   are covered by the snapshot instead.
 
 ## Dependency
