@@ -16,7 +16,7 @@
 //
 // Exit codes: 0 = evidence produced; 1 = candidate diagnostic (the input
 // is rejected with a structured message, no evidence); 2 = driver error
-// (usage, unsupported flag, or refused emission).
+// (usage, unsupported flag, refused emission, or a non-UTF-8 argument).
 // ============================================================================
 
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
@@ -898,7 +898,25 @@ struct Evidence {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Collect argv explicitly: `std::env::args()` panics on a non-UTF-8
+    // element. Reject the element by position so invalid bytes are never
+    // copied into the diagnostic.
+    let mut args = Vec::new();
+    for (position, argument) in std::env::args_os().enumerate() {
+        match argument.into_string() {
+            Ok(argument) => {
+                if position > 0 {
+                    args.push(argument);
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "candidate: argv[{position}] is not valid UTF-8; arguments must be valid UTF-8"
+                );
+                std::process::exit(2);
+            }
+        }
+    }
     let invocation = match parse_args(&args) {
         Ok(invocation) => invocation,
         Err(message) => {
