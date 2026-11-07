@@ -573,7 +573,8 @@ pub struct LiteralRecord {
     pub token: Option<TokenId>,
     /// Literal kind (M1 produces only `Integer`).
     pub kind: LiteralKind,
-    /// Numeric radix (`2`, `8`, `10`, `16`; M1 decimal only).
+    /// Numeric radix (`2`, `8`, `10`, `16`; the integer decoder currently
+    /// supports `8`, `10`, and `16`).
     pub radix: u8,
     /// Literal suffix (M1 produces only `None`).
     pub suffix: LiteralSuffix,

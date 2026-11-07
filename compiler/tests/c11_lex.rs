@@ -398,7 +398,8 @@ fn lx_rejects_dangling_noninteger_and_hex_inputs() {
         other => panic!("expected executed-with-failure, got {other:?}"),
     }
 
-    // Hex spelling is explicit unsupported at classify.
+    // Hex spelling classifies as an integer; radix/value decode is covered by
+    // c44_integer_radix.
     let mut bus = new_bus();
     install_lx(&mut bus, 2);
     let source = seed_source(&mut bus);
@@ -435,9 +436,16 @@ fn lx_rejects_dangling_noninteger_and_hex_inputs() {
         Payload::from_refs(vec![RecordRef::PpToken(hex)]),
     );
     match run_tick(&mut bus, &workers).outcome {
-        TickOutcome::Executed { commit, .. } => assert_eq!(commit.failed.len(), 1),
-        other => panic!("expected executed-with-failure, got {other:?}"),
+        TickOutcome::Executed { commit, .. } => {
+            assert!(commit.failed.is_empty(), "{:?}", commit.failed);
+            assert_eq!(commit.completed.len(), 1);
+        }
+        other => panic!("expected executed, got {other:?}"),
     }
+    assert_eq!(
+        bus.arenas.tokens.get(TokenId::from_index(0)).unwrap().kind,
+        TokenKind::Integer
+    );
 
     // Decode of a non-integer token fails loudly.
     let (mut bus, tokens) = full_chain();
