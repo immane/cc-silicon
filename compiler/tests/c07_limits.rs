@@ -1,11 +1,16 @@
-use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, TaggedProposal};
-use cc_silicon_compiler::commit::{check_proposal_budget, commit_proposals, CommitError};
-use cc_silicon_compiler::ids::{ChipId, TaskId};
+use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, MacroRecord, TaggedProposal};
+use cc_silicon_compiler::commit::{
+    check_backpressure_capacity, check_proposal_budget, commit_proposals, CommitError,
+};
+use cc_silicon_compiler::ids::{ChipId, RecordFamily, TaskId};
 use cc_silicon_compiler::limits::{LimitError, Limits, STAGE_COUNT};
+use cc_silicon_compiler::records::{G1DraftBody, RecordDraft};
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
+use cc_silicon_compiler::snapshot::{config_hash, Snapshot};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{
-    Payload, Proposal, ResultValue, StoreId, TaskDraft, TaskKind, TaskState,
+    AppendBatch, DraftRef, Payload, Proposal, ResultValue, StoreId, TaskDraft, TaskKind,
+    TaskKindRegistry, TaskState,
 };
 
 fn config_with(limits: Limits) -> CompilerConfig {
@@ -52,6 +57,70 @@ fn register_control_chip(bus: &mut CompilerBus) {
         .unwrap();
 }
 
+/// Install the `/23` macro slice schema/kinds plus a fixture chip authorized
+/// to append `pp.macros`, so total-record accounting is exercised through the
+/// real commit path. The chip claims the foundation `CONTROL_NOOP` kind so the
+/// wave-gated store-owner allowlist stays dormant.
+fn install_pp_macro(bus: &mut CompilerBus) {
+    use cc_silicon_compiler::manifest::{
+        BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, StoreSchema,
+    };
+    bus.kinds = TaskKindRegistry::pp_macro_slice();
+    bus.schema = StoreSchema::pp_macro_slice();
+    let manifest = ChipManifest {
+        id: ChipId(7),
+        chip_name: "FixtureMacroChip",
+        group: cc_silicon_compiler::task::TaskGroup::CONTROL,
+        task_kinds: vec![TaskKind::CONTROL_NOOP],
+        reads: vec![],
+        writes: vec![FieldPath::new(StoreId::Pp, "macros")],
+        capability: Capability::Emulable,
+        backend_class: BackendClass::CpuReference,
+        phase: ChipPhase::Propagation,
+        deterministic: true,
+        tests: vec!["tests"],
+        dependencies: vec![],
+    };
+    bus.registrations
+        .register(manifest, &bus.schema, &bus.kinds)
+        .unwrap();
+}
+
+fn macro_append(task: TaskId) -> TaggedProposal {
+    TaggedProposal {
+        chip: ChipId(7),
+        task,
+        proposal: Proposal::AppendRecords {
+            task,
+            batch: AppendBatch {
+                records: vec![RecordDraft {
+                    family: RecordFamily::Macro,
+                    index: DraftRef(0),
+                }],
+                bodies: vec![G1DraftBody::Macro(MacroRecord {
+                    spelling: b"M".to_vec(),
+                    params: Vec::new(),
+                    function_like: false,
+                    variadic: false,
+                    replacement: Vec::new(),
+                    undefined: false,
+                })],
+            },
+        },
+    }
+}
+
+fn macro_complete(task: TaskId) -> TaggedProposal {
+    TaggedProposal {
+        chip: ChipId(7),
+        task,
+        proposal: Proposal::Complete {
+            task,
+            value: ResultValue::Empty,
+        },
+    }
+}
+
 #[test]
 fn max_source_bytes_is_enforced() {
     let mut bus = CompilerBus::new(config_with(Limits {
@@ -85,6 +154,54 @@ fn max_records_total_is_enforced() {
             requested: 3
         })
     ));
+}
+
+#[test]
+fn limit_total_macros() {
+    // Macro records are pre-existing arena state, not only this batch's
+    // `new_macros`: `allocated_total()` must count the macro arena so
+    // `max_records_total` rejects the next batch instead of silently growing.
+    let mut bus = CompilerBus::new(config_with(Limits {
+        max_records_total: 5,
+        ..Limits::fixture()
+    }));
+    install_pp_macro(&mut bus);
+
+    let first = bus
+        .bootstrap_task(draft(TaskKind::CONTROL_NOOP, None))
+        .unwrap();
+    bus.arenas.tasks.get_mut(first).unwrap().state = TaskState::Running;
+    let base = bus.total_records();
+    let report =
+        commit_proposals(&mut bus, vec![macro_append(first), macro_complete(first)]).unwrap();
+    assert_eq!(report.appended.len(), 1);
+    assert_eq!(bus.arenas.macros.allocated(), 1);
+    // One macro record plus one result record.
+    assert_eq!(bus.total_records(), base + 2);
+    assert_eq!(bus.ensure_total_records(0), Ok(()));
+
+    let second = bus
+        .bootstrap_task(draft(TaskKind::CONTROL_NOOP, None))
+        .unwrap();
+    assert_eq!(bus.total_records(), 4);
+    bus.arenas.tasks.get_mut(second).unwrap().state = TaskState::Running;
+    // Without the macro arena in `allocated_total()` the pre-batch total
+    // would be 3 (tasks 2 + results 1), so the request would be 5 and wrongly
+    // accepted at limit 5. Counting the pre-existing macro makes it 4 + 2 = 6.
+    let error =
+        commit_proposals(&mut bus, vec![macro_append(second), macro_complete(second)]).unwrap_err();
+    assert!(matches!(
+        error,
+        CommitError::Limit(LimitError::TotalRecords {
+            limit: 5,
+            requested: 6
+        })
+    ));
+    assert_eq!(
+        bus.arenas.macros.allocated(),
+        1,
+        "rejected macro batch must not append"
+    );
 }
 
 #[test]
@@ -278,6 +395,60 @@ fn limits_new_fields_carry_their_documented_defaults() {
     assert_eq!(fixture.max_const_bits, 128);
     assert_eq!(fixture.stage_queue_bound, [1 << 12; STAGE_COUNT]);
     assert_eq!(Limits::default(), Limits::fixture());
+}
+
+#[test]
+fn stage_queue_bound_reserved() {
+    // `/41` contract narrowing: `stage_queue_bound` is a validated, hashed,
+    // snapshotted reserved bound. It participates in the config image and the
+    // snapshot fingerprint ...
+    let tight = Limits {
+        stage_queue_bound: [1; STAGE_COUNT],
+        max_queue_len: 4,
+        ..Limits::fixture()
+    };
+    let loose = Limits {
+        stage_queue_bound: [3; STAGE_COUNT],
+        ..tight
+    };
+    assert!(tight.validate().is_ok());
+    assert!(loose.validate().is_ok());
+    let tight_config = config_with(tight);
+    let loose_config = config_with(loose);
+    assert_ne!(
+        config_hash(&tight_config),
+        config_hash(&loose_config),
+        "stage_queue_bound must participate in the config hash"
+    );
+    let tight_snapshot = Snapshot::capture(&CompilerBus::new(tight_config.clone()));
+    let loose_snapshot = Snapshot::capture(&CompilerBus::new(loose_config));
+    assert_ne!(
+        tight_snapshot.bytes(),
+        loose_snapshot.bytes(),
+        "stage_queue_bound must participate in the snapshot"
+    );
+
+    // ... but it is not enforced until per-stage queues land in `/43`. The
+    // ready queue here exceeds a per-stage entry and is only bounded by
+    // `max_queue_len`.
+    let mut bus = CompilerBus::new(tight_config);
+    for _ in 0..3 {
+        bus.bootstrap_task(draft(TaskKind::CONTROL_NOOP, None))
+            .unwrap();
+    }
+    assert_eq!(bus.tasks.ready.len(), 3);
+    assert_eq!(bus.limits().stage_queue_bound[0], 1);
+    // The commit-path guard is called with `max_queue_len`, not the per-stage
+    // entry, so the same queue is accepted at stage 0.
+    assert!(check_backpressure_capacity(
+        bus.tasks.ready.len() as u32,
+        0,
+        0,
+        0,
+        bus.limits().max_queue_len,
+        0
+    )
+    .is_ok());
 }
 
 #[test]

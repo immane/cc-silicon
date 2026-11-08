@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/40");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/41");
 }
 
 #[test]
@@ -141,11 +141,65 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "config.structurally-immutable",
         "bootstrap.integration-only",
         "snapshot.wire-payloads-encoded",
+        "snapshot.append-batch-handles-encoded",
+        "snapshot.append-batch-bodies-encoded",
+        "snapshot.append-batch-order-preserved",
+        "snapshot.task-self-id-encoded",
+        "trace.pins-digest-recorded",
+        "trace.canonical-ids-recorded",
+        "trace.decoder-round-trip",
+        "trace.first-divergence",
+        "replay.recorded-input-model",
         "snapshot.reserved-tombstones-visible",
-        "limits.every-configured-bound-enforced",
+        "limits.declared-bounds-enforced",
+        "limits.stage-queue-bound-reserved",
+        "limits.total-records-includes-macros",
+        "limits.zero-quota-fail-closed",
+        "task.select.stage-phase-enqueue-taskid",
+        "dispatch.stage-assignment-authoritative",
+        "commit.append-bumps-store-version",
+        "commit.names-bump-on-new-only",
+        "commit.result-version-meaningful",
     ] {
         assert!(NORMATIVE_RULES.contains(&rule), "missing rule `{rule}`");
     }
+    // The removed `/40` rules must not linger as normative aliases.
+    for removed in [
+        "limits.every-configured-bound-enforced",
+        "task.select.phase-enqueue-taskid",
+    ] {
+        assert!(
+            !NORMATIVE_RULES.contains(&removed),
+            "removed rule `{removed}` is still present"
+        );
+    }
+}
+
+#[test]
+fn frozen_41_tables_match_their_encoders() {
+    use cc_silicon_compiler::contract::{
+        APPEND_BATCH_FIELDS, APPEND_BODY_STORE_NAMES, CONTROL_RECORD_FIELDS, G1_DRAFT_BODY_NAMES,
+        PIN_RECORD_FIELDS, TASK_RECORD_FIELDS, TRACE_RECORD_FIELDS,
+    };
+    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 18);
+    assert_eq!(G1_DRAFT_BODY_NAMES[0], "literal");
+    assert_eq!(G1_DRAFT_BODY_NAMES[17], "macro");
+    assert_eq!(APPEND_BATCH_FIELDS, &["records", "bodies"]);
+    assert_eq!(APPEND_BODY_STORE_NAMES.len(), G1_DRAFT_BODY_NAMES.len());
+    assert!(CONTROL_RECORD_FIELDS.contains(&"next_commit_ordinal"));
+    assert_eq!(TASK_RECORD_FIELDS[0], "id");
+    for field in [
+        "pins_digest",
+        "completed",
+        "failed",
+        "waiting",
+        "rejoined",
+        "appended",
+        "patches",
+    ] {
+        assert!(TRACE_RECORD_FIELDS.contains(&field), "trace field {field}");
+    }
+    assert!(PIN_RECORD_FIELDS.contains(&"host_responses"));
 }
 
 #[test]

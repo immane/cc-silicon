@@ -1781,10 +1781,14 @@ pub struct Task {
 }
 
 impl Task {
-    /// The deterministic scheduling key: `(phase priority, enqueue ordinal,
-    /// TaskId)`.
-    pub fn schedule_key(&self, phase_priority: u16) -> (u16, u64, u32) {
-        (phase_priority, self.enqueue_ordinal, self.id.index())
+    /// The deterministic scheduling key:
+    /// `(stage priority, group/phase priority, enqueue ordinal, TaskId)`.
+    ///
+    /// `stage` is the [`crate::manifest::stage_of`] ordinal (or the unassigned
+    /// sentinel); `phase_priority` is the task-group ordinal and is therefore
+    /// the secondary key, not the primary one.
+    pub fn schedule_key(&self, stage: u8, phase_priority: u16) -> (u8, u16, u64, u32) {
+        (stage, phase_priority, self.enqueue_ordinal, self.id.index())
     }
 }
 

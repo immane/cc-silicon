@@ -387,6 +387,14 @@ These follow the deterministic serialization and replay obligations in
 [T01](T01_COMPILER_CONTRACT.md) §7 (C05) and
 [T13](T13_VERIFICATION_CHIPS.md).
 
+**`/41` implementation note (2026-11-09).** D5 selection is now stage-first
+with `STAGE_ASSIGNMENT` authoritative; D7 first divergence is implemented by
+the bounded `Trace::from_bytes`/`diff` pair; D1/D2 evidence now includes
+per-tick pin digests. Replay is **recorded-input re-execution over a canonical
+state fingerprint**, not bus restoration. D8 quota>1 dispatch/commit order,
+full restore, VF13 projections, and per-stage queues remain `/43` work. No
+target execution or IR-4(b) claim is made.
+
 ---
 
 ## 7. Structured Failures and Negative Paths
@@ -607,3 +615,4 @@ listed in [compiler/README.md](../../compiler/README.md) and
 | 2026-10-06 | Rev 38: **H04 Part A driver present** (host tooling; no acceptance change, no freeze, no contract bump). The P7 status cell now records the Part A candidate driver (`compiler/src/bin/candidate.rs`, evidence `compiler/tests/h04_candidate.rs` 6 tests, doc [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md)): source-bytes M1 pipeline with snapshot/trace/interpret evidence, `-S`/`-c` fail-closed, invalid input diagnosed with exit 1. `-E`/`-I`/`-D`/`-U`/multi-source and target emission remain absent (Part B). §9 commands stay planned-illustrative until the H04 driver contract freezes. | H04 Part A implementation |
 | 2026-11-09 | Rev 39: **B2-01 `/40` A3 closure and D-09 deferral** (docs-only; accepted contract, implementation evidence pending; no test executed). §3.1 A3 records the `FunctionDefinition` fact path closed by `/40` (SE29 dispatch + VF06 four-kind check + T09 node-keyed consumption/cross-check) while keeping the frozen `SemRecord` field encoding; §3.2 IR-4(b) records `ConstRecord.ty`/`ir.op-immediate-type` deferred to B2-02 and not claimable at `/40`; §2 records VF06 as wired (frozen `/14`, checked set extended `/40`). No acceptance pass or implementation claim. | B2-01 documentation workstream |
 | 2026-11-09 | Rev 40: **`/40` implementation evidence recorded** (no contract change). The B2-01 A3 path is test-green: `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8, `c43_a3` 5, `h04_candidate` 18; the full compiler suite is 700 tests across 50 suites; the candidate emits `t01-c01-c06/40` and `value=05` deterministically. No target/probe/torture result, no full M1 acceptance, and no IR-4(b) claim. | B2-01 integration workstream |
+| 2026-11-09 | Rev 41: **B2-00 `/41` determinism/limits/replay closure** (contract accepted and implemented). D-12 append handles/bodies, D-13 stage-first selection and zero-quota fail-closed, D-14 macro/store/result version accounting, and D-15 pin digests/trace decoder/first divergence/`Task.id`/`ReplayEvidence` are in `/41`. Full compiler suite 723 tests / 50 suites; root 21, torture 73, chip-lint 16; candidate emits `t01-c01-c06/41` and `value=05` deterministically. Restore/quota>1/VF13/`StorePatch` materialization deferred to `/43`; D-09 still open. | B2-00 integration workstream |

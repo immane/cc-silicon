@@ -329,10 +329,11 @@ fn step(
         if quiescent(bus) {
             break;
         }
+        let pins = CompilerPins::default();
         let report = RoutingShell
-            .clock_tick_with(&CompilerPins::default(), bus, handler_for(workers))
+            .clock_tick_with(&pins, bus, handler_for(workers))
             .map_err(|error| format!("tick failed: {error}"))?;
-        trace.record(bus, &report);
+        trace.record(bus, &report, &pins);
         if matches!(report.outcome, TickOutcome::BudgetExhausted) {
             return Err("tick budget exhausted".to_string());
         }

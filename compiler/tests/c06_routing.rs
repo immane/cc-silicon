@@ -1,9 +1,11 @@
 use cc_silicon::Bus;
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, JobState, TaggedProposal};
-use cc_silicon_compiler::commit::commit_proposals;
+use cc_silicon_compiler::commit::{commit_proposals, CommitError};
 use cc_silicon_compiler::ids::{ChipId, TaskId};
-use cc_silicon_compiler::limits::Limits;
-use cc_silicon_compiler::routing::{Resolution, RoutingShell, TickOutcome};
+use cc_silicon_compiler::limits::{LimitError, Limits, STAGE_COUNT};
+use cc_silicon_compiler::routing::{
+    phase_priority, stage_priority, Resolution, RoutingShell, TickOutcome,
+};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{
     KindStatus, Payload, Proposal, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind, TaskState,
@@ -385,10 +387,172 @@ fn quota_selection_paths() {
     }
     let shell = RoutingShell::new();
     assert_eq!(RoutingShell::dispatch_quota(&bus), 1);
-    // Quota-1 projects onto the frozen head of the order.
+    // Quota-1 projects onto the frozen head of the stage-first order. The two
+    // foundation kinds are stage 0; the registered lex kind is stage 2 (an
+    // assigned stage, though it has no route).
+    assert_eq!(stage_priority(kinds[0]), 0);
+    assert_eq!(stage_priority(kinds[1]), 0);
+    assert_eq!(stage_priority(kinds[2]), 2);
     assert_eq!(shell.select(&bus), Some(ids[0]));
     // Wider quotas select deterministically in the same frozen order.
     assert_eq!(shell.select_batch(&bus, 5), ids);
     assert_eq!(shell.select_batch(&bus, 2), ids[..2].to_vec());
     assert!(shell.select_batch(&bus, 0).is_empty());
+}
+
+#[test]
+fn stage_order_selects_lower_stage_before_group_and_enqueue() {
+    // Stage-2 VERIFICATION (group 12) vs stage-4 SEMANTIC (group 6): group
+    // order and enqueue order would both pick semantic; stage order must not.
+    assert_eq!(
+        stage_priority(TaskKind::VERIFICATION_TOKEN_AST_INVARIANT),
+        2
+    );
+    assert_eq!(stage_priority(TaskKind::SEMANTIC_LITERAL_EXPR), 4);
+    assert_eq!(
+        phase_priority(TaskKind::VERIFICATION_TOKEN_AST_INVARIANT),
+        12
+    );
+    assert_eq!(phase_priority(TaskKind::SEMANTIC_LITERAL_EXPR), 6);
+
+    let mut bus = CompilerBus::default();
+    let semantic = bus
+        .bootstrap_task(draft(TaskKind::SEMANTIC_LITERAL_EXPR))
+        .unwrap();
+    let verification = bus
+        .bootstrap_task(draft(TaskKind::VERIFICATION_TOKEN_AST_INVARIANT))
+        .unwrap();
+    assert!(
+        semantic.index() < verification.index(),
+        "fixture must enqueue semantic first"
+    );
+    let shell = RoutingShell::new();
+    assert_eq!(shell.select(&bus), Some(verification));
+    assert_eq!(shell.select_batch(&bus, 2), vec![verification, semantic]);
+    // The quota-1 dispatch path reads the same head.
+    assert_eq!(
+        shell.select_batch(&bus, RoutingShell::dispatch_quota(&bus)),
+        vec![verification]
+    );
+}
+
+#[test]
+fn equal_stage_ties_break_by_group_enqueue_and_task_id() {
+    let shell = RoutingShell::new();
+
+    // Reverse group/enqueue order among stage-2 kinds: group order wins first.
+    let mut bus = CompilerBus::default();
+    let verification = bus
+        .bootstrap_task(draft(TaskKind::VERIFICATION_TOKEN_AST_INVARIANT))
+        .unwrap(); // group 12
+    let constant = bus
+        .bootstrap_task(draft(TaskKind::CONSTANT_CONST_FOLD))
+        .unwrap(); // group 7
+    let parse = bus.bootstrap_task(draft(TaskKind::PARSE_TU)).unwrap(); // group 4
+    let lex = bus.bootstrap_task(draft(TaskKind::LEX_INTERN)).unwrap(); // group 3
+    for id in [verification, constant, parse, lex] {
+        assert_eq!(stage_priority(bus.get_task(id).unwrap().kind), 2);
+    }
+    assert_eq!(
+        shell.select_batch(&bus, 4),
+        vec![lex, parse, constant, verification]
+    );
+
+    // Within one group, the enqueue ordinal dominates TaskId.
+    let mut bus = CompilerBus::default();
+    let first = bus.bootstrap_task(draft(TaskKind::LEX_INTERN)).unwrap();
+    let second = bus.bootstrap_task(draft(TaskKind::LEX_CLASSIFY)).unwrap();
+    bus.arenas.tasks.get_mut(first).unwrap().enqueue_ordinal = 1;
+    bus.arenas.tasks.get_mut(second).unwrap().enqueue_ordinal = 0;
+    assert_eq!(shell.select_batch(&bus, 2), vec![second, first]);
+
+    // Full ties fall back to TaskId, independent of ready-queue order.
+    bus.arenas.tasks.get_mut(first).unwrap().enqueue_ordinal = 0;
+    bus.arenas.tasks.get_mut(second).unwrap().enqueue_ordinal = 0;
+    bus.tasks.ready.reverse();
+    assert_eq!(shell.select_batch(&bus, 2), vec![first, second]);
+}
+
+#[test]
+fn unassigned_stage_sorts_last_and_fails_explicitly() {
+    let mut bus = CompilerBus::default();
+    // `LEX` local 24 has no `STAGE_ASSIGNMENT` row (gate1 LEX rows end at 23).
+    let unassigned = TaskKind::new(TaskGroup::LEX, 24).unwrap();
+    bus.kinds
+        .register(
+            unassigned,
+            "lex.scan",
+            TaskGroup::LEX,
+            KindStatus::GroupOwned,
+        )
+        .unwrap();
+    assert_eq!(cc_silicon_compiler::manifest::stage_of(unassigned), None);
+    assert_eq!(stage_priority(unassigned), STAGE_COUNT as u8);
+    assert_ne!(stage_priority(unassigned), 0);
+
+    let assigned = bus
+        .bootstrap_task(draft(TaskKind::VERIFICATION_STORE_INVARIANT))
+        .unwrap();
+    let tail = bus.bootstrap_task(draft(unassigned)).unwrap();
+    let shell = RoutingShell::new();
+    // The sentinel sorts after every assigned stage, even though the
+    // unassigned task has the later enqueue ordinal.
+    assert_eq!(shell.select(&bus), Some(assigned));
+    assert_eq!(shell.select_batch(&bus, 2), vec![assigned, tail]);
+
+    // It is never silently scheduled as stage 0: dispatch reaches the explicit
+    // unregistered failure path instead.
+    bus.tasks.ready.retain(|id| *id == tail);
+    let report = shell.propagate(&mut bus).unwrap();
+    match report.outcome {
+        TickOutcome::Executed {
+            task,
+            resolution: Resolution::Unregistered,
+            ..
+        } => assert_eq!(task, tail),
+        other => panic!("expected explicit unregistered failure, got {other:?}"),
+    }
+    assert!(matches!(
+        bus.get_task(tail).unwrap().state,
+        TaskState::Failed(_)
+    ));
+}
+
+#[test]
+fn zero_quota_fails_closed_without_dispatch() {
+    let limits = Limits {
+        max_inflight_per_tick: 0,
+        ..Limits::fixture()
+    };
+    assert_eq!(
+        limits.validate(),
+        Err(LimitError::InvalidInflightQuota { value: 0 })
+    );
+
+    let mut bus = CompilerBus::new(config_with_limits(limits));
+    let task = bus.bootstrap_task(draft(TaskKind::CONTROL_NOOP)).unwrap();
+    let before = bus.get_task(task).unwrap().clone();
+    let before_ready = bus.tasks.ready.clone();
+    let before_tick = bus.control.tick;
+
+    let shell = RoutingShell::new();
+    assert_eq!(RoutingShell::dispatch_quota(&bus), 0);
+    let error = shell.propagate(&mut bus).unwrap_err();
+    assert_eq!(
+        error,
+        CommitError::Limit(LimitError::InvalidInflightQuota { value: 0 })
+    );
+
+    // Fail-closed: no dispatch, no commit, no tick advance/record, no state
+    // change.
+    assert_eq!(bus.control.tick, before_tick);
+    assert_eq!(bus.get_task(task).unwrap(), &before);
+    assert_eq!(bus.tasks.ready, before_ready);
+    assert_eq!(bus.control.selected, None);
+    assert_eq!(bus.tasks.active, None);
+    assert!(bus.tasks.in_flight.is_empty());
+    assert!(bus.report.is_empty());
+    assert_eq!(bus.arenas.diagnostics.allocated(), 0);
+    assert_eq!(bus.arenas.results.allocated(), 0);
+    assert!(bus.wires.proposals.is_empty());
 }

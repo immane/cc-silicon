@@ -1,30 +1,34 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/40`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/41`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-09 after accepting and implementing B2-01 as `/40` and running
-> the full compiler suite green (700 tests / 50 suites).
+> 2026-11-09 after accepting and implementing B2-00 as `/41` and running
+> the full compiler suite green (723 tests / 50 suites).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/40` (M1 Part A A3 closure), hash
-  `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14`.
-- Implemented and test-green at `/40`: candidate dispatches SE29; VF06
-  checks the four-kind typed-fact set (`IntLiteral`, `BinaryAdd`,
-  `Return`, `FunctionDefinition`); T09 consumes the committed
-  `FunctionDefinition` `SemRecord` with a `symbol.ty` cross-check and no
-  fallback. Evidence: `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8,
-  `c43_a3` 5, `h04_candidate` 18; direct candidate emits `/40` and
-  `value=05` with byte-identical repeated output.
+- Frozen artifact: `t01-c01-c06/41` (determinism/limits/replay closure),
+  hash `500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966`.
+- Implemented and test-green at `/41`: append handles/bodies in snapshots,
+  stage-first scheduling with zero-quota fail-closed, macro/store/result
+  version accounting, `Task.id`, pin-aware trace decoder/first divergence,
+  and the Host `ReplayEvidence` envelope. Evidence: `c05_codec` 29,
+  `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22,
+  `c11_lex` 11, `freeze` 15; direct candidate emits `/41` and `value=05`
+  with byte-identical repeated output.
+- `/40` remains the M1 Part A A3 closure: SE29 dispatch, VF06 four-kind
+  typed-fact set, T09 committed-fact consumption (`c14_se` 16,
+  `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18).
 - Not done: B2-02 tagged constants (`ConstRecord.ty` /
-  `ir.op-immediate-type`, finding D-09), B2-00 determinism/limits/replay
-  (`/41`), H05 isolated execution, the Linux ABI probe / Part B target
-  codegen, and full M1 acceptance. No target execution or GCC pass rate
-  is claimed.
-- Branch: `initial-compiler-development`. Slices through `/39` are
-  committed; the `/40` integration is in the worktree and is NOT yet
+  `ir.op-immediate-type`, finding D-09) for `/42`; full
+  `Snapshot::from_bytes`/restore, quota>1 order, VF13 projections,
+  per-stage queues, and `StorePatch` materialization for `/43`; H05
+  isolated execution; the Linux ABI probe / Part B target codegen; full M1
+  acceptance. No target execution or GCC pass rate is claimed.
+- Branch: `initial-compiler-development`. Slices through `/40` are
+  committed; the `/41` integration is in the worktree and is NOT yet
   committed or pushed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
@@ -69,6 +73,7 @@
 | `/38` | VF14 evidence-classify | `verify/vf_evidence.rs` | `c38_vf14` 10 |
 | `/39` | SE29 function-definition | `semantic/se_function.rs` | `c39_sefunc` 8 |
 | `/40` | M1 Part A A3 closure (SE29 wiring + VF06 four-kind + T09 consumption) | `bin/candidate.rs`, `verify/vf_invariant.rs`, `ir_lower/ir_function.rs` | `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18 |
+| `/41` | B2-00 determinism/limits/replay (append bodies, stage-first, versions, pin-aware trace) | `snapshot.rs`, `routing.rs`, `commit.rs`, `bus.rs` | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, full 723/50 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -164,10 +169,10 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/40` when the user authorizes it (the full compiler
+- NEXT UP: commit `/41` when the user authorizes it (the full compiler
   suite, root tests, fmt, torture, and chip-lint are green; compiler
-  clippy remains red only in the D-04 parse drafts). Then freeze `/41`
-  (B2-00 determinism/limits/replay) and `/42` (B2-02 tagged constants),
+  clippy remains red only in the D-04 parse drafts). Then freeze `/42`
+  (B2-02 tagged constants) and `/43` (restore/quota>1/VF13/`StorePatch`),
   resolve B-INT-00 draft disposition, and continue the PP remainder in
   pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08

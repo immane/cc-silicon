@@ -9,9 +9,10 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/40`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/41`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance and IR-4(b) are not claimed |
+| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/43` |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
 | AArch64 target values | **Unverified** | Identity frozen; probe never run; concrete values fail closed |
 | ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
@@ -22,13 +23,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/40`" means
+## What "frozen `/41`" means
 
-The frozen artifact is `t01-c01-c06/40`:
+The frozen artifact is `t01-c01-c06/41`:
 
 ```text
-version=t01-c01-c06/40
-hash=c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14
+version=t01-c01-c06/41
+hash=500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -63,7 +64,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **700 tests across 50 suites passed** after `/40` (adds c43 and the `/40` VF06/T09/h04 cases) |
+| Compiler | **723 tests across 50 suites passed** after `/41` (adds the append/trace/scheduler/limit/store-version cases) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -80,8 +81,9 @@ are discovery/run observations, not a permanent promise; the source tree and
 - The ABI/target probe has never run; no concrete target value may drive
   codegen.
 - H05 isolated execution is absent; no untrusted binary may be run at scale.
-- `AppendRecords` snapshot bodies, scheduler/limit invariants, and replay
-  restore have known gaps tracked in the dispatch ledger.
+- Replay is recorded-input re-execution over a canonical fingerprint, not bus
+  restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
+  projections, and per-stage queues remain deferred to `/43`.
 - Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 

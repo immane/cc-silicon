@@ -20,7 +20,7 @@
 
 use cc_silicon_compiler::bus::{CompilerBus, ConstRecord, LiteralRecord, TaggedProposal};
 use cc_silicon_compiler::commit::{commit_proposals, CommitError};
-use cc_silicon_compiler::ids::{ChipId, LiteralId, NodeId, RecordRef, TaskId};
+use cc_silicon_compiler::ids::{ChipId, ConstId, LiteralId, NodeId, RecordRef, TaskId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     is_gate1_slice_kind, stage_of, BackendClass, Capability, ChipManifest, ChipPhase, FieldPath,
@@ -34,9 +34,9 @@ use cc_silicon_compiler::snapshot::{
 };
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{
-    AppendBatch, ConstExprOp, ConstLegality, ConstantRequest, ConstantResult, DraftRef, Payload,
-    Proposal, RequiredKind, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry,
-    TaskState,
+    AppendBatch, ConstExprOp, ConstLegality, ConstantRequest, ConstantResult, DraftRef, PatchOp,
+    Payload, Proposal, RequiredKind, ResultValue, StoreId, StorePatch, TaskDraft, TaskGroup,
+    TaskKind, TaskKindRegistry, TaskState,
 };
 
 /// A committed M1-subset literal fixture: decimal `Integer`, no suffix,
@@ -438,6 +438,106 @@ fn append_materializes_const_record_end_to_end() {
 }
 
 #[test]
+fn store_version_after_append() {
+    // A typed append mutates its owning store, so the store version must bump
+    // even though no `StorePatch` was committed.
+    let mut bus = CompilerBus::default();
+    install_fold(&mut bus);
+    let (two, three, node) = seed_g1_fixtures(&mut bus);
+    let task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::from_refs(vec![
+            RecordRef::Node(node),
+            RecordRef::Literal(two),
+            RecordRef::Literal(three),
+        ]),
+    );
+    let body = G1DraftBody::Const(ConstRecord {
+        value: vec![5],
+        negative: false,
+    });
+    let report = commit_proposals(
+        &mut bus,
+        vec![
+            tag(
+                task,
+                fold_chip(),
+                Proposal::AppendRecords {
+                    task,
+                    batch: AppendBatch {
+                        records: vec![RecordDraft {
+                            family: body.family(),
+                            index: DraftRef(0),
+                        }],
+                        bodies: vec![body],
+                    },
+                },
+            ),
+            tag(
+                task,
+                fold_chip(),
+                Proposal::Complete {
+                    task,
+                    value: ResultValue::Record(RecordRef::Const(ConstId::from_index(0))),
+                },
+            ),
+        ],
+    )
+    .unwrap();
+    assert_eq!(report.appended.len(), 1);
+    assert_eq!(bus.store_versions.get(StoreId::Constants), 1);
+
+    // A patch computed against version 0 is stale after the append: the
+    // unchanged version would otherwise let a stale write through.
+    let stale_task = running_task(
+        &mut bus,
+        TaskKind::CONSTANT_CONST_FOLD,
+        fold_chip(),
+        Payload::empty(),
+    );
+    let stale = StorePatch {
+        owner: fold_chip(),
+        task: stale_task,
+        version: 0,
+        store: StoreId::Constants,
+        field: "records",
+        op: PatchOp::Append,
+        target: None,
+        value: Some(RecordRef::Const(ConstId::from_index(0))),
+    };
+    let error = commit_proposals(
+        &mut bus,
+        vec![
+            tag(stale_task, fold_chip(), Proposal::StorePatch(stale)),
+            tag(
+                stale_task,
+                fold_chip(),
+                Proposal::Complete {
+                    task: stale_task,
+                    value: ResultValue::Empty,
+                },
+            ),
+        ],
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        CommitError::StaleVersion {
+            store: "constants",
+            version: 0,
+            current: 1
+        }
+    ));
+    assert_eq!(
+        bus.arenas.consts.allocated(),
+        1,
+        "stale patch must not append"
+    );
+}
+
+#[test]
 fn append_rejects_mismatched_and_out_of_subset_batches() {
     let mut bus = CompilerBus::default();
     install_fold(&mut bus);
@@ -732,7 +832,7 @@ fn allowlist_authorizes_fold_chip_only() {
 }
 
 #[test]
-fn snapshot_carries_literal_and_const_bodies_with_replay() {
+fn snapshot_carries_literal_and_const_bodies_run_to_run_deterministic() {
     // Body round-trips.
     let literal = fixture_literal(2, b"2");
     assert_eq!(
@@ -745,8 +845,8 @@ fn snapshot_carries_literal_and_const_bodies_with_replay() {
     };
     assert_eq!(decode_const(&encode_const(&folded)).unwrap(), folded);
 
-    // Replay: two identical G1-CL-01 runs hash identically, and a run with
-    // no records hashes differently.
+    // Run-to-run determinism (not bus restoration): two identical G1-CL-01
+    // runs hash identically, and a run with no records hashes differently.
     fn run_chain() -> Vec<u8> {
         let mut bus = CompilerBus::default();
         install_fold(&mut bus);
@@ -824,7 +924,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/40");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/41");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -878,7 +978,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/40",
+        "t01-c01-c06/41",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",
@@ -892,6 +992,10 @@ fn contract_hash_covers_gate1_section() {
         "vf06.function-signature-fact",
         "ir.function-consumes-committed-sem",
         "ir.constant-result-type-from-sem",
+        "next_commit_ordinal",
+        "pins_digest",
+        "task.select.stage-phase-enqueue-taskid",
+        "snapshot.append-batch-bodies-encoded",
         "m1-append/1",
     ] {
         assert!(
@@ -963,7 +1067,7 @@ fn fold_chip_drives_g1_chain_through_driver() {
         bus.arenas.tasks.get(task).unwrap().state,
         TaskState::Completed(_)
     ));
-    // Deterministic replay of the driven chain.
+    // Run-to-run determinism of the driven chain (fresh buses, no restore).
     let first = Snapshot::capture(&bus).hash();
     let mut again = CompilerBus::default();
     install_fold(&mut again);

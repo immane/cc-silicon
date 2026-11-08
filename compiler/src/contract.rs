@@ -34,16 +34,19 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// the Wave 3 PA expr slice (`/35`), the Wave 3 PA recovery
 /// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`), and
 /// the Wave 3 VF14 evidence slice (`/38`), and the Wave 3 SE29
-/// function-definition slice (`/39`), plus the M1 Part A A3 closure
+/// function-definition slice (`/39`), the M1 Part A A3 closure
 /// amendment (`/40`: SE29 candidate wiring, VF06 four-kind typed-fact
-/// set, T09 consumed committed function fact; D-09 stays deferred).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/40";
+/// set, T09 consumed committed function fact; D-09 stays deferred), and
+/// the B2-00 determinism/limits/replay closure (`/41`: append wire
+/// bodies, stage-first scheduling, macro/limit accounting, store and
+/// result versions, pin-aware trace evidence).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/41";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14";
+pub const CONTRACT_HASH: &str = "500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -62,13 +65,20 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "storage.checked-access.structured-errors",
     "storage.application-scoped-vec-only",
     "source.content-hash-computed-internally",
-    "limits.every-configured-bound-enforced",
+    "limits.declared-bounds-enforced",
+    "limits.stage-queue-bound-reserved",
+    "limits.total-records-includes-macros",
+    "limits.zero-quota-fail-closed",
     "task.enqueue.next-tick",
-    "task.select.phase-enqueue-taskid",
+    "task.select.stage-phase-enqueue-taskid",
+    "dispatch.stage-assignment-authoritative",
     "task.completion.exactly-once",
     "task.single-transition-per-batch",
     "task.result.consume-once",
     "commit.result-consume-error-accurate",
+    "commit.append-bumps-store-version",
+    "commit.names-bump-on-new-only",
+    "commit.result-version-meaningful",
     "task.reserved-local-code-range",
     "tasktree.dangling-parent-rejected",
     "commit.inner-task-binding",
@@ -125,6 +135,15 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.budget-enforced-chip-overflow",
     "bootstrap.integration-only",
     "snapshot.wire-payloads-encoded",
+    "snapshot.append-batch-handles-encoded",
+    "snapshot.append-batch-bodies-encoded",
+    "snapshot.append-batch-order-preserved",
+    "snapshot.task-self-id-encoded",
+    "trace.pins-digest-recorded",
+    "trace.canonical-ids-recorded",
+    "trace.decoder-round-trip",
+    "trace.first-divergence",
+    "replay.recorded-input-model",
     "snapshot.reserved-tombstones-visible",
     "serialize.canonical-deterministic",
     "snapshot.config-encodes-all-bounds",
@@ -477,6 +496,108 @@ pub const NODE_RECORD_FIELDS: &[&str] = &[
 /// Frozen `/11` `TokenRecord` fields, in declaration order.
 pub const TOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "name", "pp_token"];
 
+/// Frozen `/41` `G1DraftBody` variant names, in declaration/encoding order.
+pub const G1_DRAFT_BODY_NAMES: &[&str] = &[
+    "literal",
+    "const",
+    "artifact",
+    "token",
+    "name",
+    "node",
+    "type",
+    "symbol",
+    "scope",
+    "scope_event",
+    "sem",
+    "function",
+    "block",
+    "value",
+    "instruction",
+    "span",
+    "pp_token",
+    "macro",
+];
+
+/// Frozen `/41` `AppendBatch` fields, in declaration order.
+pub const APPEND_BATCH_FIELDS: &[&str] = &["records", "bodies"];
+
+/// Frozen `/41` owning `StoreId` labels for each `G1DraftBody` variant, in
+/// variant order. Validation and version bumps must agree with this table.
+pub const APPEND_BODY_STORE_NAMES: &[&str] = &[
+    "lex",
+    "constants",
+    "artifacts",
+    "lex",
+    "names",
+    "parse",
+    "types",
+    "symbols",
+    "symbols",
+    "symbols",
+    "sem",
+    "ir",
+    "ir",
+    "ir",
+    "ir",
+    "sources",
+    "pp",
+    "pp",
+];
+
+/// Frozen `/41` `Control` fields, in snapshot encoding order.
+pub const CONTROL_RECORD_FIELDS: &[&str] = &[
+    "tick",
+    "job_state",
+    "stage",
+    "selected",
+    "next_enqueue_ordinal",
+    "next_diagnostic_ordinal",
+    "next_commit_ordinal",
+    "budget_exhausted",
+    "cancel_requested",
+];
+
+/// Frozen `/41` `Task` fields, in snapshot encoding order.
+pub const TASK_RECORD_FIELDS: &[&str] = &[
+    "id",
+    "kind",
+    "owner",
+    "enqueue_ordinal",
+    "ready_tick",
+    "progress_count",
+    "progress_ordinal",
+    "parent",
+    "continuation",
+    "payload",
+    "state",
+];
+
+/// Frozen `/41` `TraceRecord` fields, in canonical trace-encoding order.
+pub const TRACE_RECORD_FIELDS: &[&str] = &[
+    "tick",
+    "pins_digest",
+    "selected",
+    "outcome",
+    "resolution",
+    "error",
+    "ready_len",
+    "enqueued",
+    "completed",
+    "failed",
+    "waiting",
+    "rejoined",
+    "appended",
+    "patches",
+];
+
+/// Frozen `/41` `CompilerPins` digest fields, in canonical digest order.
+pub const PIN_RECORD_FIELDS: &[&str] = &[
+    "start_job",
+    "cancel",
+    "tick_budget_reached",
+    "host_responses",
+];
+
 /// Frozen `/10` total 8-variant `ArtifactKind` names, in declaration order.
 pub const ARTIFACT_KIND_NAMES: &[&str] = &[
     "normalized",
@@ -583,6 +704,13 @@ impl FrozenSchema {
         push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
         push_str_list(&mut w, SPAN_RECORD_FIELDS);
         push_str_list(&mut w, MACRO_RECORD_FIELDS);
+        push_str_list(&mut w, G1_DRAFT_BODY_NAMES);
+        push_str_list(&mut w, APPEND_BATCH_FIELDS);
+        push_str_list(&mut w, APPEND_BODY_STORE_NAMES);
+        push_str_list(&mut w, CONTROL_RECORD_FIELDS);
+        push_str_list(&mut w, TASK_RECORD_FIELDS);
+        push_str_list(&mut w, TRACE_RECORD_FIELDS);
+        push_str_list(&mut w, PIN_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);

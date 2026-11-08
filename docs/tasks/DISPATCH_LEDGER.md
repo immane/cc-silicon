@@ -6,20 +6,20 @@
 | Updated | 2026-11-09 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/40` — hash `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14` |
-| Branch / HEAD | `wave4-development` / `58eda30` (`/40` integration in the worktree, uncommitted) |
-| Workspace note | The `/40` integration changes are uncommitted; no commit or push was performed |
+| Contract baseline | `t01-c01-c06/41` — hash `500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966` |
+| Branch / HEAD | `wave4-development` / `58428ac` (`/41` integration in the worktree, uncommitted) |
+| Workspace note | The `/41` integration changes are uncommitted; no commit or push was performed |
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **700 tests across 50 suites after `/40`** | Observed in the `/40` integration session; warnings remain from unregistered parse/lex drafts. The run includes the new `c43_a3` plus the updated `c14_se`/`c15_ir`/`c17_vf12`/`c19_vf01`/`h04_candidate`. |
+| Compiler package tests | **PASS**, **723 tests across 50 suites after `/41`** | Observed in the `/41` integration session; warnings remain from unregistered parse drafts. Adds the `/41` append/trace/scheduler/limit/store-version cases. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
-| Root tests after `/40` | **PASS**, 21 tests | `cargo test --workspace --locked` |
-| Torture package after `/40` | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
-| Chip-lint after `/40` | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
+| Root tests after `/41` | **PASS**, 21 tests | `cargo test --workspace --locked` |
+| Torture package after `/41` | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
+| Chip-lint after `/41` | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
 | Clippy | **FAIL in the current workspace (D-04, not a `/40` regression)** | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings` fails with **137 errors, all in the unregistered parse drafts** (`pa_stmt` 40, `pa_cast` 39, `pa_decl_spec` 30, `pa_ext_dispatch` 18, `pa_init` 15). Zero diagnostics point at any `/40` changed file. The count matches the prior baseline; the draft files were not modified by `/40`. |
 | Target probe | **NOT RUN / UNVERIFIED** | No ABI or execution claim |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
@@ -84,10 +84,10 @@ not duplicate A1 files or edit any shared source.
 | D-09 | **P1** | `ConstRecord` has no `ty`; documented immediate-type rule cannot be enforced. A14 proposes a tagged v2 record. | A05 G4; A14 §4.2 | Schema freeze |
 | D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | **FIXED / VERIFIED** by B1-03; dated audit retained with banner |
 | D-11 | **P2** | `-std`/`-O` are validated but not propagated; exit code 2 conflates usage/unsupported/Part B refusal; output writes are non-atomic. | A10 §1.3 F-02..F-04, F-12 | B2 candidate hardening |
-| D-12 | **P0** | `AppendRecords` wire proposals encode only the draft count in snapshots; different append batches with equal counts hash identically. This contradicts `snapshot.wire-payloads-encoded`. | A23 A23-F01; `snapshot.rs:446-455` | Contract freeze B2 |
-| D-13 | **P1** | Scheduler order uses task-group ordinal, not `STAGE_ASSIGNMENT`; T01 three-key order conflicts with M1 D5 four-key stage-first order. | A23 finding 5; `routing.rs:34-38` | Contract decision B2 |
-| D-14 | **P1** | `allocated_total()` omits macros; `stage_queue_bound` is unused; zero quota is clamped; typed appends do not bump `store_versions`; `ResultRecord.version` is always 0. | A23 findings 14-16; A02 F04 | Foundation fix B2 |
-| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | Replay contract B2 |
+| D-12 | **P0** | `AppendRecords` wire proposals encode only the draft count in snapshots; different append batches with equal counts hash identically. This contradicts `snapshot.wire-payloads-encoded`. | A23 A23-F01; `snapshot.rs` | **FIXED / VERIFIED by `/41`** — handles and full bodies encode in stored order; c05 sensitivity covers all 18 body variants |
+| D-13 | **P1** | Scheduler order uses task-group ordinal, not `STAGE_ASSIGNMENT`; T01 three-key order conflicts with M1 D5 four-key stage-first order. | A23 finding 5; `routing.rs` | **FIXED / VERIFIED by `/41`** — stage-first `(stage, group, enqueue, TaskId)`; `STAGE_ASSIGNMENT` authoritative; c06 19/19 |
+| D-14 | **P1** | `allocated_total()` omits macros; `stage_queue_bound` is unused; zero quota is clamped; typed appends do not bump `store_versions`; `ResultRecord.version` is always 0. | A23 findings 14-16; A02 F04 | **FIXED / VERIFIED by `/41`** — macro total, store/Names bumps, typed zero-quota failure, 1-based result version; `stage_queue_bound` explicitly reserved to `/43` |
+| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | **FIXED / VERIFIED minimal by `/41`** — pin digests, trace decoder/first divergence, `Task.id`, `ReplayEvidence`; full restore is `/43` |
 | D-16 | **P1** | Diagnostic codes are ad hoc: `Task:4` has 339 sites and `Unsupported:1` 106; capacity, invalid, and verification faults lack distinct groups/codes; spans/task attribution are rare. | A18 §1 | Diagnostic CCR B2 |
 | D-17 | **P0** | `#if X` does not macro-expand identifiers; a `-DX=1` probe takes the false branch, silently selecting the wrong conditional branch. | A03 §2.3, probe in §1.2 | **FIXED / VERIFIED** by B3-01 for object-like macros; function-like invocations remain explicit Unsupported |
 | D-18 | **P0** | Integer `010` is classified/decode as decimal 10 instead of octal 8; radix/suffix/type/range handling is absent. | A03 §2.5 | **FIXED / VERIFIED** for decimal/octal/hex by B3-02; suffix/type/range remain future |
@@ -114,7 +114,7 @@ ledger, or other reports.
 
 | Order | Scope | Output | State / session |
 |---|---|---|---|
-| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order conflict, limit accounting, store versions, replay restore/diff. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **CCR SUBMITTED** — mandatory `/40`-class package + deferred replay/restore; decision pending |
+| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/43` |
 | B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/40` (hash `c6961ac6…10c14`); `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05` |
 
 ## 3D. Stage A Exit Summary
@@ -127,10 +127,10 @@ triaged the critical path as follows.
 
 1. **Finish B1 safe fixes** (PA01 exact gate, candidate argv, docs, wiring guards).
 2. **B2 contract decisions.** B2-01 (M1 A3 SE29) is **accepted, implemented, and
-   verified as `/40`**. B2-00 (determinism/limits/replay) remains a submitted CCR
-   for `/41`; tagged constants (`ConstRecord.ty`, D-09) remain B2-02 for `/42`.
-   D-12 (append snapshot bodies) and D-09 (constant typing) are the next
-   highest-value correctness items.
+   verified as `/40`**; B2-00 (determinism/limits/replay) is **accepted,
+   implemented, and verified as `/41`**. B2-02 (tagged constants, D-09) is the
+   next freeze for `/42`; the deferred restore/quota>1/VF13 package is `/43`.
+   D-09 (constant typing) remains the highest-value open correctness item.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
    D-20 (literal token kinds).
@@ -149,7 +149,7 @@ triaged the critical path as follows.
 | ID-IR-01 | Prefer A15's `InstructionRecord.successors` + `Branch`/`CondBranch` over A07's separate `CfgEdgeRecord`; keep the edge family only as a documented fallback. | Recommendation pending IR freeze |
 | ID-TARGET-01 | All concrete ABI/scalar values remain probe-gated. No target codegen or `-S`/`-c` from proposal values. | Existing accepted boundary |
 | ID-CHIP-01 | Do not add new chips until the Worker-vs-RestrictedChip template decision (A02 F01) is resolved; B1/B3 fixes may continue because they touch existing files. | Recommendation pending contract decision |
-| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen; no new shared shapes), `/41` = determinism/limits mandatory package (B2-00), `/42` = tagged constants (`ConstRecord.ty`, B2-02). `compiler/contracts/CONTRACT_VERSION` records the `/40` hash `c6961ac6…10c14`. | Accepted by T01 integrator |
+| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = tagged constants (B2-02), `/43` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/41` hash `500abb52…832966`. | Accepted by T01 integrator |
 
 ### Stage B3 candidate queue (not dispatched)
 
@@ -164,10 +164,11 @@ triaged the critical path as follows.
 | B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | Accepted A24-SEC-01 design |
 | B3-08 | H07 probe-report classifier over synthetic assembly fixtures | H01 report schema frozen; no real probe claim |
 
-## 3E. B2 Decision Record (B2-01 accepted; B2-00 still draft)
+## 3E. B2 Decision Record (B2-01 `/40` and B2-00 `/41` accepted)
 
-B2-01 was **accepted on 2026-11-09** and implemented as `/40`; the B2-01 rows
-below are the accepted defaults. B2-00 remains a decision draft for `/41`.
+B2-01 was **accepted on 2026-11-09** and implemented as `/40`; B2-00 was
+**accepted on 2026-11-09** and implemented as `/41`. The B2-01/B2-00 rows
+below are the accepted defaults. The deferred restore package is `/43`.
 
 | CCR | Decision | Recommendation |
 |---|---|---|
@@ -188,11 +189,11 @@ below are the accepted defaults. B2-00 remains a decision draft for `/41`.
 | B2-00 OD-3 | `stage_queue_bound` | Reserve in `/41`; enforce with stage queues/projection |
 | B2-00 OD-4 | Zero quota | Remove clamp; typed fail-closed |
 | B2-00 OD-5 | `ResultRecord.version` | 1-based global commit ordinal |
-| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred |
+| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/43` |
 | B2-00 OD-7 | Pins | Trace digest + Host envelope |
 | B2-00 OD-8 | `Task.id` | Encode and test divergence |
-| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants |
-| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/42+` |
+| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` deferred restore |
+| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/43` |
 
 ## 3F. `/40` Freeze Record (2026-11-09)
 
@@ -208,6 +209,23 @@ below are the accepted defaults. B2-00 remains a decision draft for `/41`.
 | Tests | `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8, `c43_a3` 5, `h04_candidate` 18; `c17_vf12` 6 and `c19_vf01` 7 fixtures aligned to SE29; full compiler suite 700 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/40)` and `interpret: value=05 negative=false` |
 | Explicit deferrals | D-09 (`ConstRecord.ty`/`ir.op-immediate-type`) to B2-02; O-7 SE29 reuse-hardening not in `/40`; B2-00 determinism/limits/replay to `/41` |
+| Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
+
+## 3G. `/41` Freeze Record (2026-11-09)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/41` |
+| Hash | `500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966` |
+| Authority | B2-00 accepted by the T01 integrator with OD-1..OD-10; R1 auto-bump; `/40` preserved as history |
+| Contract text | [T01 §7.1 `/41` amendment](T01_COMPILER_CONTRACT.md); [CCR B2-00](CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md) accepted remap/§11 |
+| New normative rules | `snapshot.append-batch-handles-encoded`, `snapshot.append-batch-bodies-encoded`, `snapshot.append-batch-order-preserved`, `snapshot.task-self-id-encoded`, `trace.pins-digest-recorded`, `trace.canonical-ids-recorded`, `trace.decoder-round-trip`, `trace.first-divergence`, `replay.recorded-input-model`, `task.select.stage-phase-enqueue-taskid`, `dispatch.stage-assignment-authoritative`, `limits.declared-bounds-enforced`, `limits.stage-queue-bound-reserved`, `limits.total-records-includes-macros`, `limits.zero-quota-fail-closed`, `commit.append-bumps-store-version`, `commit.names-bump-on-new-only`, `commit.result-version-meaningful` |
+| Removed rules | `task.select.phase-enqueue-taskid`, `limits.every-configured-bound-enforced` (replaced, not aliased) |
+| Shape impact | No new task kind, chip, stage row, allowlist row, arena, store, or record family; `Control.next_commit_ordinal` and the richer `TraceRecord` are the only new observable fields; `stage_queue_bound` stays reserved |
+| Implementation | Append handles/bodies in snapshots; stage-first selection + zero-quota typed error; macro total; typed-append and Names store versions; 1-based result commit ordinal; `Task.id`; pin digest; bounded trace decoder/diff; Host `ReplayEvidence` |
+| Tests | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22, `c11_lex` 11, `freeze` 15, `c20_ppscan` 8, `h04_candidate` 18; full compiler suite 723 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
+| Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/41)` and `interpret: value=05 negative=false` |
+| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/43`; D-09 tagged constants → `/42` |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
 
 ## 4. Dispatch Rules for This Batch
@@ -226,10 +244,12 @@ below are the accepted defaults. B2-00 remains a decision draft for `/41`.
 ## 5. Review and Next Gate
 
 - Stage A reports are collected and classified; B1 safe fixes and B3-01/B3-02 are
-  verified. B2-01 is accepted, implemented, and verified as `/40`.
-- **Next freeze train:** `/41` for B2-00 (D-12..D-15 determinism/limits/replay) and
-  `/42` for B2-02 (`ConstRecord.ty`/tagged constants, D-09). Each needs an explicit
-  integrator decision, implementation, dependent tests, and a recomputed hash.
+  verified. B2-01 is accepted, implemented, and verified as `/40`; B2-00 is
+  accepted, implemented, and verified as `/41`.
+- **Next freeze train:** `/42` for B2-02 (`ConstRecord.ty`/tagged constants, D-09),
+  then `/43` for the deferred restore/quota>1/VF13/`StorePatch` package. Each needs
+  an explicit integrator decision, implementation, dependent tests, and a
+  recomputed hash.
 - **Next integration blockers:** B-INT-00 draft disposition (D-04/D-05; clippy is red
   only in the parse drafts), canonical PA15 selection (B3-04), PP driver orchestration
   (B3-03), and the H01 → H07 probe/attestation track (Part B remains fail-closed).

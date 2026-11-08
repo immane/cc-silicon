@@ -13,25 +13,30 @@
 // ============================================================================
 
 use cc_silicon_compiler::bus::{
-    CompilerBus, CompilerPins, PpTokenKind, PpTokenRecord, SpanRecord, TokenKind,
+    CompilerBus, CompilerPins, PpTokenKind, PpTokenRecord, SpanRecord, TaggedProposal, TokenKind,
+    TokenRecord,
 };
 use cc_silicon_compiler::chips::{
     handler_for, is_keyword, LxClassifyChip, LxDecodeLiteralChip, LxInternChip, Worker,
     WorkerRegistry,
 };
 use cc_silicon_compiler::commit::{commit_proposals, CommitError};
-use cc_silicon_compiler::ids::{NameId, PpTokenId, RecordRef, SourceId, SpanId, TaskId, TokenId};
+use cc_silicon_compiler::ids::{
+    ChipId, NameId, PpTokenId, RecordFamily, RecordRef, SourceId, SpanId, TaskId, TokenId,
+};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
-    is_lx_slice_kind, stage_of, FieldPath, ManifestRegistryError, StoreSchema, LX_CLASSIFY_CHIP,
-    LX_DECODE_CHIP, LX_INTERN_CHIP, STORE_OWNER_ALLOWLIST,
+    is_lx_slice_kind, stage_of, BackendClass, Capability, ChipManifest, ChipPhase, FieldPath,
+    ManifestRegistryError, StoreSchema, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
+    STORE_OWNER_ALLOWLIST,
 };
+use cc_silicon_compiler::records::{G1DraftBody, RecordDraft};
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{decode_token, encode_token, Snapshot};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{
-    Payload, Proposal, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry,
-    TaskState,
+    AppendBatch, DraftRef, Payload, Proposal, ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind,
+    TaskKindRegistry, TaskState,
 };
 
 fn new_bus() -> CompilerBus {
@@ -164,6 +169,75 @@ fn pp_refs(ids: &[PpTokenId]) -> Payload {
     Payload::from_refs(ids.iter().map(|id| RecordRef::PpToken(*id)).collect())
 }
 
+/// Append `spellings` as a `Name` batch on a fresh running `LEX_INTERN` task,
+/// completing it in the same commit (a commit batch needs exactly one
+/// transition).
+fn commit_name_batch(bus: &mut CompilerBus, spellings: &[&[u8]]) {
+    let task = bootstrap(bus, TaskKind::LEX_INTERN, LX_INTERN_CHIP, Payload::empty());
+    bus.arenas.tasks.get_mut(task).unwrap().state = TaskState::Running;
+    let batch = AppendBatch {
+        records: spellings
+            .iter()
+            .enumerate()
+            .map(|(index, _)| RecordDraft {
+                family: RecordFamily::Name,
+                index: DraftRef(index as u32),
+            })
+            .collect(),
+        bodies: spellings
+            .iter()
+            .map(|spelling| G1DraftBody::Name {
+                spelling: spelling.to_vec(),
+            })
+            .collect(),
+    };
+    commit_proposals(
+        bus,
+        vec![
+            TaggedProposal {
+                chip: LX_INTERN_CHIP,
+                task,
+                proposal: Proposal::AppendRecords { task, batch },
+            },
+            TaggedProposal {
+                chip: LX_INTERN_CHIP,
+                task,
+                proposal: Proposal::Complete {
+                    task,
+                    value: ResultValue::Empty,
+                },
+            },
+        ],
+    )
+    .unwrap();
+}
+
+/// A fixture chip authorized to append both `lex.tokens` and `names.entries`,
+/// so one commit batch can touch two distinct stores. It claims the foundation
+/// `CONTROL_NOOP` kind (the LX chips already claim the slice kinds).
+fn install_multi_store_fixture(bus: &mut CompilerBus) {
+    let manifest = ChipManifest {
+        id: ChipId(7),
+        chip_name: "MultiStoreFixture",
+        group: TaskGroup::CONTROL,
+        task_kinds: vec![TaskKind::CONTROL_NOOP],
+        reads: vec![],
+        writes: vec![
+            FieldPath::new(StoreId::Lex, "tokens"),
+            FieldPath::new(StoreId::Names, "entries"),
+        ],
+        capability: Capability::Emulable,
+        backend_class: BackendClass::CpuReference,
+        phase: ChipPhase::Propagation,
+        deterministic: true,
+        tests: vec!["tests"],
+        dependencies: vec![],
+    };
+    bus.registrations
+        .register(manifest, &bus.schema, &bus.kinds)
+        .unwrap();
+}
+
 fn run_tick(
     bus: &mut CompilerBus,
     workers: &WorkerRegistry,
@@ -285,6 +359,104 @@ fn lx_intern_produces_four_names_in_first_seen_order() {
         assert_eq!(id, NameId::from_index(index));
     }
     assert_eq!(bus.intern.len(), 5);
+}
+
+#[test]
+fn names_version_bumps_on_new_only() {
+    let mut bus = new_bus();
+    assert_eq!(bus.store_versions.get(StoreId::Names), 0);
+    bus.intern_name(b"main.c").unwrap();
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
+    // A duplicate lookup returns the existing ID without a revision bump.
+    bus.intern_name(b"main.c").unwrap();
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
+    bus.intern_name(b"other.c").unwrap();
+    assert_eq!(bus.store_versions.get(StoreId::Names), 2);
+}
+
+#[test]
+fn append_name_body_bumps_names_on_new_only() {
+    let mut bus = new_bus();
+    install_lx(&mut bus, 2);
+    assert_eq!(bus.store_versions.get(StoreId::Names), 0);
+
+    commit_name_batch(&mut bus, &[b"main".as_slice()]);
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
+
+    // Duplicate spelling: interned (same ID), no second bump.
+    commit_name_batch(&mut bus, &[b"main".as_slice()]);
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
+
+    // One duplicate plus one new spelling in the same batch: exactly one
+    // bump for the store, regardless of record count.
+    commit_name_batch(&mut bus, &[b"main".as_slice(), b"value".as_slice()]);
+    assert_eq!(bus.store_versions.get(StoreId::Names), 2);
+    assert_eq!(bus.intern.len(), 2);
+    assert_eq!(bus.intern.lookup(b"main"), Some(NameId::from_index(0)));
+    assert_eq!(bus.intern.lookup(b"value"), Some(NameId::from_index(1)));
+}
+
+#[test]
+fn appends_to_different_stores_bump_each_once() {
+    let mut bus = new_bus();
+    install_lx(&mut bus, 2);
+    install_multi_store_fixture(&mut bus);
+    let task = bootstrap(
+        &mut bus,
+        TaskKind::CONTROL_NOOP,
+        ChipId(7),
+        Payload::empty(),
+    );
+    bus.arenas.tasks.get_mut(task).unwrap().state = TaskState::Running;
+    let token = |kind: TokenKind| {
+        G1DraftBody::Token(TokenRecord {
+            kind,
+            span: SpanId::from_index(0),
+            name: None,
+            pp_token: PpTokenId::from_index(0),
+        })
+    };
+    // Two `Lex` bodies plus one `Names` body: each mutated store bumps once.
+    let bodies = vec![
+        token(TokenKind::Punctuator),
+        token(TokenKind::Punctuator),
+        G1DraftBody::Name {
+            spelling: b"main".to_vec(),
+        },
+    ];
+    let batch = AppendBatch {
+        records: bodies
+            .iter()
+            .enumerate()
+            .map(|(index, body)| RecordDraft {
+                family: body.family(),
+                index: DraftRef(index as u32),
+            })
+            .collect(),
+        bodies,
+    };
+    commit_proposals(
+        &mut bus,
+        vec![
+            TaggedProposal {
+                chip: ChipId(7),
+                task,
+                proposal: Proposal::AppendRecords { task, batch },
+            },
+            TaggedProposal {
+                chip: ChipId(7),
+                task,
+                proposal: Proposal::Complete {
+                    task,
+                    value: ResultValue::Empty,
+                },
+            },
+        ],
+    )
+    .unwrap();
+    assert_eq!(bus.arenas.tokens.allocated(), 2);
+    assert_eq!(bus.store_versions.get(StoreId::Lex), 1);
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
 }
 
 #[test]

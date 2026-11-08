@@ -1,18 +1,29 @@
-use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, LiteralRecord, TaggedProposal};
-use cc_silicon_compiler::codec::{hex32, sha256, Writer};
+use cc_silicon_compiler::bus::{
+    CompilerBus, CompilerPins, HostResponse, LiteralRecord, TaggedProposal,
+};
+use cc_silicon_compiler::codec::{hex32, sha256, CodecError, Writer};
 use cc_silicon_compiler::commit::consume_result;
+use cc_silicon_compiler::contract::{CONTRACT_HASH, CONTRACT_VERSION, G1_DRAFT_BODY_NAMES};
 use cc_silicon_compiler::diagnostic::{
     DiagGroup, DiagnosticCode, DiagnosticDraft, DiagnosticRecord,
 };
-use cc_silicon_compiler::ids::ChipId;
+use cc_silicon_compiler::ids::{
+    BlockId, ChipId, ConstId, DiagnosticId, FunctionId, HostRequestId, LiteralId, NameId, NodeId,
+    PpTokenId, RecordFamily, RecordRef, ResultId, ScopeId, SourceId, SpanId, SymbolId, TaskId,
+    TokenId, TypeId, ValueId,
+};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath};
+use cc_silicon_compiler::records::{G1DraftBody, RecordDraft};
 use cc_silicon_compiler::routing::RoutingShell;
-use cc_silicon_compiler::snapshot::{config_hash, Snapshot, Trace};
+use cc_silicon_compiler::snapshot::{
+    config_hash, encode_config, encode_record_ref, pins_digest, ReplayEvidence, Snapshot, Trace,
+    TraceDivergence, TraceRecord,
+};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, OptionFlag, TargetSpec};
 use cc_silicon_compiler::task::{
-    HostRequestDraft, HostRequestKind, Payload, Proposal, ResultRecord, ResultValue, StoreId,
-    TaskDraft, TaskGroup, TaskKind,
+    AppendBatch, DraftRef, HostRequestDraft, HostRequestKind, Payload, Proposal, ResultRecord,
+    ResultValue, StoreId, TaskDraft, TaskGroup, TaskKind,
 };
 
 fn draft(kind: TaskKind) -> TaskDraft {
@@ -52,11 +63,10 @@ fn run_scenario() -> (CompilerBus, Trace) {
     }
     let shell = RoutingShell::new();
     let mut trace = Trace::new();
+    let pins = CompilerPins::default();
     for _ in 0..5 {
-        let report = shell
-            .clock_tick(&CompilerPins::default(), &mut bus)
-            .unwrap();
-        trace.record(&bus, &report);
+        let report = shell.clock_tick(&pins, &mut bus).unwrap();
+        trace.record(&bus, &report, &pins);
     }
     (bus, trace)
 }
@@ -713,4 +723,713 @@ fn snapshot_covers_new_reserved_arenas_in_flight_and_report() {
         Snapshot::capture(&touched).hash(),
         Snapshot::capture(&plain).hash()
     );
+}
+
+// ---- /41 D-12 append bodies and D-15 trace/replay evidence ----
+
+fn append_bus(records: Vec<RecordDraft>, bodies: Vec<G1DraftBody>) -> CompilerBus {
+    wire_bus(Proposal::AppendRecords {
+        task: TaskId::from_index(0),
+        batch: AppendBatch { records, bodies },
+    })
+}
+
+fn draft_handle(family: RecordFamily, index: u32) -> RecordDraft {
+    RecordDraft {
+        family,
+        index: DraftRef(index),
+    }
+}
+
+fn all_draft_bodies() -> Vec<G1DraftBody> {
+    use cc_silicon_compiler::bus::{
+        ArtifactKind, ArtifactRecord, BlockRecord, ConstRecord, EffectMask, FunctionRecord,
+        InstructionRecord, IntRank, IrOp, Linkage, MacroRecord, NodeKind, NodeRecord, PpTokenKind,
+        PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord,
+        SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind,
+        TypeRecord, ValueCategory, ValueRecord,
+    };
+    let span = SpanId::from_index(0);
+    let name = NameId::from_index(0);
+    let node = NodeId::from_index(0);
+    let ty = TypeId::from_index(0);
+    let token = TokenId::from_index(0);
+    vec![
+        G1DraftBody::Literal(fixture_literal(7, b"7")),
+        G1DraftBody::Const(ConstRecord {
+            value: vec![7],
+            negative: false,
+        }),
+        G1DraftBody::Artifact(ArtifactRecord {
+            kind: ArtifactKind::Assembly,
+            source: None,
+            bytes: b"nop".to_vec(),
+            raw_offsets: vec![],
+        }),
+        G1DraftBody::Token(TokenRecord {
+            kind: TokenKind::Identifier,
+            span,
+            name: Some(name),
+            pp_token: PpTokenId::from_index(0),
+        }),
+        G1DraftBody::Name {
+            spelling: b"name".to_vec(),
+        },
+        G1DraftBody::Node(NodeRecord {
+            kind: NodeKind::IntLiteral,
+            parent: None,
+            children: vec![],
+            first_token: token,
+            last_token: token,
+            name: None,
+            literal: None,
+        }),
+        G1DraftBody::Type(TypeRecord {
+            kind: TypeKind::Int {
+                rank: IntRank::Int,
+                signed: true,
+            },
+        }),
+        G1DraftBody::Symbol(SymbolRecord {
+            name,
+            scope: ScopeId::from_index(0),
+            kind: SymbolKind::Function,
+            ty: Some(ty),
+            linkage: Linkage::External,
+            storage: StorageDuration::Static,
+            decl: node,
+        }),
+        G1DraftBody::Scope(ScopeRecord {
+            kind: ScopeKind::File,
+            parent: None,
+            owner: None,
+        }),
+        G1DraftBody::ScopeEvent(ScopeEventRecord {
+            scope: ScopeId::from_index(0),
+            kind: ScopeEventKind::Enter,
+            at: node,
+        }),
+        G1DraftBody::Sem(SemRecord {
+            node,
+            ty,
+            category: ValueCategory::NonLvalue,
+            effects: EffectMask(0),
+        }),
+        G1DraftBody::Function(FunctionRecord {
+            symbol: SymbolId::from_index(0),
+            signature: ty,
+            entry: BlockId::from_index(0),
+            linkage: Linkage::External,
+        }),
+        G1DraftBody::Block(BlockRecord {
+            function: FunctionId::from_index(0),
+            ordinal: 0,
+        }),
+        G1DraftBody::Value(ValueRecord { ty }),
+        G1DraftBody::Instruction(InstructionRecord {
+            op: IrOp::Constant,
+            block: BlockId::from_index(0),
+            operands: vec![],
+            immediate: Some(ConstId::from_index(0)),
+            result: Some(ValueId::from_index(0)),
+        }),
+        G1DraftBody::Span(SpanRecord {
+            source: SourceId::from_index(0),
+            start: 0,
+            end: 1,
+            expansion: None,
+        }),
+        G1DraftBody::PpToken(PpTokenRecord {
+            kind: PpTokenKind::Identifier,
+            span,
+            spelling: b"x".to_vec(),
+        }),
+        G1DraftBody::Macro(MacroRecord {
+            spelling: b"m".to_vec(),
+            params: vec![],
+            function_like: false,
+            variadic: false,
+            replacement: vec![],
+            undefined: false,
+        }),
+    ]
+}
+
+/// A second body of the same variant, differing in one field, so the
+/// sensitivity check proves the body bytes (not only the variant name) are
+/// encoded.
+fn distinct_body(body: &G1DraftBody) -> G1DraftBody {
+    use cc_silicon_compiler::bus::{IntRank, IrOp, Linkage, ScopeEventKind, ScopeKind, TypeKind};
+    match body.clone() {
+        G1DraftBody::Literal(mut record) => {
+            record.value = vec![9];
+            record.spelling = b"9".to_vec();
+            G1DraftBody::Literal(record)
+        }
+        G1DraftBody::Const(mut record) => {
+            record.negative = true;
+            G1DraftBody::Const(record)
+        }
+        G1DraftBody::Artifact(mut record) => {
+            record.bytes = b"ret".to_vec();
+            G1DraftBody::Artifact(record)
+        }
+        G1DraftBody::Token(mut record) => {
+            record.span = SpanId::from_index(1);
+            G1DraftBody::Token(record)
+        }
+        G1DraftBody::Name { .. } => G1DraftBody::Name {
+            spelling: b"other".to_vec(),
+        },
+        G1DraftBody::Node(mut record) => {
+            record.first_token = TokenId::from_index(1);
+            G1DraftBody::Node(record)
+        }
+        G1DraftBody::Type(mut record) => {
+            record.kind = TypeKind::Int {
+                rank: IntRank::Long,
+                signed: true,
+            };
+            G1DraftBody::Type(record)
+        }
+        G1DraftBody::Symbol(mut record) => {
+            record.linkage = Linkage::Internal;
+            G1DraftBody::Symbol(record)
+        }
+        G1DraftBody::Scope(mut record) => {
+            record.kind = ScopeKind::Block;
+            G1DraftBody::Scope(record)
+        }
+        G1DraftBody::ScopeEvent(mut record) => {
+            record.kind = ScopeEventKind::Exit;
+            G1DraftBody::ScopeEvent(record)
+        }
+        G1DraftBody::Sem(mut record) => {
+            record.node = NodeId::from_index(1);
+            G1DraftBody::Sem(record)
+        }
+        G1DraftBody::Function(mut record) => {
+            record.entry = BlockId::from_index(1);
+            G1DraftBody::Function(record)
+        }
+        G1DraftBody::Block(mut record) => {
+            record.ordinal = 1;
+            G1DraftBody::Block(record)
+        }
+        G1DraftBody::Value(mut record) => {
+            record.ty = TypeId::from_index(1);
+            G1DraftBody::Value(record)
+        }
+        G1DraftBody::Instruction(mut record) => {
+            record.op = IrOp::Return;
+            G1DraftBody::Instruction(record)
+        }
+        G1DraftBody::Span(mut record) => {
+            record.end = 2;
+            G1DraftBody::Span(record)
+        }
+        G1DraftBody::PpToken(mut record) => {
+            record.spelling = b"y".to_vec();
+            G1DraftBody::PpToken(record)
+        }
+        G1DraftBody::Macro(mut record) => {
+            record.spelling = b"other".to_vec();
+            G1DraftBody::Macro(record)
+        }
+    }
+}
+
+#[test]
+fn append_wire_body_sensitivity() {
+    let empty = Snapshot::capture(&append_bus(vec![], vec![])).hash();
+    let empty_again = Snapshot::capture(&append_bus(vec![], vec![])).hash();
+    assert_eq!(empty, empty_again);
+    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 18);
+
+    // Every typed body variant changes the snapshot, re-encodes
+    // deterministically with the same handle, and remains sensitive to its
+    // body bytes (same variant, same handle, one changed field).
+    let bodies = all_draft_bodies();
+    assert_eq!(bodies.len(), 18);
+    for body in &bodies {
+        let family = body.family();
+        let first = Snapshot::capture(&append_bus(
+            vec![draft_handle(family, 0)],
+            vec![body.clone()],
+        ))
+        .hash();
+        let second = Snapshot::capture(&append_bus(
+            vec![draft_handle(family, 0)],
+            vec![body.clone()],
+        ))
+        .hash();
+        let changed = Snapshot::capture(&append_bus(
+            vec![draft_handle(family, 0)],
+            vec![distinct_body(body)],
+        ))
+        .hash();
+        assert_eq!(first, second, "body {family:?} not deterministic");
+        assert_ne!(empty, first, "body {family:?} is invisible");
+        assert_ne!(first, changed, "body {family:?} bytes are invisible");
+    }
+
+    // Same count, different handle family (the body bytes stay equal: this is
+    // deliberately a malformed pair, because the encoder must not validate).
+    let const_body = bodies[1].clone();
+    let as_const = append_bus(
+        vec![draft_handle(RecordFamily::Const, 0)],
+        vec![const_body.clone()],
+    );
+    let as_literal_handle = append_bus(
+        vec![draft_handle(RecordFamily::Literal, 0)],
+        vec![const_body.clone()],
+    );
+    assert_ne!(
+        Snapshot::capture(&as_const).hash(),
+        Snapshot::capture(&as_literal_handle).hash()
+    );
+
+    // Same count, different draft index.
+    let index_zero = append_bus(
+        vec![draft_handle(RecordFamily::Const, 0)],
+        vec![const_body.clone()],
+    );
+    let index_one = append_bus(
+        vec![draft_handle(RecordFamily::Const, 1)],
+        vec![const_body.clone()],
+    );
+    assert_ne!(
+        Snapshot::capture(&index_zero).hash(),
+        Snapshot::capture(&index_one).hash()
+    );
+
+    // Same handle, different body bytes.
+    let G1DraftBody::Literal(literal_a) = bodies[0].clone() else {
+        panic!("fixture order changed");
+    };
+    let mut literal_b = literal_a.clone();
+    literal_b.value = vec![8];
+    literal_b.spelling = b"8".to_vec();
+    let body_a = append_bus(
+        vec![draft_handle(RecordFamily::Literal, 0)],
+        vec![G1DraftBody::Literal(literal_a.clone())],
+    );
+    let body_b = append_bus(
+        vec![draft_handle(RecordFamily::Literal, 0)],
+        vec![G1DraftBody::Literal(literal_b)],
+    );
+    assert_ne!(
+        Snapshot::capture(&body_a).hash(),
+        Snapshot::capture(&body_b).hash()
+    );
+
+    // Stored order is preserved: swapping two handles and their bodies
+    // changes the snapshot (no sorting).
+    let ordered = append_bus(
+        vec![
+            draft_handle(RecordFamily::Const, 0),
+            draft_handle(RecordFamily::Literal, 1),
+        ],
+        vec![const_body.clone(), G1DraftBody::Literal(literal_a.clone())],
+    );
+    let reversed = append_bus(
+        vec![
+            draft_handle(RecordFamily::Literal, 1),
+            draft_handle(RecordFamily::Const, 0),
+        ],
+        vec![G1DraftBody::Literal(literal_a), const_body.clone()],
+    );
+    assert_ne!(
+        Snapshot::capture(&ordered).hash(),
+        Snapshot::capture(&reversed).hash()
+    );
+
+    // Malformed handle/body count mismatches encode deterministically as-is;
+    // commit (not the snapshot encoder) owns the 1:1 validation.
+    let missing_body = append_bus(vec![draft_handle(RecordFamily::Const, 0)], vec![]);
+    let missing_body_again = append_bus(vec![draft_handle(RecordFamily::Const, 0)], vec![]);
+    let missing_handle = append_bus(vec![], vec![const_body]);
+    assert_eq!(
+        Snapshot::capture(&missing_body).hash(),
+        Snapshot::capture(&missing_body_again).hash()
+    );
+    assert_ne!(empty, Snapshot::capture(&missing_body).hash());
+    assert_ne!(empty, Snapshot::capture(&missing_handle).hash());
+    assert_ne!(
+        Snapshot::capture(&missing_body).hash(),
+        Snapshot::capture(&missing_handle).hash()
+    );
+}
+
+#[test]
+fn snapshot_task_self_id_participates() {
+    let mut baseline = CompilerBus::default();
+    baseline
+        .bootstrap_task(draft(TaskKind::CONTROL_NOOP))
+        .unwrap();
+    let mut divergent = CompilerBus::default();
+    let id = divergent
+        .bootstrap_task(draft(TaskKind::CONTROL_NOOP))
+        .unwrap();
+    divergent.arenas.tasks.get_mut(id).unwrap().id = TaskId::from_index(id.index().wrapping_add(1));
+    assert_ne!(
+        Snapshot::capture(&baseline).hash(),
+        Snapshot::capture(&divergent).hash()
+    );
+}
+
+#[test]
+fn snapshot_control_commit_ordinal_participates() {
+    let baseline = CompilerBus::default();
+    let mut divergent = CompilerBus::default();
+    divergent.control.next_commit_ordinal = 1;
+    assert_ne!(
+        Snapshot::capture(&baseline).hash(),
+        Snapshot::capture(&divergent).hash()
+    );
+}
+
+fn sample_trace_record(tick: u64) -> TraceRecord {
+    TraceRecord {
+        tick,
+        pins_digest: [0x11; 32],
+        selected: Some(TaskId::from_index(0)),
+        outcome: "executed",
+        resolution: "noop",
+        error: None,
+        ready_len: 1,
+        enqueued: vec![TaskId::from_index(1)],
+        completed: vec![(TaskId::from_index(0), ResultId::from_index(0))],
+        failed: vec![],
+        waiting: vec![],
+        rejoined: vec![],
+        appended: vec![RecordRef::Literal(LiteralId::from_index(0))],
+        patches: 2,
+    }
+}
+
+/// Independently-written canonical trace bytes, used to feed arbitrary IDs
+/// into `Trace::from_bytes` (the round-trip test uses a captured trace).
+fn encode_trace_records(records: &[TraceRecord]) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.str(CONTRACT_VERSION);
+    w.u64(records.len() as u64);
+    for record in records {
+        w.u64(record.tick);
+        w.raw(&record.pins_digest);
+        match record.selected {
+            Some(id) => {
+                w.u8(1);
+                w.u32(id.index());
+            }
+            None => w.u8(0),
+        }
+        w.str(record.outcome);
+        w.str(record.resolution);
+        match record.error {
+            Some(code) => {
+                w.u8(1);
+                w.str(code.group.name());
+                w.u16(code.code);
+            }
+            None => w.u8(0),
+        }
+        w.u32(record.ready_len);
+        w.u64(record.enqueued.len() as u64);
+        for id in &record.enqueued {
+            w.u32(id.index());
+        }
+        w.u64(record.completed.len() as u64);
+        for (task, result) in &record.completed {
+            w.u32(task.index());
+            w.u32(result.index());
+        }
+        w.u64(record.failed.len() as u64);
+        for (task, diagnostic) in &record.failed {
+            w.u32(task.index());
+            w.u32(diagnostic.index());
+        }
+        w.u64(record.waiting.len() as u64);
+        for id in &record.waiting {
+            w.u32(id.index());
+        }
+        w.u64(record.rejoined.len() as u64);
+        for id in &record.rejoined {
+            w.u32(id.index());
+        }
+        w.u64(record.appended.len() as u64);
+        for reference in &record.appended {
+            w.raw(&encode_record_ref(*reference));
+        }
+        w.u32(record.patches);
+    }
+    w.finish()
+}
+
+fn trace_from_records(records: &[TraceRecord]) -> Trace {
+    Trace::from_bytes(&encode_trace_records(records)).unwrap()
+}
+
+#[test]
+fn pins_digest_is_part_of_the_trace() {
+    let pins_a = CompilerPins::default();
+    let pins_b = CompilerPins {
+        start_job: true,
+        ..CompilerPins::default()
+    };
+    assert_ne!(pins_digest(&pins_a), pins_digest(&pins_b));
+
+    // Host-response order is input identity: reversing equal entries changes
+    // the digest.
+    let responses = vec![
+        HostResponse {
+            request: HostRequestId::from_index(1),
+            bytes: b"a".to_vec(),
+        },
+        HostResponse {
+            request: HostRequestId::from_index(2),
+            bytes: b"b".to_vec(),
+        },
+    ];
+    let mut reversed = responses.clone();
+    reversed.reverse();
+    let ordered_pins = CompilerPins {
+        host_responses: responses,
+        ..CompilerPins::default()
+    };
+    let reversed_pins = CompilerPins {
+        host_responses: reversed,
+        ..CompilerPins::default()
+    };
+    assert_ne!(pins_digest(&ordered_pins), pins_digest(&reversed_pins));
+
+    // Same bus state and report, different pins: trace bytes must differ.
+    let mut bus = CompilerBus::default();
+    bus.bootstrap_task(draft(TaskKind::CONTROL_NOOP)).unwrap();
+    let report = RoutingShell::new().clock_tick(&pins_a, &mut bus).unwrap();
+    let mut trace_a = Trace::new();
+    let mut trace_b = Trace::new();
+    trace_a.record(&bus, &report, &pins_a);
+    trace_b.record(&bus, &report, &pins_b);
+    assert_eq!(trace_a.records()[0].pins_digest, pins_digest(&pins_a));
+    assert_ne!(trace_a.to_bytes(), trace_b.to_bytes());
+    assert_ne!(trace_a.hash(), trace_b.hash());
+}
+
+#[test]
+fn trace_decoder_round_trip_and_errors() {
+    let (_, trace) = run_scenario();
+    let bytes = trace.to_bytes();
+    let decoded = Trace::from_bytes(&bytes).unwrap();
+    assert_eq!(decoded, trace);
+    assert_eq!(decoded.to_bytes(), bytes);
+    assert_eq!(decoded.hash(), trace.hash());
+
+    // Synthetic record with every optional/vector field populated.
+    let mut full = sample_trace_record(4);
+    full.error = Some(DiagnosticCode::new(DiagGroup::Protocol, 18));
+    full.failed = vec![(TaskId::from_index(2), DiagnosticId::from_index(3))];
+    full.waiting = vec![TaskId::from_index(4)];
+    full.rejoined = vec![TaskId::from_index(5)];
+    let synthetic = encode_trace_records(&[full]);
+    let decoded = Trace::from_bytes(&synthetic).unwrap();
+    assert_eq!(decoded.to_bytes(), synthetic);
+
+    // Truncation and trailing bytes are checked errors.
+    assert!(Trace::from_bytes(&bytes[..bytes.len() - 1]).is_err());
+    assert!(Trace::from_bytes(&[]).is_err());
+    let mut trailed = bytes.clone();
+    trailed.push(0);
+    assert!(matches!(
+        Trace::from_bytes(&trailed),
+        Err(CodecError::TrailingBytes)
+    ));
+
+    // A huge record count cannot reserve against a tiny input.
+    let mut w = Writer::new();
+    w.str(CONTRACT_VERSION);
+    w.u64(u64::MAX);
+    assert!(Trace::from_bytes(&w.finish()).is_err());
+
+    // Unknown stable names fail as CodecError, not as silent fallbacks.
+    let mut w = Writer::new();
+    w.str(CONTRACT_VERSION);
+    w.u64(1);
+    w.u64(1);
+    w.raw(&[0u8; 32]);
+    w.u8(0);
+    w.str("bogus_outcome");
+    w.str("none");
+    w.u8(0);
+    w.u32(0);
+    for _ in 0..6 {
+        w.u64(0);
+    }
+    w.u32(0);
+    assert!(matches!(
+        Trace::from_bytes(&w.finish()),
+        Err(CodecError::Unsupported(_))
+    ));
+
+    // Unknown option tag fails as CodecError (mutate the `selected` flag in a
+    // full-length record so the bounded-count pre-check does not reject it
+    // first).
+    let mut unknown_tag = encode_trace_records(&[sample_trace_record(1)]);
+    let selected_offset = 8 + CONTRACT_VERSION.len() + 8 + 8 + 32;
+    assert_eq!(unknown_tag[selected_offset], 1);
+    unknown_tag[selected_offset] = 2;
+    assert!(matches!(
+        Trace::from_bytes(&unknown_tag),
+        Err(CodecError::InvalidTag(2))
+    ));
+}
+
+#[test]
+fn trace_ids_and_first_divergence() {
+    let base = sample_trace_record(7);
+    let base_trace = trace_from_records(std::slice::from_ref(&base));
+
+    // Equal counts, different completed result ID.
+    let mut completed = base.clone();
+    completed.completed = vec![(TaskId::from_index(0), ResultId::from_index(1))];
+    // Equal counts, different failed diagnostic ID.
+    let mut failed = base.clone();
+    failed.failed = vec![(TaskId::from_index(0), DiagnosticId::from_index(1))];
+    // Equal counts, different appended record reference.
+    let mut appended = base.clone();
+    appended.appended = vec![RecordRef::Literal(LiteralId::from_index(1))];
+
+    for changed in [completed, failed, appended] {
+        let changed_trace = trace_from_records(&[changed]);
+        assert_ne!(base_trace.hash(), changed_trace.hash());
+        assert_eq!(
+            base_trace.diff(&changed_trace).first_divergence,
+            Some(TraceDivergence { index: 0, tick: 7 })
+        );
+    }
+
+    // First divergent record, not the last: records 0 and 2 match, record 1
+    // differs, so the reported index/tick is (1, 2).
+    let first = sample_trace_record(1);
+    let second = sample_trace_record(2);
+    let third = sample_trace_record(3);
+    let mut changed_second = second.clone();
+    changed_second.completed = vec![(TaskId::from_index(0), ResultId::from_index(9))];
+    let left = trace_from_records(&[first.clone(), second, third.clone()]);
+    let right = trace_from_records(&[first, changed_second, third]);
+    assert_eq!(
+        left.diff(&right).first_divergence,
+        Some(TraceDivergence { index: 1, tick: 2 })
+    );
+    assert_eq!(left.diff(&left).first_divergence, None);
+}
+
+#[test]
+fn trace_records_actual_commit_ids() {
+    let limits = Limits::fixture();
+    let pins = CompilerPins::default();
+    let shell = RoutingShell::new();
+
+    let mut baseline = CompilerBus::default();
+    let mut shifted = CompilerBus::default();
+    for bus in [&mut baseline, &mut shifted] {
+        for kind in [
+            TaskKind::CONTROL_NOOP,
+            TaskKind::CONTROL_NOOP,
+            TaskKind::CONTROL_UNSUPPORTED,
+        ] {
+            bus.bootstrap_task(draft(kind)).unwrap();
+        }
+    }
+    // Consume arena slots so the same scenario produces different result and
+    // diagnostic IDs with identical counts.
+    shifted
+        .arenas
+        .results
+        .alloc(
+            ResultRecord {
+                task: TaskId::from_index(0),
+                kind: TaskKind::CONTROL_NOOP,
+                value: ResultValue::Empty,
+                version: 0,
+                consumed: false,
+            },
+            &limits,
+        )
+        .unwrap();
+    shifted
+        .arenas
+        .diagnostics
+        .alloc(
+            DiagnosticRecord::commit(
+                0,
+                DiagnosticDraft::error(DiagnosticCode::new(DiagGroup::Protocol, 1), "preallocated"),
+            ),
+            &limits,
+        )
+        .unwrap();
+
+    let mut baseline_trace = Trace::new();
+    let mut shifted_trace = Trace::new();
+    for _ in 0..5 {
+        let report = shell.clock_tick(&pins, &mut baseline).unwrap();
+        baseline_trace.record(&baseline, &report, &pins);
+        let report = shell.clock_tick(&pins, &mut shifted).unwrap();
+        shifted_trace.record(&shifted, &report, &pins);
+    }
+
+    let completed = |trace: &Trace| {
+        trace
+            .records()
+            .iter()
+            .map(|record| record.completed.len())
+            .sum::<usize>()
+    };
+    let failed = |trace: &Trace| {
+        trace
+            .records()
+            .iter()
+            .map(|record| record.failed.len())
+            .sum::<usize>()
+    };
+    assert_eq!(completed(&baseline_trace), 2);
+    assert_eq!(completed(&shifted_trace), 2);
+    assert_eq!(failed(&baseline_trace), 1);
+    assert_eq!(failed(&shifted_trace), 1);
+    assert_ne!(baseline_trace.hash(), shifted_trace.hash());
+    assert_eq!(
+        baseline_trace.diff(&shifted_trace).first_divergence,
+        Some(TraceDivergence { index: 0, tick: 0 })
+    );
+}
+
+#[test]
+fn replay_evidence_is_deterministic_and_pin_sensitive() {
+    let (bus_a, trace_a) = run_scenario();
+    let (bus_b, trace_b) = run_scenario();
+    let pins = CompilerPins::default();
+    let evidence = |bus: &CompilerBus, trace: &Trace| ReplayEvidence {
+        contract_version: CONTRACT_VERSION.to_string(),
+        contract_hash: CONTRACT_HASH.to_string(),
+        config: encode_config(bus.config()),
+        initial_snapshot_hash: Snapshot::capture(&CompilerBus::default()).hash(),
+        pins_digests: vec![pins_digest(&pins); trace.len()],
+        trace_hash: trace.hash(),
+    };
+    let first = evidence(&bus_a, &trace_a);
+    let second = evidence(&bus_b, &trace_b);
+    assert_eq!(first.to_bytes(), second.to_bytes());
+    assert_eq!(first.hash(), second.hash());
+    assert_eq!(
+        ReplayEvidence::from_bytes(&first.to_bytes()).unwrap(),
+        first
+    );
+
+    let mut changed = first.clone();
+    changed.pins_digests[0] = pins_digest(&CompilerPins {
+        start_job: true,
+        ..CompilerPins::default()
+    });
+    assert_ne!(first.to_bytes(), changed.to_bytes());
+    assert_ne!(first.hash(), changed.hash());
 }

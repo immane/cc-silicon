@@ -683,6 +683,7 @@ impl Arenas {
             + self.spans.allocated() as u64
             + self.expansions.allocated() as u64
             + self.pp_tokens.allocated() as u64
+            + self.macros.allocated() as u64
             + self.tokens.allocated() as u64
             + self.scopes.allocated() as u64
             + self.scope_events.allocated() as u64
@@ -799,6 +800,12 @@ pub struct Control {
     pub next_enqueue_ordinal: u64,
     /// Diagnostic ordinal counter.
     pub next_diagnostic_ordinal: u64,
+    /// Global successful-commit ordinal (`/41`).
+    ///
+    /// Incremented once per successful `commit_proposals` batch and stamped
+    /// into every `ResultRecord.version` created by that batch. Failed
+    /// commits do not advance it.
+    pub next_commit_ordinal: u64,
     /// Whether the tick/task budget was reported exhausted.
     pub budget_exhausted: bool,
     /// Whether the host requested cancellation (consumed by T02 CT13).
@@ -814,6 +821,7 @@ impl Default for Control {
             selected: None,
             next_enqueue_ordinal: 0,
             next_diagnostic_ordinal: 0,
+            next_commit_ordinal: 0,
             budget_exhausted: false,
             cancel_requested: false,
         }
@@ -1095,9 +1103,19 @@ impl CompilerBus {
     }
 
     /// Intern a name.
+    ///
+    /// The trusted Host/checked entry point applies the same revision rule as
+    /// a committed `Name` body: `Names` bumps exactly once when the intern
+    /// table grows. A duplicate lookup returns the existing ID and does not
+    /// bump.
     pub fn intern_name(&mut self, bytes: &[u8]) -> Result<NameId, crate::intern::InternError> {
         let limits = self.limits();
-        self.intern.intern(bytes, &limits)
+        let before = self.intern.len();
+        let id = self.intern.intern(bytes, &limits)?;
+        if self.intern.len() > before {
+            self.store_versions.bump(StoreId::Names);
+        }
+        Ok(id)
     }
 
     /// Allocate a source record, enforcing the source-byte and total bounds.

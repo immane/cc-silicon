@@ -17,14 +17,14 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, ConstRecord, EffectMask,
-    FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord, MacroRecord,
-    NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind,
-    ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind,
-    TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
+    ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, CompilerPins, ConstRecord,
+    EffectMask, FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord,
+    MacroRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
+    ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind,
+    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
-use crate::diagnostic::{DiagnosticRecord, Severity};
+use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticRecord, Severity};
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
     HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId, PpTokenId,
@@ -445,13 +445,20 @@ fn push_wires(w: &mut Writer, bus: &CompilerBus) {
             }
             crate::task::Proposal::AppendRecords { task, batch } => {
                 w.u32(task.index());
-                // Draft bodies are owned by the records track (closed
-                // `RecordDraft` enum with no settled module path yet; the name
-                // is still unresolved in `task.rs`): only the frozen envelope
-                // (owner task + draft count) encodes here. The integrator
-                // appends per-draft bodies when the records track lands; wire
-                // tag 5 stays.
+                // `/41` D-12: encode every handle and every typed body in
+                // stored batch order (no sorting). The encoder does not
+                // validate the 1:1 handle/body count: a malformed mid-tick
+                // wire state is observable and must stay distinguishable;
+                // commit owns validation (`append.bodies-match-records`).
                 w.u64(batch.records.len() as u64);
+                for draft in &batch.records {
+                    w.str(draft.family.name());
+                    w.u32(draft.index.index());
+                }
+                w.u64(batch.bodies.len() as u64);
+                for body in &batch.bodies {
+                    push_g1_draft_body(w, body);
+                }
             }
             crate::task::Proposal::Progress { task, ordinal } => {
                 w.u32(task.index());
@@ -483,6 +490,92 @@ fn push_wires(w: &mut Writer, bus: &CompilerBus) {
             w.u32(id.index());
         }
         None => w.u8(0),
+    }
+}
+
+/// Encode one typed append body: frozen variant name plus the canonical body
+/// bytes of the existing per-record encoder.
+///
+/// The name order is [`crate::contract::G1_DRAFT_BODY_NAMES`], which matches
+/// [`crate::records::G1DraftBody`] declaration order. `Name` carries its raw
+/// spelling bytes; every other variant reuses its committed-record encoder so
+/// no second serialization format is introduced.
+fn push_g1_draft_body(w: &mut Writer, body: &crate::records::G1DraftBody) {
+    use crate::contract::G1_DRAFT_BODY_NAMES;
+    use crate::records::G1DraftBody;
+    match body {
+        G1DraftBody::Literal(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[0]);
+            w.raw(&encode_literal_record(record));
+        }
+        G1DraftBody::Const(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[1]);
+            w.raw(&encode_const(record));
+        }
+        G1DraftBody::Artifact(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[2]);
+            w.raw(&encode_artifact_record(record));
+        }
+        G1DraftBody::Token(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[3]);
+            w.raw(&encode_token(record));
+        }
+        G1DraftBody::Name { spelling } => {
+            w.str(G1_DRAFT_BODY_NAMES[4]);
+            w.bytes(spelling);
+        }
+        G1DraftBody::Node(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[5]);
+            w.raw(&encode_node(record));
+        }
+        G1DraftBody::Type(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[6]);
+            w.raw(&encode_type(record));
+        }
+        G1DraftBody::Symbol(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[7]);
+            w.raw(&encode_symbol(record));
+        }
+        G1DraftBody::Scope(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[8]);
+            w.raw(&encode_scope(record));
+        }
+        G1DraftBody::ScopeEvent(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[9]);
+            w.raw(&encode_scope_event(record));
+        }
+        G1DraftBody::Sem(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[10]);
+            w.raw(&encode_sem(record));
+        }
+        G1DraftBody::Function(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[11]);
+            w.raw(&encode_function(record));
+        }
+        G1DraftBody::Block(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[12]);
+            w.raw(&encode_block(record));
+        }
+        G1DraftBody::Value(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[13]);
+            w.raw(&encode_value(record));
+        }
+        G1DraftBody::Instruction(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[14]);
+            w.raw(&encode_instruction(record));
+        }
+        G1DraftBody::Span(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[15]);
+            w.raw(&encode_span_record(record));
+        }
+        G1DraftBody::PpToken(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[16]);
+            w.raw(&encode_pp_token(record));
+        }
+        G1DraftBody::Macro(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[17]);
+            w.raw(&encode_macro(record));
+        }
     }
 }
 
@@ -541,6 +634,9 @@ impl Snapshot {
         }
         w.u64(bus.control.next_enqueue_ordinal);
         w.u64(bus.control.next_diagnostic_ordinal);
+        // `/41` D-15: global successful-commit ordinal (OD-5), immediately
+        // after `next_diagnostic_ordinal` in `CONTROL_RECORD_FIELDS` order.
+        w.u64(bus.control.next_commit_ordinal);
         w.bool(bus.control.budget_exhausted);
         w.bool(bus.control.cancel_requested);
 
@@ -574,6 +670,11 @@ impl Snapshot {
         w.u64(bus.arenas.tasks.allocated() as u64);
         for (id, task) in bus.arenas.tasks.iter() {
             w.u32(id.index());
+            // `/41` D-15 / OD-8: encode the redundant `Task.id` field right
+            // after the arena key, then the remaining `TASK_RECORD_FIELDS`.
+            // The key stays the arena position; divergence is visible, not
+            // validated here.
+            w.u32(task.id.index());
             w.u16(task.kind.raw());
             w.u16(task.owner.index());
             w.u64(task.enqueue_ordinal);
@@ -950,24 +1051,41 @@ fn severity_name(severity: Severity) -> &'static str {
 }
 
 /// A compact per-tick trace record.
+///
+/// Field order is [`crate::contract::TRACE_RECORD_FIELDS`]. Lists stay in
+/// production order: apply order for `enqueued`/`completed`/`failed`/
+/// `appended`, and the `TaskId` order produced by commit for
+/// `waiting`/`rejoined`. No sorting or hash-map iteration happens here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TraceRecord {
     /// Tick.
     pub tick: u64,
+    /// Canonical digest of the pins that drove this tick (OD-7).
+    pub pins_digest: [u8; 32],
     /// Selected task.
     pub selected: Option<TaskId>,
-    /// Outcome tag.
+    /// Stable outcome name.
     pub outcome: &'static str,
-    /// Resolution tag.
+    /// Stable resolution name (`none` outside `executed`).
     pub resolution: &'static str,
+    /// Structured commit failure code (`commit_failed` only).
+    pub error: Option<DiagnosticCode>,
     /// Ready-queue length after the step.
     pub ready_len: u32,
-    /// Newly enqueued tasks.
-    pub enqueued: u32,
-    /// Completed tasks.
-    pub completed: u32,
-    /// Failed tasks.
-    pub failed: u32,
+    /// Newly enqueued tasks, in apply order.
+    pub enqueued: Vec<TaskId>,
+    /// Completed tasks and their result IDs, in apply order.
+    pub completed: Vec<(TaskId, ResultId)>,
+    /// Failed tasks and their diagnostic IDs, in apply order.
+    pub failed: Vec<(TaskId, DiagnosticId)>,
+    /// Tasks moved to waiting, in commit order.
+    pub waiting: Vec<TaskId>,
+    /// Waiting parents rejoined to ready, in commit order.
+    pub rejoined: Vec<TaskId>,
+    /// Materialized records, in apply order.
+    pub appended: Vec<RecordRef>,
+    /// Number of store patches committed.
+    pub patches: u32,
 }
 
 /// A deterministic tick-by-tick trace.
@@ -976,46 +1094,87 @@ pub struct Trace {
     records: Vec<TraceRecord>,
 }
 
+/// First differing trace record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TraceDivergence {
+    /// Zero-based record index.
+    pub index: usize,
+    /// Tick of the first differing record.
+    pub tick: u64,
+}
+
+/// Result of [`Trace::diff`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TraceDiff {
+    /// First divergence, or `None` when the traces are equal.
+    pub first_divergence: Option<TraceDivergence>,
+}
+
 impl Trace {
     /// An empty trace.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Record one propagation report.
-    pub fn record(&mut self, bus: &CompilerBus, report: &TickReport) {
-        let (outcome, resolution, enqueued, completed, failed) = match &report.outcome {
-            TickOutcome::Idle => ("idle", "none", 0, 0, 0),
-            TickOutcome::BudgetExhausted => ("budget_exhausted", "none", 0, 0, 0),
-            TickOutcome::Cancelled => ("cancelled", "none", 0, 0, 0),
+    /// Record one propagation report with the pins that drove the tick.
+    pub fn record(&mut self, bus: &CompilerBus, report: &TickReport, pins: &CompilerPins) {
+        let mut record = TraceRecord {
+            tick: report.tick,
+            pins_digest: pins_digest(pins),
+            selected: report.selected,
+            outcome: "idle",
+            resolution: "none",
+            error: None,
+            ready_len: bus.tasks.ready.len() as u32,
+            enqueued: Vec::new(),
+            completed: Vec::new(),
+            failed: Vec::new(),
+            waiting: Vec::new(),
+            rejoined: Vec::new(),
+            appended: Vec::new(),
+            patches: 0,
+        };
+        match &report.outcome {
+            TickOutcome::Idle => record.outcome = "idle",
+            TickOutcome::BudgetExhausted => record.outcome = "budget_exhausted",
+            TickOutcome::Cancelled => record.outcome = "cancelled",
             TickOutcome::Executed {
                 resolution, commit, ..
-            } => (
-                "executed",
-                resolution_name(*resolution),
-                commit.enqueued.len() as u32,
-                commit.completed.len() as u32,
-                commit.failed.len() as u32,
-            ),
-            TickOutcome::CommitFailed { .. } => ("commit_failed", "none", 0, 0, 1),
-            TickOutcome::Joined { readied, failed } => (
-                "joined",
-                "none",
-                0,
-                readied.len() as u32,
-                failed.len() as u32,
-            ),
-        };
-        self.records.push(TraceRecord {
-            tick: report.tick,
-            selected: report.selected,
-            outcome,
-            resolution,
-            ready_len: bus.tasks.ready.len() as u32,
-            enqueued,
-            completed,
-            failed,
-        });
+            } => {
+                record.outcome = "executed";
+                record.resolution = resolution_name(*resolution);
+                record.enqueued = commit.enqueued.clone();
+                record.completed = commit.completed.clone();
+                record.failed = commit.failed.clone();
+                record.waiting = commit.waiting.clone();
+                record.rejoined = commit.rejoined.clone();
+                record.appended = commit
+                    .appended
+                    .iter()
+                    .map(|(_task, reference)| *reference)
+                    .collect();
+                record.patches = commit.patches;
+            }
+            TickOutcome::CommitFailed {
+                task,
+                error,
+                diagnostic,
+            } => {
+                record.outcome = "commit_failed";
+                record.error = Some(error.code());
+                // The commit path records a diagnostic ID only when capacity
+                // allowed one; the failed entry carries the actual ID.
+                if let Some(diagnostic) = diagnostic {
+                    record.failed.push((*task, *diagnostic));
+                }
+            }
+            TickOutcome::Joined { readied, failed } => {
+                record.outcome = "joined";
+                record.rejoined = readied.clone();
+                record.failed = failed.clone();
+            }
+        }
+        self.records.push(record);
     }
 
     /// Number of recorded ticks.
@@ -1033,28 +1192,342 @@ impl Trace {
         &self.records
     }
 
-    /// Canonical bytes.
+    /// Canonical bytes: contract version, record count, records in
+    /// [`crate::contract::TRACE_RECORD_FIELDS`] order.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut w = Writer::new();
         w.str(crate::contract::CONTRACT_VERSION);
         w.u64(self.records.len() as u64);
         for record in &self.records {
-            w.u64(record.tick);
-            match record.selected {
-                Some(id) => {
-                    w.u8(1);
-                    w.u32(id.index());
-                }
-                None => w.u8(0),
-            }
-            w.str(record.outcome);
-            w.str(record.resolution);
-            w.u32(record.ready_len);
-            w.u32(record.enqueued);
-            w.u32(record.completed);
-            w.u32(record.failed);
+            push_trace_record(&mut w, record);
         }
         w.finish()
+    }
+
+    /// Decode canonical trace bytes.
+    ///
+    /// Every reservation is bounded by the remaining input; a count prefix is
+    /// never trusted on its own. Unknown outcome/resolution/diagnostic-group
+    /// names and unknown tags are structured [`CodecError`] values.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+        let mut r = Reader::new(bytes);
+        let version = r.string()?;
+        check_trace_version(&version)?;
+        let count = read_count(&mut r, MIN_TRACE_RECORD_BYTES)?;
+        let mut records = Vec::with_capacity(count);
+        for _ in 0..count {
+            records.push(read_trace_record(&mut r)?);
+        }
+        r.finish()?;
+        Ok(Self { records })
+    }
+
+    /// First record whose canonical fields differ, comparing in tick order.
+    pub fn diff(&self, other: &Trace) -> TraceDiff {
+        for (index, (left, right)) in self.records.iter().zip(other.records.iter()).enumerate() {
+            if left != right {
+                return TraceDiff {
+                    first_divergence: Some(TraceDivergence {
+                        index,
+                        tick: left.tick,
+                    }),
+                };
+            }
+        }
+        if self.records.len() != other.records.len() {
+            let index = self.records.len().min(other.records.len());
+            let tick = self
+                .records
+                .get(index)
+                .or_else(|| other.records.get(index))
+                .map(|record| record.tick)
+                .unwrap_or(0);
+            return TraceDiff {
+                first_divergence: Some(TraceDivergence { index, tick }),
+            };
+        }
+        TraceDiff {
+            first_divergence: None,
+        }
+    }
+
+    /// SHA-256 of the canonical bytes.
+    pub fn hash(&self) -> [u8; 32] {
+        sha256(&self.to_bytes())
+    }
+}
+
+/// Smallest canonical trace record: every fixed field plus six empty list
+/// length prefixes.
+const MIN_TRACE_RECORD_BYTES: usize = 8 + 32 + 1 + 8 + 8 + 1 + 4 + 6 * 8 + 4;
+
+fn check_trace_version(version: &str) -> Result<(), CodecError> {
+    if version == crate::contract::CONTRACT_VERSION {
+        Ok(())
+    } else {
+        Err(CodecError::Unsupported(
+            "unsupported trace contract version",
+        ))
+    }
+}
+
+fn push_task_id(w: &mut Writer, id: TaskId) {
+    w.u32(id.index());
+}
+
+fn push_trace_record(w: &mut Writer, record: &TraceRecord) {
+    w.u64(record.tick);
+    w.raw(&record.pins_digest);
+    match record.selected {
+        Some(id) => {
+            w.u8(1);
+            push_task_id(w, id);
+        }
+        None => w.u8(0),
+    }
+    w.str(record.outcome);
+    w.str(record.resolution);
+    match record.error {
+        Some(code) => {
+            w.u8(1);
+            w.str(code.group.name());
+            w.u16(code.code);
+        }
+        None => w.u8(0),
+    }
+    w.u32(record.ready_len);
+    w.u64(record.enqueued.len() as u64);
+    for id in &record.enqueued {
+        push_task_id(w, *id);
+    }
+    w.u64(record.completed.len() as u64);
+    for (task, result) in &record.completed {
+        push_task_id(w, *task);
+        w.u32(result.index());
+    }
+    w.u64(record.failed.len() as u64);
+    for (task, diagnostic) in &record.failed {
+        push_task_id(w, *task);
+        w.u32(diagnostic.index());
+    }
+    w.u64(record.waiting.len() as u64);
+    for id in &record.waiting {
+        push_task_id(w, *id);
+    }
+    w.u64(record.rejoined.len() as u64);
+    for id in &record.rejoined {
+        push_task_id(w, *id);
+    }
+    w.u64(record.appended.len() as u64);
+    for reference in &record.appended {
+        push_record_ref(w, *reference);
+    }
+    w.u32(record.patches);
+}
+
+/// Read a `u64` vector length and reject it unless `unit`-byte elements fit
+/// the remaining input. This bounds every reservation by actual input size.
+fn read_count(r: &mut Reader<'_>, unit: usize) -> Result<usize, CodecError> {
+    let count = usize::try_from(r.u64()?).map_err(|_| CodecError::Truncated)?;
+    if unit != 0 && count > r.remaining() / unit {
+        return Err(CodecError::Truncated);
+    }
+    Ok(count)
+}
+
+fn read_task_ids(r: &mut Reader<'_>) -> Result<Vec<TaskId>, CodecError> {
+    let len = read_count(r, 4)?;
+    let mut ids = Vec::with_capacity(len);
+    for _ in 0..len {
+        ids.push(TaskId::from_index(r.u32()?));
+    }
+    Ok(ids)
+}
+
+fn read_trace_record(r: &mut Reader<'_>) -> Result<TraceRecord, CodecError> {
+    let tick = r.u64()?;
+    let pins_digest: [u8; 32] = r.raw(32)?.try_into().map_err(|_| CodecError::Truncated)?;
+    let selected = match r.u8()? {
+        0 => None,
+        1 => Some(TaskId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let outcome = trace_outcome_name(&r.string()?)?;
+    let resolution = trace_resolution_name(&r.string()?)?;
+    let error = match r.u8()? {
+        0 => None,
+        1 => {
+            let group = diag_group_from_name(&r.string()?)?;
+            Some(DiagnosticCode::new(group, r.u16()?))
+        }
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let ready_len = r.u32()?;
+    let enqueued = read_task_ids(r)?;
+    let completed = {
+        let len = read_count(r, 8)?;
+        let mut entries = Vec::with_capacity(len);
+        for _ in 0..len {
+            entries.push((TaskId::from_index(r.u32()?), ResultId::from_index(r.u32()?)));
+        }
+        entries
+    };
+    let failed = {
+        let len = read_count(r, 8)?;
+        let mut entries = Vec::with_capacity(len);
+        for _ in 0..len {
+            entries.push((
+                TaskId::from_index(r.u32()?),
+                DiagnosticId::from_index(r.u32()?),
+            ));
+        }
+        entries
+    };
+    let waiting = read_task_ids(r)?;
+    let rejoined = read_task_ids(r)?;
+    let appended = {
+        let len = read_count(r, 5)?;
+        let mut references = Vec::with_capacity(len);
+        for _ in 0..len {
+            references.push(decode_record_ref(r.raw(5)?)?);
+        }
+        references
+    };
+    let patches = r.u32()?;
+    Ok(TraceRecord {
+        tick,
+        pins_digest,
+        selected,
+        outcome,
+        resolution,
+        error,
+        ready_len,
+        enqueued,
+        completed,
+        failed,
+        waiting,
+        rejoined,
+        appended,
+        patches,
+    })
+}
+
+fn trace_outcome_name(name: &str) -> Result<&'static str, CodecError> {
+    match name {
+        "idle" => Ok("idle"),
+        "budget_exhausted" => Ok("budget_exhausted"),
+        "cancelled" => Ok("cancelled"),
+        "executed" => Ok("executed"),
+        "commit_failed" => Ok("commit_failed"),
+        "joined" => Ok("joined"),
+        _ => Err(CodecError::Unsupported("unknown trace outcome name")),
+    }
+}
+
+fn trace_resolution_name(name: &str) -> Result<&'static str, CodecError> {
+    match name {
+        "none" => Ok("none"),
+        "noop" => Ok("noop"),
+        "unsupported" => Ok("unsupported"),
+        "registered" => Ok("registered"),
+        "unregistered" => Ok("unregistered"),
+        _ => Err(CodecError::Unsupported("unknown trace resolution name")),
+    }
+}
+
+fn diag_group_from_name(name: &str) -> Result<DiagGroup, CodecError> {
+    match name {
+        "protocol" => Ok(DiagGroup::Protocol),
+        "arena" => Ok(DiagGroup::Arena),
+        "config" => Ok(DiagGroup::Config),
+        "target" => Ok(DiagGroup::Target),
+        "manifest" => Ok(DiagGroup::Manifest),
+        "task" => Ok(DiagGroup::Task),
+        "semantic" => Ok(DiagGroup::Semantic),
+        "unsupported" => Ok(DiagGroup::Unsupported),
+        "internal" => Ok(DiagGroup::Internal),
+        _ => Err(CodecError::Unsupported("unknown diagnostic group name")),
+    }
+}
+
+/// Canonical digest of the frozen external inputs for one tick.
+///
+/// Field order is [`crate::contract::PIN_RECORD_FIELDS`]: booleans, host
+/// response count, then each response's request index and bytes. Host-supplied
+/// response order is preserved (it is input identity, not a sorted set).
+pub fn pins_digest(pins: &CompilerPins) -> [u8; 32] {
+    let mut w = Writer::new();
+    w.u8(u8::from(pins.start_job));
+    w.u8(u8::from(pins.cancel));
+    w.u8(u8::from(pins.tick_budget_reached));
+    w.u64(pins.host_responses.len() as u64);
+    for response in &pins.host_responses {
+        w.u32(response.request.index());
+        w.bytes(&response.bytes);
+    }
+    sha256(&w.finish())
+}
+
+/// Host-owned replay envelope (not a bus record).
+///
+/// `/41` replay is recorded-input re-execution: the Host retains the exact
+/// pins and source/config inputs, while this envelope records the contract
+/// identity, initial fingerprint, per-tick pin digests, and final trace hash.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplayEvidence {
+    /// Contract version the run executed under.
+    pub contract_version: String,
+    /// Contract artifact hash the run executed under.
+    pub contract_hash: String,
+    /// Canonical configuration bytes ([`encode_config`]).
+    pub config: Vec<u8>,
+    /// Snapshot hash of the initial bus state.
+    pub initial_snapshot_hash: [u8; 32],
+    /// One pin digest per tick, in tick order.
+    pub pins_digests: Vec<[u8; 32]>,
+    /// Hash of the final trace.
+    pub trace_hash: [u8; 32],
+}
+
+impl ReplayEvidence {
+    /// Canonical bytes, in field declaration order.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.str(&self.contract_version);
+        w.str(&self.contract_hash);
+        w.bytes(&self.config);
+        w.raw(&self.initial_snapshot_hash);
+        w.u64(self.pins_digests.len() as u64);
+        for digest in &self.pins_digests {
+            w.raw(digest);
+        }
+        w.raw(&self.trace_hash);
+        w.finish()
+    }
+
+    /// Decode canonical envelope bytes with bounded reservations.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+        let mut r = Reader::new(bytes);
+        let contract_version = r.string()?;
+        let contract_hash = r.string()?;
+        let config = r.bytes()?;
+        let initial_snapshot_hash: [u8; 32] =
+            r.raw(32)?.try_into().map_err(|_| CodecError::Truncated)?;
+        let count = read_count(&mut r, 32)?;
+        let mut pins_digests = Vec::with_capacity(count);
+        for _ in 0..count {
+            pins_digests.push(r.raw(32)?.try_into().map_err(|_| CodecError::Truncated)?);
+        }
+        let trace_hash: [u8; 32] = r.raw(32)?.try_into().map_err(|_| CodecError::Truncated)?;
+        r.finish()?;
+        Ok(Self {
+            contract_version,
+            contract_hash,
+            config,
+            initial_snapshot_hash,
+            pins_digests,
+            trace_hash,
+        })
     }
 
     /// SHA-256 of the canonical bytes.

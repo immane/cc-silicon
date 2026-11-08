@@ -1441,6 +1441,11 @@ fn check_store_owner_allowlist(manifest: &ChipManifest) -> Result<(), ManifestEr
 /// `0..STAGE_COUNT`; what each stage *means* beyond this order, and the
 /// rows for every other kind, are a later co-freeze — this table grows
 /// wave by wave, never by silent default.
+///
+/// This table is the scheduler authority (`/41` OD-1): the routing shell keys
+/// selection on [`stage_of`]. The ordinals are stage-queue ordinals, not the
+/// [`crate::bus::Stage`] workflow labels stored in `control.stage`; that field
+/// is a reporting label only and selection never consults it.
 pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONTROL_NOOP, 0),
     (TaskKind::CONTROL_UNSUPPORTED, 0),
@@ -1513,15 +1518,56 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::CONSTANT_CONST_FOLD, 2),
 ];
 
-/// Look up the frozen stage ordinal for a task kind.
-pub const fn stage_of(kind: TaskKind) -> Option<u8> {
+/// [`STAGE_ASSIGNMENT`] re-keyed by raw kind code and sorted for lookup.
+///
+/// `STAGE_ASSIGNMENT` stays the single declaration authority (and keeps its
+/// frozen row order for hashing). This compile-time view only makes the
+/// scheduler's hot-path lookup `O(log rows)` instead of a linear scan. The
+/// `stage_assignment_rows_agree` test re-derives every row through
+/// [`stage_of`], so a table edit that this view does not reflect fails.
+const STAGE_ASSIGNMENT_BY_RAW: [(u16, u8); STAGE_ASSIGNMENT.len()] = {
+    let mut sorted = [(0u16, 0u8); STAGE_ASSIGNMENT.len()];
     let mut index = 0;
     while index < STAGE_ASSIGNMENT.len() {
-        // `TaskKind` has no const equality; raw codes are stable and frozen.
-        if STAGE_ASSIGNMENT[index].0.raw() == kind.raw() {
-            return Some(STAGE_ASSIGNMENT[index].1);
-        }
+        sorted[index] = (STAGE_ASSIGNMENT[index].0.raw(), STAGE_ASSIGNMENT[index].1);
         index += 1;
+    }
+    // Insertion sort by raw kind; the declaration table is ordered by pipeline
+    // wave, not by the kind encoding.
+    let mut outer = 1;
+    while outer < sorted.len() {
+        let entry = sorted[outer];
+        let mut inner = outer;
+        while inner > 0 && sorted[inner - 1].0 > entry.0 {
+            sorted[inner] = sorted[inner - 1];
+            inner -= 1;
+        }
+        sorted[inner] = entry;
+        outer += 1;
+    }
+    sorted
+};
+
+/// Look up the frozen stage ordinal for a task kind.
+///
+/// Binary search over the compile-time raw-kind view of [`STAGE_ASSIGNMENT`];
+/// the table remains the single declaration authority. `None` means the kind
+/// has no declared stage and is not schedulable as an assigned stage.
+pub const fn stage_of(kind: TaskKind) -> Option<u8> {
+    let raw = kind.raw();
+    let mut low = 0;
+    let mut high = STAGE_ASSIGNMENT_BY_RAW.len();
+    while low < high {
+        let mid = low + (high - low) / 2;
+        let (candidate, stage) = STAGE_ASSIGNMENT_BY_RAW[mid];
+        if candidate == raw {
+            return Some(stage);
+        }
+        if candidate < raw {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
     }
     None
 }
@@ -1656,5 +1702,47 @@ impl ManifestRegistry {
     /// Whether the registry is empty.
     pub fn is_empty(&self) -> bool {
         self.manifests.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{stage_of, STAGE_ASSIGNMENT};
+    use crate::limits::STAGE_COUNT;
+    use crate::task::{TaskGroup, TaskKind};
+
+    #[test]
+    fn stage_assignment_rows_agree() {
+        assert!(!STAGE_ASSIGNMENT.is_empty());
+        for &(kind, declared) in STAGE_ASSIGNMENT {
+            assert_eq!(
+                stage_of(kind),
+                Some(declared),
+                "stage_of drift for kind {}",
+                kind.raw()
+            );
+            assert!(
+                (declared as usize) < STAGE_COUNT,
+                "kind {} declares out-of-range stage {declared}",
+                kind.raw()
+            );
+        }
+        let mut raws: Vec<u16> = STAGE_ASSIGNMENT
+            .iter()
+            .map(|(kind, _)| kind.raw())
+            .collect();
+        let rows = raws.len();
+        raws.sort_unstable();
+        raws.dedup();
+        assert_eq!(raws.len(), rows, "duplicate kind rows in STAGE_ASSIGNMENT");
+    }
+
+    #[test]
+    fn stage_of_unassigned_kind_is_none() {
+        assert_eq!(stage_of(TaskKind::new(TaskGroup::LEX, 24).unwrap()), None);
+        assert_eq!(
+            stage_of(TaskKind::new(TaskGroup::CONTROL, 15).unwrap()),
+            None
+        );
     }
 }

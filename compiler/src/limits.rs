@@ -242,8 +242,9 @@ pub enum LimitError {
     /// The per-tick dispatch quota is zero; at least one dispatch per tick
     /// is required.
     ///
-    /// A limit-configuration violation (rejected by [`Limits::try_new`]),
-    /// never a runtime dispatch failure.
+    /// `Limits::try_new` rejects this configuration, and `/41` also makes it
+    /// a runtime fail-closed error at `propagate` (no dispatch, no commit,
+    /// no state mutation) rather than silently clamping to one.
     InvalidInflightQuota {
         /// The rejected value.
         value: u32,

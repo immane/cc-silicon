@@ -3,9 +3,9 @@
 //
 // This shell carries no language logic. It reads the routing table from the
 // bus (so routing is semantic input and replay cannot diverge from it), selects
-// at most one ready task per tick by the frozen order (phase priority, enqueue
-// ordinal, TaskId), routes it, and commits the resulting proposal through the
-// shared commit path:
+// at most one ready task per tick by the frozen stage-first order
+// `(stage priority, group/phase priority, enqueue ordinal, TaskId)`, routes it,
+// and commits the resulting proposal through the shared commit path:
 //
 //   * a foundation no-op task terminates successfully;
 //   * an unregistered or explicitly unsupported task fails with a structured
@@ -25,14 +25,36 @@ use crate::bus::{CompilerBus, CompilerPins, JobState, TaggedProposal, TickMetric
 use crate::commit::{commit_proposals, CommitError, CommitReport};
 use crate::diagnostic::DiagnosticDraft;
 use crate::ids::{ChipId, DiagnosticId, TaskId};
+use crate::limits::{LimitError, STAGE_COUNT};
+use crate::manifest::stage_of;
 use crate::task::{Proposal, ResultValue, TaskKind, TaskState};
 
 /// Chip ID reserved for the routing shell itself. It is never assigned to a
 /// real worker and only appears in trace/proposal metadata.
 pub const ROUTING_SHELL_CHIP: ChipId = ChipId(u16::MAX - 1);
 
-/// Deterministic scheduling priority of a task kind: control first, then each
-/// pipeline group in declaration order.
+/// Deterministic scheduler stage priority of a task kind.
+///
+/// Assigned kinds use their [`stage_of`] ordinal. Unassigned kinds get
+/// `STAGE_COUNT as u8`, a sentinel that sorts after every assigned stage
+/// (declared ordinals are `0..STAGE_COUNT`), so selection stays total.
+/// Dispatch still fails an unassigned kind explicitly through the
+/// unregistered/unsupported path; it is never silently scheduled as stage 0.
+///
+/// `control.stage` is a reporting label and is not this key. The
+/// [`crate::bus::Stage`] workflow enum (`Init`..`Done`) and the `stage_of`
+/// ordinals are distinct vocabularies; no mapping between them is derived
+/// here.
+pub const fn stage_priority(kind: TaskKind) -> u8 {
+    match stage_of(kind) {
+        Some(stage) => stage,
+        None => STAGE_COUNT as u8,
+    }
+}
+
+/// Secondary deterministic scheduling priority of a task kind: the task-group
+/// ordinal. Stage priority is primary; within one stage this orders pipeline
+/// work by group declaration order.
 pub const fn phase_priority(kind: TaskKind) -> u16 {
     kind.group().raw() as u16
 }
@@ -209,20 +231,24 @@ impl RoutingShell {
         Self
     }
 
-    /// Select the next ready task, if any, by the frozen order.
+    /// Select the next ready task, if any, by the frozen stage-first order.
     pub fn select(&self, bus: &CompilerBus) -> Option<TaskId> {
         self.select_batch(bus, u32::MAX).into_iter().next()
     }
 
-    /// Select up to `quota` ready tasks by the frozen order
-    /// (phase priority, enqueue ordinal, TaskId).
+    /// Select up to `quota` ready tasks by the frozen stage-first order
+    /// `(stage priority, group/phase priority, enqueue ordinal, TaskId)`.
+    ///
+    /// `stage priority` comes from [`stage_priority`] (with
+    /// [`crate::manifest::STAGE_ASSIGNMENT`] as the authority); `phase
+    /// priority` is the task-group ordinal and is the secondary key.
+    /// `control.stage` is a reporting label and is never consulted here.
     ///
     /// Deterministic: eligible keys are collected and sorted, never
-    /// hash-iterated. Stage-ordinal keying applies once stage assignment
-    /// lands (T01); the current key is the frozen T01 §4 triple.
+    /// hash-iterated.
     pub fn select_batch(&self, bus: &CompilerBus, quota: u32) -> Vec<TaskId> {
         let tick = bus.control.tick;
-        let mut eligible: Vec<(u16, u64, u32, TaskId)> = Vec::new();
+        let mut eligible: Vec<(u8, u16, u64, TaskId)> = Vec::new();
         for &id in &bus.tasks.ready {
             let Ok(task) = bus.arenas.tasks.get(id) else {
                 continue;
@@ -230,7 +256,7 @@ impl RoutingShell {
             if task.state != TaskState::Ready || task.ready_tick > tick {
                 continue;
             }
-            let key = task.schedule_key(phase_priority(task.kind));
+            let key = task.schedule_key(stage_priority(task.kind), phase_priority(task.kind));
             eligible.push((key.0, key.1, key.2, id));
         }
         eligible.sort_unstable();
@@ -242,14 +268,18 @@ impl RoutingShell {
             .collect()
     }
 
-    /// The per-tick dispatch quota (`max_inflight_per_tick`).
+    /// The per-tick dispatch quota (`max_inflight_per_tick`), returned verbatim.
     ///
-    /// The configured value is at least 1 under `Limits::try_new`; a legacy
-    /// struct-literal zero is clamped defensively (never a panic, never zero
-    /// dispatch). Quota `> 1` paths are implemented per Group A but flagged
-    /// for T13 fixtures (T13 H6-M matrix, VF02/VF03/VF04/VF13 pending).
+    /// `Limits::try_new`/`Limits::validate` reject zero;
+    /// `CompilerBus::new`/`CompilerConfig::new` are trusted integration
+    /// boundaries and do not validate. A zero value therefore fails closed in
+    /// [`Self::propagate`] with `LimitError::InvalidInflightQuota`; it is never
+    /// clamped to one.
+    ///
+    /// Quota `> 1` paths are implemented per Group A but flagged for T13
+    /// fixtures (T13 H6-M matrix, VF02/VF03/VF04/VF13 pending).
     pub fn dispatch_quota(bus: &CompilerBus) -> u32 {
-        bus.limits().max_inflight_per_tick.max(1)
+        bus.limits().max_inflight_per_tick
     }
 
     /// Resolve a task kind using the routing table stored in the bus.
@@ -270,9 +300,12 @@ impl RoutingShell {
 
     /// Run one propagation step.
     ///
-    /// Cancel takes precedence over the tick budget: a cancel tick is handled
-    /// once pre-selection with no dispatch and no commit. Quota-1 behavior is
-    /// unchanged from `/5` (one ordered atomic commit, single-task recovery).
+    /// A zero dispatch quota is a typed [`CommitError::Limit`] fail-closed
+    /// error (`InvalidInflightQuota`), checked before selection: no dispatch,
+    /// no commit, no state mutation. Cancel takes precedence over the tick
+    /// budget: a cancel tick is handled once pre-selection with no dispatch and
+    /// no commit. Quota-1 behavior is unchanged from `/5` (one ordered atomic
+    /// commit, single-task recovery).
     pub fn propagate(&self, bus: &mut CompilerBus) -> Result<TickReport, CommitError> {
         self.propagate_inner(bus, None)
     }
@@ -303,6 +336,16 @@ impl RoutingShell {
         bus: &mut CompilerBus,
         handler: Option<&TickHandler<'_>>,
     ) -> Result<TickReport, CommitError> {
+        // D-14/OD-4: a zero quota is a typed fail-closed configuration error,
+        // never a clamp to one. Checked before selection and every mutation
+        // below, so an invalid trusted-boundary config dispatches nothing,
+        // commits nothing, and leaves the bus unchanged.
+        let quota = Self::dispatch_quota(bus);
+        if quota == 0 {
+            return Err(CommitError::Limit(LimitError::InvalidInflightQuota {
+                value: 0,
+            }));
+        }
         let tick = bus.control.tick;
         bus.control.selected = None;
         bus.tasks.active = None;
@@ -337,7 +380,6 @@ impl RoutingShell {
                 outcome: TickOutcome::BudgetExhausted,
             });
         }
-        let quota = Self::dispatch_quota(bus);
         let batch = self.select_batch(bus, quota);
         if batch.is_empty() {
             // `/9` PCR-03: idle ticks still drain await-all joins. Without

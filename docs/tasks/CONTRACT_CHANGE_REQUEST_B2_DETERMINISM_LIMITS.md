@@ -4,12 +4,12 @@
 |---|---|
 | **ID** | `B2-00` |
 | **Title** | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence |
-| **Date** | 2026-11-07 |
-| **Author** | B2-00 subagent (draft prepared for the T01 integrator and the affected owners; **not** a reviewer, owner, or integrator sign-off) |
-| **Status** | **DRAFT — shared-interface change request only. NOT accepted, NOT frozen, authorizes NO edit.** `/39` remains current. This document changes no source, test, contract, Cargo, `mod.rs`, ledger, or other report. |
-| **Baseline contract** | `t01-c01-c06/39` — `07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24` (`compiler/contracts/CONTRACT_VERSION`; `compiler/src/contract.rs:38-44`) |
-| **Proposed artifact** | `t01-c01-c06/40` for the mandatory minimal package; `t01-c01-c06/41` for the deferred replay/restore package. The exact next version and recomputed hash are integrator-owned and are **not computed here**. |
-| **Baseline revision** | `wave4-development` / `430ae29` (the dispatch-ledger baseline) |
+| **Date** | Submitted 2026-11-07; accepted 2026-11-09 |
+| **Author** | B2-00 subagent (draft prepared for the T01 integrator and the affected owners; acceptance recorded by the T01 integrator) |
+| **Status** | **ACCEPTED 2026-11-09 — mandatory package frozen as `t01-c01-c06/41`; deferred restore package is `/43`.** `/40` was allocated to B2-01 (M1 A3 closure). The original draft text below is preserved; the version remap and accepted decisions are recorded immediately after the version note. |
+| **Baseline contract** | `t01-c01-c06/40` — `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14` (`compiler/contracts/CONTRACT_VERSION`) |
+| **Proposed artifact** | `t01-c01-c06/41` for the mandatory minimal package; `t01-c01-c06/43` for the deferred replay/restore package (after B2-02 `/42` tagged constants). The exact hash is recomputed at integration. |
+| **Baseline revision** | `wave4-development` / `58428ac` |
 | **Scope** | Compiler application foundation (`compiler/`, crate `cc-silicon-compiler`). Root `cc-silicon` framework, SFL core, target values, and chip logic are unchanged. |
 | **Related** | [T01](T01_COMPILER_CONTRACT.md) §§3–4, §7.1 C01/C05; [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) D1–D8; [M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) §6.2.1/§10.5; [A23](../reviews/dispatch/A23_DETERMINISM_REVIEW.md); [A02](../reviews/dispatch/A02_CONTRACT_FOUNDATION.md); [A16](../reviews/dispatch/A16_CONTROL_PROTOCOL_REQUIREMENTS.md); [A17](../reviews/dispatch/A17_VERIFICATION_REQUIREMENTS.md); [Guardrails](COMPILER_DEVELOPMENT_GUARDRAILS.md) §3; [Dispatch Ledger](DISPATCH_LEDGER.md) §3A/§3C |
 | **Write scope of this task** | This file only. |
@@ -22,9 +22,38 @@ and the dispatch ledger; it was not re-run. The compiler remains incomplete and
 no target/ABI/torture claim is made.
 
 **Version note.** The Guardrails §3.4 template still names `t01-c01-c06/5` as
-"today". The actual current frozen artifact is `t01-c01-c06/39`
-(`CONTRACT_VERSION`; A02-F08 records the documentation drift). This CCR targets
-the actual current artifact `/39` and proposes `/40`/`/41`.
+"today". The current artifact at acceptance is `t01-c01-c06/40`
+(`CONTRACT_VERSION`). This CCR originally proposed `/40`/`/41`; because B2-01
+took `/40` for the M1 A3 closure, the mandatory B2-00 package is now `/41` and
+the deferred restore package is `/43` (B2-02 tagged constants owns `/42`).
+
+## Accepted version remap and decisions (T01 integrator, 2026-11-09)
+
+| Original draft label | Accepted label |
+|---|---|
+| Mandatory package `/40` | **`/41`** |
+| Deferred restore/projection package `/41` | **`/43`** |
+| `B2-40-01..10` inventory items | **`B2-41-01..10`** (mandatory) |
+| `B2-41-01..05` inventory items | **`B2-43-01..05`** (deferred) |
+
+Accepted defaults for the open decisions (all implementation now targets `/41`):
+
+| ID | Accepted decision |
+|---|---|
+| OD-1 | Stage-first selection key `(stage, group/phase, enqueue ordinal, TaskId)`; `STAGE_ASSIGNMENT` is the scheduler authority; T01 §4 is amended. |
+| OD-2 | Full canonical append handles and bodies in the snapshot; names for family/body variants; stored order preserved. |
+| OD-3 | `stage_queue_bound` is a validated, hashed, snapshotted **reserved** bound in `/41`; per-stage enforcement is deferred to `/43`. |
+| OD-4 | Remove the zero-quota clamp; `propagate` returns `CommitError::Limit(LimitError::InvalidInflightQuota { value: 0 })` with no dispatch and no commit. |
+| OD-5 | `ResultRecord.version` is a 1-based global commit ordinal stored in `Control.next_commit_ordinal`; failed commits do not advance it. |
+| OD-6 | `/41` replay is **recorded-input re-execution**, not bus restoration; full restore is `/43`. |
+| OD-7 | `TraceRecord` carries a canonical `pins_digest`; the exact pins stay in the Host replay envelope. |
+| OD-8 | Encode the redundant `Task.id` field in the snapshot and test divergence; do not remove the field. |
+| OD-9 | One mandatory `/41` package for all D-12..D-15 minimal items; restore/projection stays `/43`. |
+| OD-10 | D8 quota>1 commit order stays out of `/41`; it is `/43` work. |
+
+Acceptance is a decision record only; implementation and test evidence are
+recorded by the `/41` integration run. The original draft's `/40` wording below
+is preserved as history and must be read through this remap.
 
 ---
 
@@ -982,31 +1011,66 @@ historical (the artifact is `/39` today). The successor inventory items are:
 
 | Authority | Name / role | Date | Decision |
 |---|---|---|---|
-| T01 integrator | **PENDING** | — | — |
-| C05/snapshot owner | **PENDING** | — | — |
-| T02/routing owner | **PENDING** | — | — |
-| T13/VF13 owner (`/41`) | **PENDING** | — | — |
-| User (if contract direction is required) | **PENDING** | — | — |
+| T01 integrator | **T01 integrator (master dispatcher, user-authorized)** | 2026-11-09 | **ACCEPTED** mandatory `/41` with OD-1..OD-10 defaults; version remap recorded above |
+| C05/snapshot owner | T01 integrator acting for C05 | 2026-11-09 | **ACCEPTED** full append bodies, trace decoder/diff, `Task.id`, pin digest |
+| T02/routing owner | T01 integrator acting for T02 | 2026-11-09 | **ACCEPTED** stage-first selection and zero-quota fail-closed |
+| T13/VF13 owner (`/43`) | T13 track | 2026-11-09 | **DEFERRED** to `/43` with restore/projection |
+| User | User instruction to proceed as master dispatcher | 2026-11-09 | **AUTHORIZED** the `/41` dispatch and freeze work |
 
-**No edit may occur until this table is filled with a real who/when decision.**
-This CCR is only the request.
+**Acceptance is filled with a real who/when decision (2026-11-09).** The
+original "no edit before acceptance" gate is satisfied.
+
+### 11.4 Post-acceptance implementation evidence (2026-11-09)
+
+The mandatory package was implemented as `t01-c01-c06/41` (hash
+`500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966`):
+
+- **D-12**: `snapshot.rs` encodes every append handle and body in stored
+  order; `contract.rs` freezes `G1_DRAFT_BODY_NAMES`, `APPEND_BATCH_FIELDS`,
+  and `APPEND_BODY_STORE_NAMES`.
+- **D-13**: stage-first `(stage, phase, enqueue, TaskId)` selection;
+  `STAGE_ASSIGNMENT` is authoritative; `stage_of` is a bounded binary search;
+  zero quota returns `CommitError::Limit(LimitError::InvalidInflightQuota)`
+  before selection or mutation.
+- **D-14**: macros count toward `max_records_total`; typed append bodies bump
+  the owning store once per successful batch; `Names` bumps only on new names;
+  `ResultRecord.version` is a 1-based global commit ordinal
+  (`Control.next_commit_ordinal`); `stage_queue_bound` is explicitly reserved.
+- **D-15**: `TraceRecord` carries `pins_digest`, canonical ID lists, and the
+  commit error; `Trace::from_bytes`/`diff` provide bounded round-trip and
+  first divergence; `Task.id` is encoded; `ReplayEvidence` is a Host-owned
+  envelope. Replay is recorded-input re-execution, not restoration.
+
+Tests: `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, `c03_task` 48,
+`c08_gate1` 22, `c11_lex` 11, `freeze` 15, `c20_ppscan` 8,
+`h04_candidate` 18; full compiler suite 723 tests / 50 suites; root 21,
+torture 73, chip-lint 16; formatting clean. Compiler clippy remains red
+only in the D-04 parse drafts (137 pre-existing diagnostics, none in changed
+files). Three candidate runs were byte-identical and emitted `/41` with
+`value=05`.
+
+Deferred to `/43`: full `Snapshot::from_bytes`/restore/continue, VF13
+semantic/scheduler projections, quota>1 dispatch/commit order, per-stage
+queues/bounds, `StorePatch` materialization/tombstone liveness, and full pin
+bytes in bus records. D-09 tagged constants remain B2-02 `/42`. No target,
+probe, torture, or full-M1 acceptance claim is made.
 
 ---
 
 ## 12. Open decisions
 
-| ID | Decision | Recommended | Alternatives | Authority |
+| ID | Decision | Accepted | Alternatives (preserved) | Authority |
 |---|---|---|---|---|
 | **OD-1** | D-13 selection key | Stage-first `(stage, group, enqueue, TaskId)`; amend T01 §4; `STAGE_ASSIGNMENT` authoritative | Keep group-first; amend M1 D5/ADR-0002/T02/M1 proposal; document stage table as worker-layer only | T01 integrator + T02 + M1 owner |
 | **OD-2** | D-12 body encoding | Full canonical bodies, names for handle family/body variant, stored order; encode malformed length mismatch as-is | Body hash; numeric body tags; validate in encoder | T01/C05 |
-| **OD-3** | D-14 `stage_queue_bound` | Reserve the field in `/40`; enforce via stage queues/projection in `/41`; split the rule | Implement projected per-stage counts now | T01 integrator |
+| **OD-3** | D-14 `stage_queue_bound` | Reserve the field in `/41`; enforce via stage queues/projection in `/43`; split the rule | Implement projected per-stage counts now | T01 integrator |
 | **OD-4** | D-14 zero quota | Remove clamp; typed fail-closed at `propagate`; validated entry points + `try_new` production path | Make `new` fallible; panic; keep clamp | T01/routing |
 | **OD-5** | D-14 `ResultRecord.version` | 1-based global commit ordinal (`Control.next_commit_ordinal`) | `control.tick`; remove the field | T01/commit |
-| **OD-6** | D-15 snapshot meaning | `/40` fingerprint + recorded-input replay; full restore `/41` | Move full restore into `/40`; keep the current overclaim | T01/C05 + T13 |
+| **OD-6** | D-15 snapshot meaning | `/41` fingerprint + recorded-input replay; full restore `/43` | Move full restore into `/41`; keep the current overclaim | T01/C05 + T13 |
 | **OD-7** | D-15 pins | Digest in `TraceRecord`; exact pins in Host envelope | `TickRecord.pins_digest`; full pin bytes in bus | T01/C05 |
-| **OD-8** | D-15 `Task.id` | Encode `task.id` in `/40` and test divergence | Remove the redundant field; leave omitted | T01/C05 |
-| **OD-9** | Freeze granularity | One `/40` for all mandatory items; `/41` deferred | Split `/40` into smaller freezes (higher coordination cost) | T01 integrator |
-| **OD-10** | D8 commit order | Keep out of D-13; freeze with quota>1 in `/41` | Add `dispatch_ordinal` now | T02/T01/T13 |
+| **OD-8** | D-15 `Task.id` | Encode `task.id` in `/41` and test divergence | Remove the redundant field; leave omitted | T01/C05 |
+| **OD-9** | Freeze granularity | One `/41` for all mandatory items; `/43` deferred | Split `/41` into smaller freezes (higher coordination cost) | T01 integrator |
+| **OD-10** | D8 commit order | Keep out of D-13; freeze with quota>1 in `/43` | Add `dispatch_ordinal` now | T02/T01/T13 |
 
 ---
 

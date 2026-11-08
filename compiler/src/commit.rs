@@ -225,18 +225,21 @@ pub enum CommitError {
         /// Observed count (kept lossless).
         count: usize,
     },
-    /// A per-stage queue bound would be exceeded; nothing committed.
+    /// A ready-queue bound would be exceeded; nothing committed.
     ///
     /// The commit-path reject-before-apply backpressure signal: the
     /// no-mutation pre-apply pass computed
     /// `checked_add(queue_len, new_tasks + progress_reinserts + join_reinserts)`
-    /// against `stage_queue_bound[stage]`. A second *owner group* naming the
-    /// same field is never this error; that is the registration-time
+    /// against the enforced quota-1 bound `max_queue_len`. `stage` is a
+    /// reporting label only; `stage_queue_bound` is a validated, hashed,
+    /// snapshotted reserved bound, not enforced until per-stage queues land
+    /// (deferred to `/43`). A second *owner group* naming the same field is
+    /// never this error; that is the registration-time
     /// `ManifestError::StoreOwnerViolation`.
     BackpressureCapacity {
-        /// Stage ordinal whose queue bound was hit.
+        /// Reporting label for the stage whose check produced this failure.
         stage: usize,
-        /// Configured per-stage bound.
+        /// Enforced queue bound (`max_queue_len` at quota 1).
         limit: u32,
         /// Queue length that would result (saturating).
         requested: u32,
@@ -1172,27 +1175,10 @@ pub fn commit_proposals(
                 // `/9` PCR-07: record typed-append fields for the
                 // cross-mechanism conflict check below.
                 for body in &batch.bodies {
-                    let field = match body {
-                        G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
-                        G1DraftBody::Const(_) => (StoreId::Constants, "records"),
-                        G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
-                        G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
-                        G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
-                        G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
-                        G1DraftBody::Type(_) => (StoreId::Types, "records"),
-                        G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
-                        G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
-                        G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
-                        G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
-                        G1DraftBody::Function(_) => (StoreId::Ir, "functions"),
-                        G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
-                        G1DraftBody::Value(_) => (StoreId::Ir, "values"),
-                        G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
-                        G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
-                        G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
-                        G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
-                    };
-                    append_fields.entry(tagged.task).or_default().insert(field);
+                    append_fields
+                        .entry(tagged.task)
+                        .or_default()
+                        .insert(append_store_field(body));
                 }
             }
             Proposal::Progress {
@@ -1422,11 +1408,12 @@ pub fn commit_proposals(
             new_macros,
         },
     )?;
-    // Per-stage backpressure projection with real reinsert counts: the single
-    // ready queue stands in for one stage queue and the legacy
-    // `max_queue_len` for `stage_queue_bound[stage]` until `stage_queues`
-    // land. Subsumed by the `Limit::Queue` check above while the projection
-    // holds; the per-stage loop replaces this call site then.
+    // Queue backpressure with real reinsert counts. The single ready queue
+    // is bounded by the enforced quota-1 bound, `max_queue_len`;
+    // `Limits::stage_queue_bound` is a validated/hashed/snapshotted reserved
+    // bound, not enforced until per-stage queues land (deferred to `/43`).
+    // Subsumed by the `Limit::Queue` check above while the single queue is
+    // the projection; the per-stage loop replaces this call site then.
     let join_reinserts = join_readied.len() as u32;
     check_backpressure_capacity(
         bus.tasks.ready.len() as u32,
@@ -1438,6 +1425,11 @@ pub fn commit_proposals(
     )?;
 
     // ---- Apply pass (infallible appends) --------------------------------
+    // 1-based global commit ordinal for this batch. It is stamped into every
+    // `ResultRecord.version` the batch creates and committed to the control
+    // register only on the final success path, so a failed preflight/commit
+    // consumes no ordinal.
+    let commit_ordinal = bus.control.next_commit_ordinal + 1;
     let mut report = CommitReport {
         patches,
         ..Default::default()
@@ -1457,7 +1449,7 @@ pub fn commit_proposals(
                     task: *task,
                     kind,
                     value: value.clone(),
-                    version: 0,
+                    version: commit_ordinal,
                     consumed: false,
                 });
                 set_task_state(bus, *task, TaskState::Completed(result));
@@ -1496,6 +1488,13 @@ pub fn commit_proposals(
                 // append in batch order, so committed IDs are deterministic
                 // and match the preflight prediction table exactly.
                 for body in &batch.bodies {
+                    // Every applied body mutates its owning store; one bump
+                    // per successful batch (the set deduplicates repeated
+                    // families). `Name` is insert-conditional on actual
+                    // intern growth, so it is handled in its own arm.
+                    if !matches!(body, G1DraftBody::Name { .. }) {
+                        touched_stores.insert(append_store(body));
+                    }
                     match body {
                         G1DraftBody::Literal(record) => {
                             let id = bus.arenas.literals.push(record.clone());
@@ -1644,9 +1643,16 @@ pub fn commit_proposals(
                             // Preflighted exactly (same order, same table
                             // state): infallible here. Limits are immutable
                             // mid-batch, so capacity reserved above holds.
+                            // `Names` bumps iff the intern table actually
+                            // grew: a duplicate lookup returns the existing
+                            // ID without changing the store revision.
                             let limits = bus.limits();
+                            let before = bus.intern.len();
                             match bus.intern.intern(spelling, &limits) {
                                 Ok(id) => {
+                                    if bus.intern.len() > before {
+                                        touched_stores.insert(StoreId::Names);
+                                    }
                                     report.appended.push((*task, RecordRef::Name(id)));
                                 }
                                 Err(_) => {
@@ -1757,6 +1763,9 @@ pub fn commit_proposals(
         }
     }
 
+    // Final success path: no fallible operation remains, so the batch's
+    // ordinal is committed exactly once here.
+    bus.control.next_commit_ordinal = commit_ordinal;
     Ok(report)
 }
 
@@ -1780,12 +1789,46 @@ fn set_task_state(bus: &mut CompilerBus, task: TaskId, state: TaskState) {
     }
 }
 
+/// Owning store and declared append field for one typed draft body.
+///
+/// This is the single family→store/field mapping used by append
+/// authorization, the cross-mechanism conflict check, and the apply-pass
+/// store-version bump. Its variant order must track
+/// `contract::APPEND_BODY_STORE_NAMES` (the frozen hashed table).
+fn append_store_field(body: &G1DraftBody) -> (StoreId, &'static str) {
+    match body {
+        G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
+        G1DraftBody::Const(_) => (StoreId::Constants, "records"),
+        G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
+        G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
+        G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
+        G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
+        G1DraftBody::Type(_) => (StoreId::Types, "records"),
+        G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
+        G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
+        G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
+        G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
+        G1DraftBody::Function(_) => (StoreId::Ir, "functions"),
+        G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
+        G1DraftBody::Value(_) => (StoreId::Ir, "values"),
+        G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
+        G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
+        G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
+        G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
+    }
+}
+
+/// Owning store for one typed draft body.
+fn append_store(body: &G1DraftBody) -> StoreId {
+    append_store_field(body).0
+}
+
 /// Authorize a typed `AppendRecords` batch against the producing chip's
 /// registered manifest: registered chip, accepted task kind, declared write
 /// for every Gate 1 family appended, and a schema-declared store field.
 ///
-/// Family-to-store mapping is the frozen M1 seed (`literal` → `lex.literals`,
-/// `const` → `constants.records`). Version-guard checks do not apply to
+/// Family-to-store mapping is the single [`append_store_field`] table, frozen
+/// in `contract::APPEND_BODY_STORE_NAMES`. Version-guard checks do not apply to
 /// appends (fresh IDs, no replace target); per-arena and total capacity are
 /// preflighted by the caller.
 fn validate_append_authorization(
@@ -1805,26 +1848,7 @@ fn validate_append_authorization(
         });
     }
     for body in &batch.bodies {
-        let (store, field) = match body {
-            G1DraftBody::Literal(_) => (StoreId::Lex, "literals"),
-            G1DraftBody::Const(_) => (StoreId::Constants, "records"),
-            G1DraftBody::Artifact(_) => (StoreId::Artifacts, "fragments"),
-            G1DraftBody::Token(_) => (StoreId::Lex, "tokens"),
-            G1DraftBody::Name { .. } => (StoreId::Names, "entries"),
-            G1DraftBody::Node(_) => (StoreId::Parse, "nodes"),
-            G1DraftBody::Type(_) => (StoreId::Types, "records"),
-            G1DraftBody::Symbol(_) => (StoreId::Symbols, "symbols"),
-            G1DraftBody::Scope(_) => (StoreId::Symbols, "scopes"),
-            G1DraftBody::ScopeEvent(_) => (StoreId::Symbols, "scope_events"),
-            G1DraftBody::Sem(_) => (StoreId::Sem, "records"),
-            G1DraftBody::Function(_) => (StoreId::Ir, "functions"),
-            G1DraftBody::Block(_) => (StoreId::Ir, "blocks"),
-            G1DraftBody::Value(_) => (StoreId::Ir, "values"),
-            G1DraftBody::Instruction(_) => (StoreId::Ir, "instructions"),
-            G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
-            G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
-            G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
-        };
+        let (store, field) = append_store_field(body);
         if !manifest.declares_write(store, field) {
             return Err(CommitError::WriteNotDeclared {
                 chip,
@@ -2216,12 +2240,15 @@ pub fn resolve_continuation_ref(
 
 /// Pre-apply backpressure check (T02 H9.2): the no-mutation pass computes
 /// `checked_add(queue_len, new_tasks + progress_reinserts + join_reinserts)`
-/// against `stage_queue_bound[stage]`.
+/// against the enforced quota-1 queue bound, `Limits::max_queue_len`.
 ///
+/// `stage` is a reporting label only. `Limits::stage_queue_bound` is a
+/// validated, hashed, snapshotted **reserved** bound in `/41`; per-stage
+/// enforcement waits for the canonical per-stage queues (deferred to `/43`).
 /// All additions are checked (never a panic or silent drop). Overflow or a
 /// total above `bound` rejects the whole batch with
 /// [`CommitError::BackpressureCapacity`] before any mutation. The canonical
-/// `stage_queues` already exclude tasks the dispatcher removed this tick, so
+/// `stage_queues` will exclude tasks the dispatcher removed this tick, so
 /// callers must not subtract them again.
 pub fn check_backpressure_capacity(
     queue_len: u32,
@@ -2678,8 +2705,9 @@ impl NamePlan {
         if let Some(existing) = self.entries.get(&slot) {
             return Ok(*existing);
         }
-        let limits = bus.limits();
-        let id = bus.intern.intern(bytes, &limits)?;
+        // Intern through the checked entry point so a genuinely new name
+        // bumps `Names` exactly once on every interning path.
+        let id = bus.intern_name(bytes)?;
         self.entries.insert(slot, id);
         Ok(id)
     }
