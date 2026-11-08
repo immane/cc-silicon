@@ -3,24 +3,24 @@
 | Field | Value |
 |---|---|
 | Status | **Active dispatch record; not a contract freeze or completion claim** |
-| Updated | 2026-11-07 |
+| Updated | 2026-11-09 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/39` |
-| Branch / HEAD | `wave4-development` / `430ae29` |
-| Workspace note | Uncommitted user candidate files and freeze drafts are present and are not part of this dispatch batch |
+| Contract baseline | `t01-c01-c06/40` — hash `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14` |
+| Branch / HEAD | `wave4-development` / `58eda30` (`/40` integration in the worktree, uncommitted) |
+| Workspace note | The `/40` integration changes are uncommitted; no commit or push was performed |
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
-| Root package tests | **PASS**, 21 tests across 3 suites | Observed in this dispatch session |
-| Compiler package tests | **PASS**, 654 tests across 44 suites at the start; **682 tests across 49 suites after B1/B3** | Observed in this dispatch session; warnings remain from unregistered parse/lex drafts. The final run includes c40/c41/c42/c43/c44 and the updated c11 hex expectation. |
-| Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` and all three manifest-path checks after B1/B3 |
-| Root tests after B1/B3 | **PASS**, 21 tests | `cargo test --workspace` |
-| Torture package after B1/B3 | **PASS** | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
-| Chip-lint after B1-05 | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
-| Clippy | **FAIL in the current dirty workspace** | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings` fails with 137 errors, mostly dead-code/`vec_init_then_push` in uncommitted parse drafts. This is not a HEAD verdict; committed HEAD CI remains separately unverified. |
+| Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
+| Compiler package tests | **PASS**, **700 tests across 50 suites after `/40`** | Observed in the `/40` integration session; warnings remain from unregistered parse/lex drafts. The run includes the new `c43_a3` plus the updated `c14_se`/`c15_ir`/`c17_vf12`/`c19_vf01`/`h04_candidate`. |
+| Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
+| Root tests after `/40` | **PASS**, 21 tests | `cargo test --workspace --locked` |
+| Torture package after `/40` | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
+| Chip-lint after `/40` | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
+| Clippy | **FAIL in the current workspace (D-04, not a `/40` regression)** | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings` fails with **137 errors, all in the unregistered parse drafts** (`pa_stmt` 40, `pa_cast` 39, `pa_decl_spec` 30, `pa_ext_dispatch` 18, `pa_init` 15). Zero diagnostics point at any `/40` changed file. The count matches the prior baseline; the draft files were not modified by `/40`. |
 | Target probe | **NOT RUN / UNVERIFIED** | No ABI or execution claim |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
 
@@ -74,9 +74,9 @@ not duplicate A1 files or edit any shared source.
 | ID | Priority | Finding | Evidence | Disposition |
 |---|---|---|---|---|
 | D-01 | **P0** | Candidate accepts non-M1 operators/delimiters and misinterprets them: `return 2*3;` and `return 2-3;` both return 5; malformed `main(void]{...;)` is accepted. `PaTuChip` checks token kinds and only four spellings, not punctuator spellings. | A04 §1.2, §6.3; `pa_tu.rs:193-233` | **FIXED / VERIFIED** by B1-01 |
-| D-02 | **P0** | SE29 `FunctionDefinition` `SemRecord` is not dispatched by the candidate; VF06 checks only three node kinds. M1 A3 is not complete. | A05 §3.2 G3; `candidate.rs:252-289`, `vf_invariant.rs:180-184` | **CCR SUBMITTED** (B2-01); implementation waits on `/40` freeze |
+| D-02 | **P0** | SE29 `FunctionDefinition` `SemRecord` is not dispatched by the candidate; VF06 checks only three node kinds. M1 A3 is not complete. | A05 §3.2 G3; `candidate.rs:252-289`, `vf_invariant.rs:180-184` | **FIXED / VERIFIED by `/40`** — candidate dispatches SE29; VF06 checks four M1 kinds; T09 consumes the committed fact. Evidence: `c43_a3` 5/5, `c14_se` 16/16, `c15_ir` 13/13, `h04_candidate` 18/18, candidate `value=05` |
 | D-03 | **P0** | Candidate panics (exit 101) on non-UTF-8 argv; no structured driver error. | A10 §1.3 F-01; A24 L-01 | **FIXED / VERIFIED** by B1-02 |
-| D-04 | **P1** | Current dirty-tree clippy gate fails with 142 diagnostics from five declared parse drafts; four additional drafts are not compiled at all. | A13 §5-6 | Integrator freezes draft disposition |
+| D-04 | **P1** | Current clippy gate fails with 137 diagnostics from five declared parse drafts; four additional drafts are not compiled at all. `/40` changed files have zero diagnostics. | A13 §5-6; `/40` clippy run | Integrator freezes draft disposition (B-INT-00) |
 | D-05 | **P1** | Duplicate candidate local 27 / `ChipId(58)` across several drafts; PA15 has two implementations (`pa_init.rs`, `pa_expr_ext.rs`). | A04 §7; A13 §5 | A12/A13 ownership map |
 | D-06 | **P1** | All 65 chips use local `Worker`/`handle(&CompilerBus)`, not `RestrictedChip`/`ChipAdapter`; contract has two competing chip boundaries. | A02 F01 | Contract freeze decision |
 | D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | Target track, blocked |
@@ -115,7 +115,7 @@ ledger, or other reports.
 | Order | Scope | Output | State / session |
 |---|---|---|---|
 | B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order conflict, limit accounting, store versions, replay restore/diff. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **CCR SUBMITTED** — mandatory `/40`-class package + deferred replay/restore; decision pending |
-| B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **CCR SUBMITTED** — no new shared shapes; proposed `/40`; decision pending |
+| B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/40` (hash `c6961ac6…10c14`); `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05` |
 
 ## 3D. Stage A Exit Summary
 
@@ -126,9 +126,11 @@ triaged the critical path as follows.
 ### Confirmed critical path
 
 1. **Finish B1 safe fixes** (PA01 exact gate, candidate argv, docs, wiring guards).
-2. **Resolve B2 contract decisions** (determinism/limits/replay; M1 A3 SE29) and freeze
-   the smallest `/40` delta. D-12 (append snapshot bodies) and D-02 (SE29/VF06/IR) are
-   the highest-value correctness items.
+2. **B2 contract decisions.** B2-01 (M1 A3 SE29) is **accepted, implemented, and
+   verified as `/40`**. B2-00 (determinism/limits/replay) remains a submitted CCR
+   for `/41`; tagged constants (`ConstRecord.ty`, D-09) remain B2-02 for `/42`.
+   D-12 (append snapshot bodies) and D-09 (constant typing) are the next
+   highest-value correctness items.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
    D-20 (literal token kinds).
@@ -147,7 +149,7 @@ triaged the critical path as follows.
 | ID-IR-01 | Prefer A15's `InstructionRecord.successors` + `Branch`/`CondBranch` over A07's separate `CfgEdgeRecord`; keep the edge family only as a documented fallback. | Recommendation pending IR freeze |
 | ID-TARGET-01 | All concrete ABI/scalar values remain probe-gated. No target codegen or `-S`/`-c` from proposal values. | Existing accepted boundary |
 | ID-CHIP-01 | Do not add new chips until the Worker-vs-RestrictedChip template decision (A02 F01) is resolved; B1/B3 fixes may continue because they touch existing files. | Recommendation pending contract decision |
-| ID-VERSION-01 | Both B2 CCRs propose `/40`. Recommended sequence: `/40` = M1 A3 SE29 closure (no new shared shapes), `/41` = determinism/limits mandatory package, `/42` = tagged constants (`ConstRecord.ty`). Exact hash remains integrator-computed after owner acceptance. | Recommendation pending owner/T01 acceptance |
+| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen; no new shared shapes), `/41` = determinism/limits mandatory package (B2-00), `/42` = tagged constants (`ConstRecord.ty`, B2-02). `compiler/contracts/CONTRACT_VERSION` records the `/40` hash `c6961ac6…10c14`. | Accepted by T01 integrator |
 
 ### Stage B3 candidate queue (not dispatched)
 
@@ -157,14 +159,15 @@ triaged the critical path as follows.
 | B3-02 | Integer radix fix (octal/hex/decimal) + independent numeric tests | **COMPLETE / INTEGRATOR IMPLEMENTED** — worker hit capacity; integrator changed `lx_decode.rs`/`lx_classify.rs`, updated c11 hex expectation, added c44; c11 8/8, c44 3/3 |
 | B3-03 | Candidate driver PP orchestration for `#define`/`#undef`/`#include`/`#line`/`#pragma` | H04 include policy + T03/T02 co-freeze |
 | B3-04 | Canonical PA15 selection; allocate distinct parse IDs; park duplicate | Integrator ID/task-kind freeze |
-| B3-05 | `ConstRecord.ty` / tagged constant v2 | B2-00/B2-01 CCR + version bump |
+| B3-05 | `ConstRecord.ty` / tagged constant v2 | B2-02 CCR + `/42` version bump |
 | B3-06 | Diagnostic taxonomy migration | Separate diagnostic CCR |
 | B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | Accepted A24-SEC-01 design |
 | B3-08 | H07 probe-report classifier over synthetic assembly fixtures | H01 report schema frozen; no real probe claim |
 
-## 3E. B2 Decision Draft (not a freeze)
+## 3E. B2 Decision Record (B2-01 accepted; B2-00 still draft)
 
-Recommended answers to the CCR open questions, pending owner/T01 sign-off:
+B2-01 was **accepted on 2026-11-09** and implemented as `/40`; the B2-01 rows
+below are the accepted defaults. B2-00 remains a decision draft for `/41`.
 
 | CCR | Decision | Recommendation |
 |---|---|---|
@@ -191,6 +194,22 @@ Recommended answers to the CCR open questions, pending owner/T01 sign-off:
 | B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants |
 | B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/42+` |
 
+## 3F. `/40` Freeze Record (2026-11-09)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/40` |
+| Hash | `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14` |
+| Authority | B2-01 accepted by the T01 integrator; R1 auto-bump; `/39` preserved as history |
+| Contract text | [T01 §7.1 `/40` amendment](T01_COMPILER_CONTRACT.md); [CCR B2-01](CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md) §11 |
+| New normative rules | `vf06.function-signature-fact`, `ir.function-consumes-committed-sem`, `ir.constant-result-type-from-sem` |
+| Shape impact | None: no new task kind, chip, stage, allowlist row, store, field, record family, `ResultValue`, or `Proposal`; allowlist remains 33 rows; `SemRecord` remains `{node, ty, category, effects}` |
+| Implementation | Candidate SE29 dispatch + registry switch; VF06 four-kind per-type table + unique `int(void)` signature projection; T09 consumes `SemRecord.ty` with node-keyed link and `symbol.ty` cross-check; interim IR constant/return type rule |
+| Tests | `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8, `c43_a3` 5, `h04_candidate` 18; `c17_vf12` 6 and `c19_vf01` 7 fixtures aligned to SE29; full compiler suite 700 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
+| Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/40)` and `interpret: value=05 negative=false` |
+| Explicit deferrals | D-09 (`ConstRecord.ty`/`ir.op-immediate-type`) to B2-02; O-7 SE29 reuse-hardening not in `/40`; B2-00 determinism/limits/replay to `/41` |
+| Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
+
 ## 4. Dispatch Rules for This Batch
 
 1. A worker may write only its report path; reports are English markdown.
@@ -206,8 +225,13 @@ Recommended answers to the CCR open questions, pending owner/T01 sign-off:
 
 ## 5. Review and Next Gate
 
-- Collect A1 reports, then A2 reports.
-- Classify each finding as fact, defect, proposal, or unverified.
-- Update the ownership map and produce the first Stage-B freeze package.
-- Start implementation only for packages whose readiness gates are satisfied.
-- Run package-specific `fmt`, `clippy`, and tests before any integration claim.
+- Stage A reports are collected and classified; B1 safe fixes and B3-01/B3-02 are
+  verified. B2-01 is accepted, implemented, and verified as `/40`.
+- **Next freeze train:** `/41` for B2-00 (D-12..D-15 determinism/limits/replay) and
+  `/42` for B2-02 (`ConstRecord.ty`/tagged constants, D-09). Each needs an explicit
+  integrator decision, implementation, dependent tests, and a recomputed hash.
+- **Next integration blockers:** B-INT-00 draft disposition (D-04/D-05; clippy is red
+  only in the parse drafts), canonical PA15 selection (B3-04), PP driver orchestration
+  (B3-03), and the H01 → H07 probe/attestation track (Part B remains fail-closed).
+- Start implementation only for packages whose readiness gates are satisfied, and run
+  package-specific `fmt`, tests, and attributed clippy before any integration claim.

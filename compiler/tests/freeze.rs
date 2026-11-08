@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/39");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/40");
 }
 
 #[test]
@@ -128,6 +128,9 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "ir.constant-no-refold",
         "ir.return-single-terminator",
         "ir.function-single-entry",
+        "vf06.function-signature-fact",
+        "ir.function-consumes-committed-sem",
+        "ir.constant-result-type-from-sem",
         "commit.ir-materialized",
         "pp.splice-exact-map",
         "pp.comment-m1-scope",

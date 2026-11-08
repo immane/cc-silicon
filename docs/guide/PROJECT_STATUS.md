@@ -1,6 +1,6 @@
 # Project Status
 
-Last checked against the repository state on 2026-11-07. When this page and
+Last checked against the repository state on 2026-11-09. When this page and
 the code disagree, the code wins; the links below are the places to
 re-verify. This page records observed state, not a new acceptance run.
 
@@ -9,8 +9,9 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/39`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/40`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
+| M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance and IR-4(b) are not claimed |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
 | AArch64 target values | **Unverified** | Identity frozen; probe never run; concrete values fail closed |
 | ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
@@ -21,13 +22,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/39`" means
+## What "frozen `/40`" means
 
-The frozen artifact is `t01-c01-c06/39`:
+The frozen artifact is `t01-c01-c06/40`:
 
 ```text
-version=t01-c01-c06/39
-hash=07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24
+version=t01-c01-c06/40
+hash=c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -54,15 +55,15 @@ target_verification=unverified
 
 ## Observed test inventory
 
-The following counts were observed during the 2026-11-07 dispatch audit. They
-are discovery/run observations from that audit, not a permanent promise; the
-source tree and `compiler/tests/` are authoritative and now include additional
-Stage B regression files.
+The following counts were observed during the 2026-11-09 `/40` integration
+run (and, for the non-compiler packages, the 2026-11-07 dispatch audit). They
+are discovery/run observations, not a permanent promise; the source tree and
+`compiler/tests/` are authoritative.
 
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | 654 tests listed at the audit; **682 tests across 49 suites passed after Stage B** (adds c40–c44 regression tests) |
+| Compiler | **700 tests across 50 suites passed** after `/40` (adds c43 and the `/40` VF06/T09/h04 cases) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -71,10 +72,11 @@ Stage B regression files.
 
 - No complete PP→LX→PA→TY→SE→CL→IR→target pipeline.
 - Integrated preprocessing/lexing is narrow: source macros/includes are not
-  orchestrated end-to-end, `#if` macro expansion has a known defect, and the
-  integrated lexer is M1-integer-only.
+  orchestrated end-to-end, and the integrated lexer is M1-integer-only.
 - Many parse/type/semantic/IR/verification catalog rows are absent; several
   parse drafts are registered nowhere or claim colliding IDs.
+- `ConstRecord.ty`/`ir.op-immediate-type` remain deferred (B2-02); M1 Part A
+  IR-4(b) must not be claimed at `/40`.
 - The ABI/target probe has never run; no concrete target value may drive
   codegen.
 - H05 isolated execution is absent; no untrusted binary may be run at scale.

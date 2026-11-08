@@ -871,6 +871,38 @@ New hashed rules `se.function-signature`,
 (`07f4eade…f224`); acceptance `compiler/tests/c39_sefunc.rs`
 (8 tests); item list in [SE_FUNC_SLICE.md](SE_FUNC_SLICE.md).
 
+`/40` amendment — B2-01 minimal M1 Part A A3 closure (2026-11-09;
+[B2-01](CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md) accepted by the T01
+integrator; R1 auto-bump; `/39` preserved as history): the candidate now
+dispatches `SeFuncChip` (SE29, chip 57, stage 4) after the SE return check
+and before VF06; the SE29 chip logic is unchanged from `/39` (no new kind,
+chip ID, stage, or allowlist row). VF06's checked set extends from three to
+four M1 kinds with a per-kind typed-fact table (`IntLiteral`, `BinaryAdd`,
+`Return`, `FunctionDefinition`); the `FunctionDefinition` fact expects the
+committed `int(void)` signature `TypeId`, and the TU must contain exactly
+one `FunctionDefinition` node. T09 consumes the committed
+`FunctionDefinition` `SemRecord.ty` as `FunctionRecord.signature` through
+the node-keyed link (`SemRecord.node == FunctionDefinition`), cross-checks
+the declarator-linked `symbol.ty`, and has no `symbol.ty` fallback. New
+hashed rules `vf06.function-signature-fact`,
+`ir.function-consumes-committed-sem`,
+`ir.constant-result-type-from-sem`; `vf06.checked-set-complete` retains its
+name (now covering the four M1 kinds) and
+`ir.constant-no-refold`/`ir.return-single-terminator`/`ir.function-single-entry`
+retain their names. No new task kind, chip, stage, allowlist row, store,
+field, record family, `ResultValue`, or `Proposal` is introduced; the
+allowlist remains 33 rows and `SemRecord` remains
+`{node, ty, category, effects}`. D-09 remains open: `ConstRecord.ty` and
+`ir.op-immediate-type` are deferred to B2-02, and M1 Part A IR-4(b) must
+not be claimed at `/40`. New artifact `t01-c01-c06/40`
+(`c6961ac6…10c14`), hash recorded in
+`compiler/contracts/CONTRACT_VERSION`; acceptance
+`compiler/tests/c14_se.rs` (16 tests), `c15_ir.rs` (13), `c43_a3.rs` (5),
+`h04_candidate.rs` (18), with the exact chain in `c43_a3` proving the
+4→5 `SemRecord` transition, the `Ack` verifier result, and the
+`FunctionRecord.signature` consumption. `/39` remains preserved as history.
+No target/probe/torture result is claimed by this amendment.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

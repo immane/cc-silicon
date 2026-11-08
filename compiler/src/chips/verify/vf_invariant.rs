@@ -1,17 +1,23 @@
 // ============================================================================
 // chips/verify/vf_invariant.rs — T13 VF06 typed-invariant verifier
-// (Wave 2 slice 5, `/14`)
+// (Wave 2 slice 5, `/14`; four-kind checked set at `/40`)
 //
 // Reads one committed TU node, walks the committed tree, and checks the M1
-// checked set (`IntLiteral`, `BinaryAdd`, `Return`): each needs exactly one
-// committed `SemRecord` with the canonical `int` type, `NonLvalue`, and
-// `EffectMask(0)`. Required-conversion completeness is M1-minimal (identity
-// needs no plan, so there is nothing to miss; non-identity conversions are
+// checked set (`IntLiteral`, `BinaryAdd`, `Return`, `FunctionDefinition`):
+// each needs exactly one committed `SemRecord` with `NonLvalue` and
+// `EffectMask(0)`. The three expression/statement kinds expect the canonical
+// `int` type; the function definition expects the unique committed M1
+// `int(void)` signature `TypeId` (`Vf06Input.signature`), which the
+// projection resolves mechanically from the committed `TypeKind::Function`
+// records. The TU must also contain exactly one `FunctionDefinition` node:
+// a verifier that skips the lowering consumer's node must not pass
+// vacuously. Required-conversion completeness is M1-minimal (identity needs
+// no plan, so there is nothing to miss; non-identity conversions are
 // chip-level `Unsupported` elsewhere, never VF06 failures). Completes `Ack`;
 // any gap fails loudly. Runs after committed `SemRecord`s, before T09.
 // ============================================================================
 
-use crate::bus::{EffectMask, NodeKind, ValueCategory};
+use crate::bus::{EffectMask, NodeKind, TypeKind, ValueCategory};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NodeId, RecordRef, TaskId};
@@ -29,6 +35,8 @@ pub struct Vf06Input {
     pub tu: NodeId,
     /// Canonical `int` type.
     pub int: crate::ids::TypeId,
+    /// The unique committed M1 `int(void)` signature `TypeId`.
+    pub signature: crate::ids::TypeId,
     /// Reachable nodes in pre-order (committed bodies).
     pub tree: Vec<(NodeId, crate::bus::NodeRecord)>,
     /// Committed `SemRecord`s.
@@ -95,6 +103,41 @@ pub fn project_vf06_input(
             "vf06 reads missing canonical int type",
         ));
     };
+    // The unique committed M1 `int(void)` signature, resolved mechanically
+    // from the committed `Types` (the shape was already checked by TY17 /
+    // SE29; VF06 only needs the `TypeId` to compare against the function
+    // fact). Zero function types is missing input; any non-M1 function shape
+    // is unsupported; duplicate M1 signatures are an ambiguous handoff.
+    let mut signature = None;
+    for (id, record) in bus.arenas.types.iter() {
+        if let TypeKind::Function {
+            result,
+            params,
+            prototype,
+            variadic,
+        } = &record.kind
+        {
+            if *result == int && params.is_empty() && *prototype && !*variadic {
+                if signature.is_some() {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        "vf06 reads duplicate int(void) signature types",
+                    ));
+                }
+                signature = Some(id);
+            } else {
+                return Err(DiagnosticDraft::unsupported(
+                    "vf06 of a non-M1 function signature: exactly `int(void)` required",
+                ));
+            }
+        }
+    }
+    let Some(signature) = signature else {
+        return Err(DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Task, 4),
+            "vf06 reads missing int(void) signature type",
+        ));
+    };
     // Pre-order walk over committed children (deterministic).
     let mut tree = Vec::new();
     let mut stack = vec![tu];
@@ -121,6 +164,7 @@ pub fn project_vf06_input(
         state: record.state.clone(),
         tu,
         int,
+        signature,
         tree,
         sems,
     })
@@ -177,14 +221,33 @@ impl Vf06Chip {
                 ),
             )];
         }
+        // The M1 TU owns exactly one function definition. VF05 remains the
+        // AST authority, but VF06 must fail closed here rather than pass
+        // vacuously when the node its lowering consumer needs is.
+        let function_definitions = input
+            .tree
+            .iter()
+            .filter(|(_, node)| node.kind == NodeKind::FunctionDefinition)
+            .count();
+        if function_definitions == 0 {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    "vf06: missing function definition",
+                ),
+            )];
+        }
+        if function_definitions > 1 {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("multiple function definitions outside M1"),
+            )];
+        }
         for (id, node) in &input.tree {
-            let checked = matches!(
-                node.kind,
-                NodeKind::IntLiteral | NodeKind::BinaryAdd | NodeKind::Return
-            );
-            if !checked {
+            let Some(expected) = expected_type(input, node.kind) else {
                 continue;
-            }
+            };
             let mut matches = input.sems.iter().filter(|sem| sem.node == *id);
             let Some(sem) = matches.next() else {
                 return vec![fail(
@@ -204,12 +267,17 @@ impl Vf06Chip {
                     ),
                 )];
             }
-            if sem.ty != input.int {
+            if sem.ty != expected {
+                let what = if node.kind == NodeKind::FunctionDefinition {
+                    "non-signature type"
+                } else {
+                    "non-int type"
+                };
                 return vec![fail(
                     input.task,
                     DiagnosticDraft::error(
                         DiagnosticCode::new(DiagGroup::Task, 4),
-                        format!("vf06: non-int type for node {}", id.index()),
+                        format!("vf06: {what} for node {}", id.index()),
                     ),
                 )];
             }
@@ -236,5 +304,18 @@ impl Vf06Chip {
             task: input.task,
             value: ResultValue::Ack,
         }]
+    }
+}
+
+/// Per-kind expected `SemRecord.ty` for the four-kind M1 checked set.
+///
+/// The expression/statement kinds keep the frozen `/14` canonical `int`
+/// requirement; the function definition expects the unique committed M1
+/// `int(void)` signature.
+fn expected_type(input: &Vf06Input, kind: NodeKind) -> Option<crate::ids::TypeId> {
+    match kind {
+        NodeKind::IntLiteral | NodeKind::BinaryAdd | NodeKind::Return => Some(input.int),
+        NodeKind::FunctionDefinition => Some(input.signature),
+        _ => None,
     }
 }

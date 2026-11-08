@@ -14,15 +14,15 @@
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins};
 use cc_silicon_compiler::chips::{
     handler_for, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip, PaTuChip,
-    SeBinChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf06Chip,
-    Vf12Chip, Worker, WorkerRegistry,
+    SeBinChip, SeFuncChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip,
+    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::ids::{ConstId, FunctionId, NodeId, RecordRef, TaskId, TokenId, ValueId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     is_vf12_slice_kind, stage_of, FieldPath, StoreSchema, IR_FUNCTION_CHIP, PA_TU_CHIP,
-    SE_BIN_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP,
-    TY_TYPE_CHIP, VF06_CHIP, VF12_CHIP,
+    SE_BIN_CHIP, SE_FUNC_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP,
+    TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::Snapshot;
@@ -40,7 +40,9 @@ fn new_bus() -> CompilerBus {
 }
 
 fn install_vf12(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::vf12_slice();
+    // The cumulative `/39` registry also carries the `/40` SE29 kind so the
+    // chain can commit the FunctionDefinition fact that VF06/T09 consume.
+    bus.kinds = TaskKindRegistry::se_function_slice();
     // No new record families: the VF12 slice reuses the PP-slice schema.
     bus.schema = StoreSchema::pp_slice();
     // The fold worker is registered (never driven directly here): SE binary
@@ -64,6 +66,7 @@ fn install_vf12(bus: &mut CompilerBus) {
         &SeLitChip,
         &SeBinChip,
         &SeRetChip,
+        &SeFuncChip,
         &Vf06Chip,
         &IrFunctionChip,
         &Vf12Chip,
@@ -133,6 +136,9 @@ fn install_vf12(bus: &mut CompilerBus) {
         .register(TaskKind::SEMANTIC_RETURN_STMT, SE_RET_CHIP, 4)
         .unwrap();
     bus.routing
+        .register(TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4)
+        .unwrap();
+    bus.routing
         .register(TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4)
         .unwrap();
     bus.routing
@@ -163,6 +169,7 @@ fn workers() -> WorkerRegistry {
     workers.register(SeLitChip).unwrap();
     workers.register(SeBinChip).unwrap();
     workers.register(SeRetChip).unwrap();
+    workers.register(SeFuncChip).unwrap();
     workers.register(Vf06Chip).unwrap();
     workers.register(IrFunctionChip).unwrap();
     workers.register(Vf12Chip).unwrap();
@@ -424,6 +431,19 @@ fn full_chain() -> Chain {
         Payload::from_refs(vec![RecordRef::Node(NodeId::from_index(5))]),
     );
     tick(&mut bus, &workers);
+    // SE29 commits the signature fact that VF06 and T09 consume (`/40`).
+    let funcdef = NodeId::from_index(1);
+    bootstrap(
+        &mut bus,
+        TaskKind::SEMANTIC_FUNCTION_DEF,
+        SE_FUNC_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(funcdef)]),
+    );
+    let report = tick(&mut bus, &workers);
+    match completed_value(&report, &bus) {
+        cc_silicon_compiler::task::ResultValue::Record(RecordRef::Sem(_)) => {}
+        other => panic!("expected function sem ref, got {other:?}"),
+    }
     // VF06 typed-invariant gate over the TU root.
     bootstrap(
         &mut bus,
@@ -431,9 +451,12 @@ fn full_chain() -> Chain {
         VF06_CHIP,
         Payload::from_refs(vec![RecordRef::Node(NodeId::from_index(0))]),
     );
-    tick(&mut bus, &workers);
+    let report = tick(&mut bus, &workers);
+    assert_eq!(
+        completed_value(&report, &bus),
+        cc_silicon_compiler::task::ResultValue::Ack
+    );
     // IR lowering of the function definition.
-    let funcdef = NodeId::from_index(1);
     bootstrap(
         &mut bus,
         TaskKind::IR_FUNCTION,

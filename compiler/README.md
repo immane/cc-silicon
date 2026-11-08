@@ -23,16 +23,17 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/39` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24` |
+| Contract version | `t01-c01-c06/40` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14` |
+| M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact. `ConstRecord.ty`/`ir.op-immediate-type` remain deferred (B2-02) |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/39
-hash=07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24
+version=t01-c01-c06/40
+hash=c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)

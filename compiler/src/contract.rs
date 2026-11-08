@@ -34,14 +34,16 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// the Wave 3 PA expr slice (`/35`), the Wave 3 PA recovery
 /// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`), and
 /// the Wave 3 VF14 evidence slice (`/38`), and the Wave 3 SE29
-/// function-definition slice (`/39`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/39";
+/// function-definition slice (`/39`), plus the M1 Part A A3 closure
+/// amendment (`/40`: SE29 candidate wiring, VF06 four-kind typed-fact
+/// set, T09 consumed committed function fact; D-09 stays deferred).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/40";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24";
+pub const CONTRACT_HASH: &str = "c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -238,6 +240,9 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf.evidence-never-pass-missing",
     "se.function-signature",
     "se.function-body-checked",
+    "vf06.function-signature-fact",
+    "ir.function-consumes-committed-sem",
+    "ir.constant-result-type-from-sem",
 ];
 
 /// The `TaskState` variant names, in encoding order.

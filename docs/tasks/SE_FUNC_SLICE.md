@@ -70,6 +70,15 @@ with no logic change beyond kind/chip-id/test-path repointing:
   already declared).
 - Hash rules: `se.function-signature`, `se.function-body-checked`.
 
+## 4.1 Post-freeze `/40` wiring note (2026-11-09)
+
+B2-01 ([CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md](CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md)) was accepted by the T01 integrator on 2026-11-09 with freeze target `t01-c01-c06/40`. This is a wiring/consumer amendment only; it does not change the frozen `/39` SE29 chip logic:
+
+- SE29 (`SeFuncChip`, chip 57, stage 4) keeps the `/39` kind, payload, result, `SemRecord {node, ty, category, effects}` shape, and rules (`se.function-signature`, `se.function-body-checked`).
+- The candidate now dispatches SE29 after the SE return check and before VF06.
+- VF06 checks the committed `FunctionDefinition` signature fact (four-kind checked set at `/40`), and T09 consumes that fact as the function signature through the node-keyed link, cross-checking `symbol.ty` with no fallback.
+- No chip logic change and no new registration row. Implementation evidence is recorded in `c14_se` (16), `c15_ir` (13), `c43_a3` (5), and `h04_candidate` (18); the frozen `/39` execution record in §6 is preserved unchanged.
+
 ## 5. Freeze items
 
 | # | Item | Acceptance |

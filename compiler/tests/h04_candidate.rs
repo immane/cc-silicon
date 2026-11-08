@@ -9,8 +9,9 @@
 // the frozen PP28 worker (golden bytes, determinism, `-o` file, `#error`
 // exit 1, evidence-flag clash exit 2). H04 `-D`/`-U` seeds the frozen macro
 // table in flag order (bare `-D` defaults to `1`, values expand, `-U`
-// undefines, last-wins; bad names/values fail closed with exit 2). This is
-// host tooling: no contract version is bumped and no frozen hash changes here.
+// undefines, last-wins; bad names/values fail closed with exit 2). The
+// evidence header carries the frozen contract version (`/40`); this file is
+// host tooling and asserts that header rather than pinning snapshot hashes.
 // ============================================================================
 
 use std::path::PathBuf;
@@ -153,7 +154,11 @@ fn candidate_models_m1_return_5() {
         .expect("candidate runs");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8 evidence");
-    assert!(stdout.contains("candidate evidence (t01-c01-c06/39)"));
+    assert!(stdout.contains("candidate evidence (t01-c01-c06/40)"));
+    assert!(
+        stdout.starts_with("candidate evidence (t01-c01-c06/40)\n"),
+        "evidence header names /40: {stdout}"
+    );
     assert!(stdout.contains("interpret: value=05 negative=false"));
     assert!(stdout.contains("snapshot: "));
     assert!(stdout.contains("trace: "));

@@ -144,6 +144,14 @@ gate opens. The preceding rows (preprocess through IR interpret) are Part A and
 are target-independent, **except the concrete target-value/layout clause of the
 Constant/layout row, which is Part B/probe-gated**.
 
+**VF06 wiring (`/40`, 2026-11-09).** VF06 is not an unwired stage: it is frozen
+at `/14` (`verification.typed_invariant`, stage 4, chip 15) and wired after the
+committed T07 `SemRecord`s and before T09 lowering. `/40` extends its checked M1
+set to four kinds (`IntLiteral`, `BinaryAdd`, `Return`, `FunctionDefinition`)
+with per-kind expected types; see [T13](T13_VERIFICATION_CHIPS.md) and
+[B2-01](CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md). This wiring/check state is a
+contract decision; no test result is claimed here.
+
 Non-goals: no optimization (T10) and no GNU/builtin handling (T12) are required
 for this fixture; their absence must be explicit, not a silent no-op.
 
@@ -162,9 +170,11 @@ front-end/IR chip implementations (§8). **All are NOT RUN.**
 |---|---|
 | A1 | Exactly one translation unit and one function definition `main`; no other definitions |
 | A2 | `main` has type `int (void)`; `(void)` means **no** parameters |
-| A3 | The returned operand is fully checked (value category, type `int`); no unchecked node reaches lowering. Every checked node — **including the `Return` node and the `FunctionDefinition` node** — has exactly one committed T07-owned `SemRecord`; the `FunctionDefinition` `SemRecord` carries the checked signature `TypeId`. T09 reads those committed `SemRecord`s without re-inferring. **T07 does not consume a T09-created `FunctionRecord`** (it is created in the later **ir** stage, so using it would be a temporal cycle); the **selected draft direction** is that there is **no** `FunctionContextId` (accepted subdecision, CDR rev 42; T07 rev 1 amended `CheckRequest` to `(NodeId, ScopeId)`), and a parse `ContinuationRecord` alone is not a proxy. The exact `SemRecord` field/carrier encoding (including the typed T09 link) remains an open T07/T01 `/6` co-freeze item (overall F bundle pending) |
+| A3 | The returned operand is fully checked (value category, type `int`); no unchecked node reaches lowering. Every checked node — **including the `Return` node and the `FunctionDefinition` node** — has exactly one committed T07-owned `SemRecord`; the `FunctionDefinition` `SemRecord` carries the checked signature `TypeId`. T09 reads those committed `SemRecord`s without re-inferring. **T07 does not consume a T09-created `FunctionRecord`** (it is created in the later **ir** stage, so using it would be a temporal cycle); the **selected draft direction** is that there is **no** `FunctionContextId` (accepted subdecision, CDR rev 42; T07 rev 1 amended `CheckRequest` to `(NodeId, ScopeId)`), and a parse `ContinuationRecord` alone is not a proxy. The exact `SemRecord` field/carrier encoding (including the typed T09 link) remains an open T07/T01 `/6` co-freeze item (overall F bundle pending). **M1 resolution (`/40`):** the field encoding is `{node, ty, category, effects}` and the T09 link is node-keyed (`SemRecord.node == FunctionDefinition`); the broader F bundle remains pending |
 | A4 | `2`, `3`, and `2+3` are `int`; no implicit conversion; no host width or host `sizeof` leakage |
 | A5 | Tokens and spans are in range and ordered; a single EOF; no fabricated macro provenance |
+
+**A3 `/40` closure note (2026-11-09; docs-only; accepted contract; implementation evidence recorded).** B2-01 (`/40`, accepted 2026-11-09) closes the `FunctionDefinition` fact path by contract: the candidate dispatches SE29, VF06 checks the four-kind M1 typed-fact set including the `FunctionDefinition` signature fact, and T09 consumes the committed `FunctionDefinition` `SemRecord.ty` as `FunctionRecord.signature` through the node-keyed M1 link `SemRecord.node == FunctionDefinition`, cross-checking the declarator-linked `symbol.ty` with no fallback. The `SemRecord` field encoding remains `{node, ty, category, effects}`. Implementation evidence was recorded on 2026-11-09 (`c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05`); the broader T07/CDR F bundle remains pending, and Part A is not accepted by this note.
 
 ### 3.2 IR invariants
 
@@ -186,6 +196,8 @@ M1 IR/CFG invariant checks are a **recorded gap, not a pass**.
 | IR-7 | No memory operations, calls, volatile/atomic, floating point, or aggregate copy appear; legal-falloff handling must not synthesize a spurious `0` return for the explicit-return case |
 | IR-8 | Function/block/value/instruction IDs are stable, in production order, never address-derived; no tombstones on the happy path |
 | IR-9 | **Non-SSA is legal; the verifier must not require or assume SSA form.** M1 IR is checked by the non-SSA invariants only; SSA-only checks (defs dominate uses, phi edge count/type, single definition in SSA form) apply only to IR explicitly in SSA form (T10/VF09), and a non-SSA function must not be reported as an SSA-form violation (T13 VF09 negative fixture). |
+
+**IR-4(b) `/40` note (2026-11-09; docs-only).** `ConstRecord.ty` and `ir.op-immediate-type` remain **deferred to B2-02 (D-09)** and **must not be claimed at `/40`**. The `/40` amendment adds only the interim `ir.constant-result-type-from-sem` rule; the documented immediate-type rule remains open, so M1 Part A IR-4(b) is not closed.
 
 M1 op table (**prospective `/6`; not frozen**): `Constant` (0 operands,
 `immediate` some, result some, non-terminator); `Add` (2 operands, result some,
@@ -593,3 +605,5 @@ listed in [compiler/README.md](../../compiler/README.md) and
 | 2026-10-05 | Rev 36: **VF06/H04–H05 wave-placement sync and `/6` gate-scoping correction** (docs-only; no acceptance change, no implementation, no freeze). §8 wave ordering now places **P7/P8 (H04/H05)** as the evidence/run host tasks (P7 gates Part A evidence; P8 gates the Part B run) and adds **VF06 typed-AST verification** to Wave 2 at its fixed M1 position (after committed T07 `SemRecord`s, before T09 lowering), matching [PARALLEL_EXECUTION.md](PARALLEL_EXECUTION.md). §8 scoping corrected so only the probe/substrate and Part B host gates (**P4/P5, P7, P8**) are stated not to gate the Part A symbolic contract's approval/freeze-readiness; **P2/P3 are that schema/wiring freeze work itself**, so the earlier "none of P2–P5" phrasing was over-broad. No gate value or acceptance criterion changes. | VF06/H04–H05/`/6` docs audit |
 | 2026-10-05 | Rev 37: **chip-ID audit follow-up** (docs-only; no acceptance change, no implementation, no freeze). §3.2 preamble now records that `VF07`–`VF11` are **out of the M1 T13 chip set** (T13 rev 8), so the `VF08`/`VF09` references in IR-4/IR-9 are **catalog checkers only** and the M1 IR/CFG invariant checks are a **recorded gap, not a pass** (mirrored in M1 vertical rev 34 §8). | Chip-ID audit (docs-only); T13 rev 8 |
 | 2026-10-06 | Rev 38: **H04 Part A driver present** (host tooling; no acceptance change, no freeze, no contract bump). The P7 status cell now records the Part A candidate driver (`compiler/src/bin/candidate.rs`, evidence `compiler/tests/h04_candidate.rs` 6 tests, doc [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md)): source-bytes M1 pipeline with snapshot/trace/interpret evidence, `-S`/`-c` fail-closed, invalid input diagnosed with exit 1. `-E`/`-I`/`-D`/`-U`/multi-source and target emission remain absent (Part B). §9 commands stay planned-illustrative until the H04 driver contract freezes. | H04 Part A implementation |
+| 2026-11-09 | Rev 39: **B2-01 `/40` A3 closure and D-09 deferral** (docs-only; accepted contract, implementation evidence pending; no test executed). §3.1 A3 records the `FunctionDefinition` fact path closed by `/40` (SE29 dispatch + VF06 four-kind check + T09 node-keyed consumption/cross-check) while keeping the frozen `SemRecord` field encoding; §3.2 IR-4(b) records `ConstRecord.ty`/`ir.op-immediate-type` deferred to B2-02 and not claimable at `/40`; §2 records VF06 as wired (frozen `/14`, checked set extended `/40`). No acceptance pass or implementation claim. | B2-01 documentation workstream |
+| 2026-11-09 | Rev 40: **`/40` implementation evidence recorded** (no contract change). The B2-01 A3 path is test-green: `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8, `c43_a3` 5, `h04_candidate` 18; the full compiler suite is 700 tests across 50 suites; the candidate emits `t01-c01-c06/40` and `value=05` deterministically. No target/probe/torture result, no full M1 acceptance, and no IR-4(b) claim. | B2-01 integration workstream |

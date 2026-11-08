@@ -2,11 +2,13 @@
 // bin/candidate.rs — H04 candidate command-line driver (Part A).
 //
 // Host-side orchestration only: it reads source bytes, drives the frozen
-// M1 worker pipeline from real tasks (PP01→PP02→PP03→PP04→LX→PA→TY→SE→
-// VF06/VF05→IR→VF12→VF01), and prints Part A evidence (snapshot hash,
-// trace hash, modeled constant). It performs no compilation itself, never
-// shells out to another C compiler, and refuses target emission (`-S`,
-// `-c`) while the target is unverified (fail-closed, Part B). Part B adds
+// M1 worker pipeline from real tasks (PP01→PP02→PP03→PP04→LX→PA→TY→
+// SE literal→SE binary→SE return→SE29 function fact→VF06/VF05→IR
+// (consuming the function fact)→VF12→VF01), and prints Part A evidence
+// (snapshot hash, trace hash, modeled constant). It performs no compilation
+// itself, never shells out to another C compiler, and refuses target
+// emission (`-S`, `-c`) while the target is unverified (fail-closed, Part B).
+// Part B adds
 // host-only `-E` preprocessed emission through the frozen PP28 worker
 // (no contract change, no version bump), and H04 `-D`/`-U` seeds the frozen
 // macro table in flag order before preprocessing (host-only, no contract
@@ -24,8 +26,8 @@ use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
     PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
     PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip,
-    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
-    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    SeFuncChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip,
+    Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -34,8 +36,9 @@ use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
     PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP,
-    PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
-    TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_LIT_CHIP, SE_RET_CHIP,
+    TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP,
+    VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -212,7 +215,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::pp_emit_slice();
+    bus.kinds = TaskKindRegistry::se_function_slice();
     bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
@@ -239,6 +242,7 @@ fn install(bus: &mut CompilerBus) {
         &SeLitChip,
         &SeBinChip,
         &SeRetChip,
+        &SeFuncChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -276,6 +280,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_LITERAL_EXPR, SE_LIT_CHIP, 4),
         (TaskKind::SEMANTIC_BINARY_EXPR, SE_BIN_CHIP, 4),
         (TaskKind::SEMANTIC_RETURN_STMT, SE_RET_CHIP, 4),
+        (TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -442,6 +447,9 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeRetChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeFuncChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -830,7 +838,27 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
             Payload::from_refs(vec![RecordRef::Node(node)]),
         )?;
     }
-    // Typed-invariant gate, lowering, symbolic model, store check.
+    // SE29 function-definition fact: exactly one M1 definition. The
+    // committed SemRecord is the signature fact IR lowering consumes below;
+    // the node is found once and threaded onward.
+    let funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
+    if funcdefs.len() != 1 {
+        return Err("expected exactly one function definition".to_string());
+    }
+    let funcdef = funcdefs[0];
+    match step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::SEMANTIC_FUNCTION_DEF,
+        SE_FUNC_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(funcdef)]),
+    )? {
+        ResultValue::Record(RecordRef::Sem(_)) => {}
+        other => return Err(format!("expected sem ref, got {other:?}")),
+    }
+    // Typed-invariant gate, lowering (consuming the SE29 fact), symbolic
+    // model, store check.
     step(
         &mut bus,
         &workers,
@@ -839,17 +867,13 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF06_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
-    let funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
-    if funcdefs.len() != 1 {
-        return Err("expected exactly one function definition".to_string());
-    }
     let function = match step(
         &mut bus,
         &workers,
         &mut trace,
         TaskKind::IR_FUNCTION,
         IR_FUNCTION_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(funcdefs[0])]),
+        Payload::from_refs(vec![RecordRef::Node(funcdef)]),
     )? {
         ResultValue::Record(RecordRef::Function(id)) => id,
         other => return Err(format!("expected function ref, got {other:?}")),

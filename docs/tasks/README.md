@@ -1,6 +1,6 @@
 # Silicon C Compiler: LLM Parallel-Task Master Plan
 
-Status: task design; there is no complete compiler and the GCC pass rate has not been measured. Partial PP/LX/PA/TY/SE/IR/VF worker slices and a candidate Part A evidence driver exist under the current `t01-c01-c06/39` artifact. This document does not promise that parallel code generation alone can reach 99%+.
+Status: task design; there is no complete compiler and the GCC pass rate has not been measured. Partial PP/LX/PA/TY/SE/IR/VF worker slices, a candidate Part A evidence driver, and the `/40` M1 A3 closure (SE29 dispatch, VF06 four-kind typed-fact set, T09 committed-fact consumption) exist under the current `t01-c01-c06/40` artifact. This document does not promise that parallel code generation alone can reach 99%+.
 
 ## 1. Goals and Boundaries
 
@@ -22,7 +22,7 @@ Required reading:
 - [Design blueprint](../design/ARCHITECTURAL_BLUEPRINT.md): design the bus, single responsibility, topology, and test bench first.
 - [Getting started](../design/GETTING_STARTED.md): the current framework API; do not assume that the new interfaces in the tasks already exist.
 - [Compiler development guardrails](COMPILER_DEVELOPMENT_GUARDRAILS.md): **accepted, policy-level and user-authorized** integrator contract supplement (2026-10-04), binding on new compiler-development work; it does **not** freeze the bus/schema and is **not** a contract acceptance — every pipeline/bus/schema mechanism it names remains PROPOSED and inert until the T01 integrator reconstitutes it in an accepted contract.
-- [ADR-0002: deterministic staged compiler pipelines](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md): **PROPOSED only**; it does not amend T01, does not change the current `t01-c01-c06/39` artifact, and authorizes no implementation. It proposes staged pipelines with bounded in-flight tasks while keeping quota 1 as the correctness baseline.
+- [ADR-0002: deterministic staged compiler pipelines](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md): **PROPOSED only**; it does not amend T01, does not change the current `t01-c01-c06/40` artifact, and authorizes no implementation. It proposes staged pipelines with bounded in-flight tasks while keeping quota 1 as the correctness baseline.
 
 **Priority**: approved semantic contract > frozen task interface > single-chip implementation. The CPU dynamic arena is an **approved application-scoped extension** to "fixed arrays / no heap" (see [ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) and T01); the framework's bus data remains fixed-layout / no-heap, while topology construction allocates and the default tick hot path does not (ADR-0001 §2). The extension is frozen in `compiler/` (C01–C06); it does not authorize C language chips or prove any compiler capability. The original design's descriptions that the compiler can guarantee no hidden state, automatic correctness, and automatic parallelism cannot be used as proof: the current trait does not enforce ZST, read/write permissions, or determinism.
 

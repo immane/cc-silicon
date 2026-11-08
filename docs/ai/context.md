@@ -1,35 +1,34 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/39` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/40`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/38` with `/39` implemented and test-green
-> but NOT yet fully verified or committed.
+> 2026-11-09 after accepting and implementing B2-01 as `/40` and running
+> the full compiler suite green (700 tests / 50 suites).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/38` (VF14 evidence-classify), hash
-  `f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83`.
-- In worktree, UNCOMMITTED: `/39` SE29 function-definition (T07
-  function-definition worker; delivered draft `se_function.rs` was
-  unwired — arbitrated to SEMANTIC local 21 + chip 57),
-  contract already bumped to `t01-c01-c06/39`, hash recomputed
-  (`07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24`).
-  `c39_sefunc` green (8 tests), but the final full-suite (§5) run
-  is still pending — run §5 fully, then commit as
-  `feat: add SE29 function slice as t01-c01-c06/39`.
-- Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
-  H04) is MERGED; `/20`–`/32` are committed locally,
-  UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
-- The M1 C frontend is closed end-to-end with a working PP pipeline:
-  normalize→splice→comment→scan→conditional→define→expand→directive→LX
-  (macros recorded + expanded incl. variadic + builtins; conditionals evaluated;
-  single-pass include implemented). `candidate` drives
-  source bytes to snapshot/trace/interpret evidence (H04 Part A).
+- Frozen artifact: `t01-c01-c06/40` (M1 Part A A3 closure), hash
+  `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14`.
+- Implemented and test-green at `/40`: candidate dispatches SE29; VF06
+  checks the four-kind typed-fact set (`IntLiteral`, `BinaryAdd`,
+  `Return`, `FunctionDefinition`); T09 consumes the committed
+  `FunctionDefinition` `SemRecord` with a `symbol.ty` cross-check and no
+  fallback. Evidence: `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8,
+  `c43_a3` 5, `h04_candidate` 18; direct candidate emits `/40` and
+  `value=05` with byte-identical repeated output.
+- Not done: B2-02 tagged constants (`ConstRecord.ty` /
+  `ir.op-immediate-type`, finding D-09), B2-00 determinism/limits/replay
+  (`/41`), H05 isolated execution, the Linux ABI probe / Part B target
+  codegen, and full M1 acceptance. No target execution or GCC pass rate
+  is claimed.
+- Branch: `initial-compiler-development`. Slices through `/39` are
+  committed; the `/40` integration is in the worktree and is NOT yet
+  committed or pushed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
-  integrate + verify + commit per slice, continue without stopping.
+  integrate + verify per slice, continue without stopping.
   Open threads in §6 are ordered next-up.
 
 ## 2. Slice history (each amends the version via the R1 auto-bump rule)
@@ -68,8 +67,9 @@
 | `/36` | PA recovery | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
 | `/37` | T08 const-branch | `constant_layout_init/fold_branch.rs` | `c37_const_branch` 10 |
 | `/38` | VF14 evidence-classify | `verify/vf_evidence.rs` | `c38_vf14` 10 |
-| `/39` | SE29 function-definition (UNCOMMITTED) | `semantic/se_function.rs` | `c39_sefunc` 8 |
-| — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
+| `/39` | SE29 function-definition | `semantic/se_function.rs` | `c39_sefunc` 8 |
+| `/40` | M1 Part A A3 closure (SE29 wiring + VF06 four-kind + T09 consumption) | `bin/candidate.rs`, `verify/vf_invariant.rs`, `ir_lower/ir_function.rs` | `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18 |
+| — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
 
@@ -164,8 +164,12 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/39` (run §5 first), then PP remainder in pipeline
-  order — then T04 LX
+- NEXT UP: commit `/40` when the user authorizes it (the full compiler
+  suite, root tests, fmt, torture, and chip-lint are green; compiler
+  clippy remains red only in the D-04 parse drafts). Then freeze `/41`
+  (B2-00 determinism/limits/replay) and `/42` (B2-02 tagged constants),
+  resolve B-INT-00 draft disposition, and continue the PP remainder in
+  pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells

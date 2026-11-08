@@ -824,7 +824,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/39");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/40");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -867,6 +867,9 @@ fn contract_hash_covers_gate1_section() {
         "vf.evidence-never-pass-missing",
         "se.function-signature",
         "se.function-body-checked",
+        "vf06.function-signature-fact",
+        "ir.function-consumes-committed-sem",
+        "ir.constant-result-type-from-sem",
     ] {
         assert!(NORMATIVE_RULES.contains(&rule), "missing rule `{rule}`");
     }
@@ -875,7 +878,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/39",
+        "t01-c01-c06/40",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",
@@ -886,6 +889,9 @@ fn contract_hash_covers_gate1_section() {
         "vf.evidence-never-pass-missing",
         "se.function-signature",
         "se.function-body-checked",
+        "vf06.function-signature-fact",
+        "ir.function-consumes-committed-sem",
+        "ir.constant-result-type-from-sem",
         "m1-append/1",
     ] {
         assert!(

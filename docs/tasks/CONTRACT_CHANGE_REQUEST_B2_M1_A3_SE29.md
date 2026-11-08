@@ -3,13 +3,14 @@
 | Field | Value |
 |---|---|
 | CCR ID | **B2-01** (Stage B2, `docs/tasks/DISPATCH_LEDGER.md` §3C) |
-| Status | **PROPOSED — not a contract freeze, not implementation authorization, not an acceptance claim** |
-| Date | 2026-11-07 |
+| Status | **ACCEPTED 2026-11-09 — frozen as `t01-c01-c06/40`; implemented and verified (D-09 remains open)** |
+| Date | Submitted 2026-11-07; accepted 2026-11-09 |
+| Approval | **T01 integrator ACCEPTED 2026-11-09**; O-1..O-12 defaults recorded in §11 |
 | Baseline artifact | `t01-c01-c06/39`, hash `07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24` |
 | Target baseline | `aarch64-unknown-linux-gnu`, `target_verification=unverified`, Part B not available |
 | Related findings | **D-02 (P0)**: SE29 is not dispatched and the FunctionDefinition `SemRecord` is neither committed nor consumed. **D-09 (P1)**: `ConstRecord` has no `ty`; the documented immediate-type rule is not enforceable. |
 | Inputs | `AGENTS.md` §3–5; T01 §3–5; T07 SE29/SemRecord/VF06 candidate rows; T13 VF06 amendments; `M1_TARGET_ACCEPTANCE.md` A3 and IR-4; `M1_VERTICAL_SLICE_ACCEPTANCE.md` VF06/VF06-gap; `SE_FUNC_SLICE.md`; `A05_IR_TARGET_HOST.md` §3.2 G3/G4; `A04_PARSE_TYPE_SEMANTICS.md` §5.3; `A17_VERIFICATION_REQUIREMENTS.md`; current source and tests listed in §2 |
-| Write scope of this CCR | This file only. No source, test, contract, Cargo, `mod.rs`, ledger, or other report was edited. No test was run for this CCR; all statements below are read-only inspection plus proposed work. |
+| Write scope of this CCR | This file only. No source, test, contract, Cargo, `mod.rs`, ledger, or other report was edited. No test was run for the original submission; all pre-acceptance statements below are read-only inspection plus proposed work. Post-acceptance implementation evidence is recorded in §11. |
 | Line references | Line numbers were read from the current working tree on 2026-11-07. Concurrent B1-01/B1-02 edits may shift them; the code identifiers and anchors are authoritative, not the numbers. |
 
 ---
@@ -847,26 +848,45 @@ The minimal M1 closure is exactly the three facts in §1; everything else is a s
 
 ## 11. Approval and Co-Freeze Record
 
-This CCR is **SUBMITTED, not approved**. The T01 integrator owns the contract/version/hash freeze; the chip owners own their files. No implementation may start from this table alone.
+This CCR was **SUBMITTED 2026-11-07** and **ACCEPTED 2026-11-09** by the T01 integrator with freeze target `t01-c01-c06/40`. The acceptance adopts the decision record and the open-question defaults below; it is **not** implementation or test evidence. The integrator owns the contract/version/hash freeze; the chip owners own their files.
 
 | Role | Scope | Status |
 |---|---|---|
-| CCR author (B2-01 worker) | This document | **SUBMITTED 2026-11-07** |
-| T01 integrator | Contract text, `/40` version/hash, shared registration decisions | **PENDING** |
-| T13 owner | VF06 per-kind table, c14 VF06 cases | **PENDING** |
-| T09 owner | T09 function-fact consumption, c15 cases | **PENDING** |
-| H04 owner | Candidate registry/route/step, h04 cases | **PENDING** |
-| T13/T09 co-owner | c43 A3 integration test | **PENDING** |
-| Documentation owner | T01/T07/T13/M1/SE slice amendments | **PENDING** |
+| CCR author (B2-01 worker) | This document | **SUBMITTED 2026-11-07** (preserved history) |
+| T01 integrator | Contract text, `/40` version/hash, shared registration decisions | **ACCEPTED 2026-11-09; freeze target `/40`** |
+| T13 owner | VF06 per-kind table, c14 VF06 cases | **COMPLETE 2026-11-09** — `c14_se` 16/16 |
+| T09 owner | T09 function-fact consumption, c15 cases | **COMPLETE 2026-11-09** — `c15_ir` 13/13 |
+| H04 owner | Candidate registry/route/step, h04 cases | **COMPLETE 2026-11-09** — `h04_candidate` 18/18; direct candidate `value=05` |
+| T13/T09 co-owner | c43 A3 integration test | **COMPLETE 2026-11-09** — `c43_a3` 5/5 |
+| Documentation owner | T01/T07/T13/M1/SE slice amendments | **COMPLETE 2026-11-09** — docs amendments plus evidence rows |
 
-The integrator should record the accepted/rejected open questions (O-1..O-12) before the `/40` freeze. Any accepted change to the proposed rule names, the T09 link encoding, or the D-09 split must be reflected in this CCR before implementation.
+**Post-acceptance implementation evidence (2026-11-09).** The `/40` freeze was applied to `compiler/src/contract.rs` (three new normative rules), `compiler/contracts/CONTRACT_VERSION`, and `compiler/tests/freeze.rs`/`c08_gate1.rs`/`c20_ppscan.rs`; the frozen hash is `c6961ac65fb3fb7e4ad4fdb666c47584b94042949cb6ed17111a4d81b3b10c14`. The candidate dispatches SE29 before VF06 and reuses the same `funcdef` for T09; VF06 checks four M1 kinds; T09 consumes the committed function fact. The full compiler suite is 700 tests across 50 suites, with `c14_se` 16, `c15_ir` 13, `c39_sefunc` 8, `c43_a3` 5, and `h04_candidate` 18 passing; three direct candidate runs were byte-identical and emitted `t01-c01-c06/40` and `interpret: value=05 negative=false`. D-09 (`ConstRecord.ty`/`ir.op-immediate-type`) remains open for B2-02, and no target/probe/torture/M1-acceptance result is claimed.
+
+**Accepted defaults (T01 integrator, 2026-11-09).**
+
+| # | Accepted default |
+|---|---|
+| O-1 | D-09 handled by a separate tagged-constant CCR (**B2-02**); B2-01 closes A3 only and IR-4(b) stays deferred. |
+| O-2 | `FunctionDefinition` fact `ValueCategory` stays **`NonLvalue`** (frozen `/39`); `FunctionDesignator` is not adopted. |
+| O-3 | T09 link is **node-keyed** (`SemRecord.node == FunctionDefinition`); no payload `RecordRef::Sem` or `SymbolId` field. |
+| O-4 | D-09 deferral is **document-only** in T01/M1 docs; no hash-visible "deferred" rule. |
+| O-5 | VF06 **requires exactly one `FunctionDefinition` node** in the M1 TU; no vacuous pass. |
+| O-6 | T09 **re-checks** the function fact's `category`/`effects`; it does not trust VF06 alone. |
+| O-7 | SE29 existing-fact reuse validation is **DEFERRED** (optional hardening, **not in `/40`**). |
+| O-8 | Candidate uses the cumulative **`se_function_slice()`** registry; no dedicated `candidate_m1_slice()`. |
+| O-9 | Zero/multiple `FunctionDefinition` nodes remain a candidate **driver error** in M1; no new typed diagnostic. |
+| O-10 | Any canonical M1 Part A evidence is captured **after `/40`**; no frozen golden is adopted by this acceptance. |
+| O-11 | Any future A17 `Verification` family adoption is a **separate CCR**; VF06 stays zero-write at `/40`. |
+| O-12 | `ir.constant-result-type-from-sem` is **added now** as the interim checkable IR type rule. |
+
+Acceptance does not claim implementation, tests, or evidence; the integrator records those only after the `/40` freeze and the implementation work. Any later change to the accepted rule names, the T09 link encoding, or the D-09 split must update this CCR and the dependent contracts together.
 
 ---
 
 ## 12. References
 
 - [AGENTS.md](../../AGENTS.md) §3–5 (architecture, correctness, interfaces, validation).
-- [T01_COMPILER_CONTRACT.md](T01_COMPILER_CONTRACT.md) §3–5, §7.1; `/39` current artifact.
+- [T01_COMPILER_CONTRACT.md](T01_COMPILER_CONTRACT.md) §3–5, §7.1; `/40` current artifact.
 - [T07_SEMANTIC_CHIPS.md](T07_SEMANTIC_CHIPS.md) SE29 row, operative amendments 1/4/5, M1 `SemRecord` checklist S1–S7, §3 VF06 position.
 - [T13_VERIFICATION_CHIPS.md](T13_VERIFICATION_CHIPS.md) operative VF06 amendment and M1 fixture checklist items 1–7.
 - [M1_TARGET_ACCEPTANCE.md](M1_TARGET_ACCEPTANCE.md) §3.1 A3, §3.2 IR-4, §2 stage table.
@@ -878,4 +898,4 @@ The integrator should record the accepted/rejected open questions (O-1..O-12) be
 - [A14_CONST_LAYOUT_INIT_CONTRACT.md](../reviews/dispatch/A14_CONST_LAYOUT_INIT_CONTRACT.md) §4.2 proposed `ConstRecord` v2 (B2-02 input).
 - [DISPATCH_LEDGER.md](DISPATCH_LEDGER.md) §3A D-02/D-09, §3C B2-01.
 - Source: `compiler/src/bin/candidate.rs`, `compiler/src/chips/semantic/se_function.rs`, `compiler/src/chips/verify/vf_invariant.rs`, `compiler/src/chips/ir_lower/ir_function.rs`, `compiler/src/bus.rs`, `compiler/src/task.rs`, `compiler/src/manifest.rs`, `compiler/src/contract.rs`, `compiler/src/snapshot.rs`.
-- Tests: `compiler/tests/c14_se.rs`, `c15_ir.rs`, `c39_sefunc.rs`, `h04_candidate.rs`, `freeze.rs`, `c08_gate1.rs`, `c20_ppscan.rs`.
+- Tests: `compiler/tests/c14_se.rs`, `c15_ir.rs`, `c39_sefunc.rs`, `c43_a3.rs`, `h04_candidate.rs`, `freeze.rs`, `c08_gate1.rs`, `c20_ppscan.rs`.
