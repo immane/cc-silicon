@@ -26,7 +26,14 @@
   `operands` are arguments in source order and `result` is the return value.
 - `SEMANTIC_CALL_EXPR` is `SEMANTIC` local 25; `SE_CALL_CHIP = ChipId(61)`;
   stage 4; one `sem.records` allowlist row.
-- Snapshot codecs append the parameter list and callee presence fields.
+- `ConstRecord.origins` records one literal for a literal fold and
+  `[lhs, rhs]` for a binary fold, so consumers select constants by provenance,
+  never by value.
+- Snapshot codecs append the parameter list, callee presence, and constant
+  origins fields.
+- Parser budgets are 32 functions, 8 parameters/arguments, 32 expression
+  levels, and 4096 AST nodes per TU; interpreter budgets are 8 live frames and
+  4096 executed instructions.
 
 Parameter values bind implicitly at function entry from the caller's ordered
 arguments. No hidden call stack, global mutable state, or chip-to-chip call is
@@ -81,7 +88,7 @@ the paths below.
 | ID | Owner paths | Deliverable |
 |---|---|---|
 | CALL-P1 | `compiler/src/chips/parse/pa_tu.rs`, proposed `compiler/tests/call_parse.rs` | Generic multi-function parser producing the frozen shapes; preserve canonical/`/49`–`/53` trees; atomic failure; argument/parameter/function/nesting limits |
-| CALL-S1 | `compiler/src/chips/types/ty_types.rs`, `compiler/src/chips/symbols/ty_scope.rs`, `compiler/src/chips/symbols/ty_symbol.rs`, `compiler/src/chips/semantic/{se_function,se_return,se_identifier,se_assignment}.rs`, new `se_call.rs` | Parameterized signatures, block-scope parameter symbols, enclosing-scope resolution, call checking, call facts; no shared schema edits |
+| CALL-S1 | `compiler/src/chips/types/ty_types.rs`, `compiler/src/chips/symbols/ty_scope.rs`, `compiler/src/chips/symbols/ty_symbol.rs`, `compiler/src/chips/semantic/{se_function,se_return,se_identifier,se_assignment,se_binary,se_unary}.rs`, new `se_call.rs` | Parameterized signatures, block-scope parameter symbols, enclosing-scope resolution, call checking, call facts; no shared schema edits |
 | CALL-I1 | `compiler/src/chips/ir_lower/ir_function.rs`, proposed `compiler/tests/call_ir.rs` | Parameter bindings, ordered calls, callee symbols, nested expression lowering, per-function ownership |
 | CALL-V1 | `compiler/src/chips/verify/{vf_interpret,vf_syntax,vf_invariant}.rs`, proposed `compiler/tests/call_verify.rs` | Multi-function AST/IR verification, explicit bounded call frames, per-call locals, typed failure |
 | CALL-A1 | `compiler/src/bin/candidate/target_m1.rs`, `compiler/tests/c55_target_m1.rs` | Multi-function labels, `w0`–`w7` arguments, `w0` result, LR/save/restore, aligned frames, call clobbers, frame bounds |

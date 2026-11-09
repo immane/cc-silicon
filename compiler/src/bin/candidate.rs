@@ -34,14 +34,14 @@ use cc_silicon_compiler::chips::{
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
 use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
-use cc_silicon_compiler::limits::Limits;
+use cc_silicon_compiler::limits::{Limits, CALL_MAX_FUNCTIONS};
 use cc_silicon_compiler::manifest::{
     StoreSchema, G1_FOLD_CHIP, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
     PA_TU_CHIP, PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP,
     PP17_CHIP, PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP,
-    PP_SPLICE_CHIP, SE_ASSIGN_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP,
-    SE_RET_CHIP, SE_UNARY_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP,
-    VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    PP_SPLICE_CHIP, SE_ASSIGN_CHIP, SE_BIN_CHIP, SE_CALL_CHIP, SE_FUNC_CHIP, SE_ID_CHIP,
+    SE_LIT_CHIP, SE_RET_CHIP, SE_UNARY_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP,
+    TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -325,6 +325,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_IDENTIFIER_EXPR, SE_ID_CHIP, 4),
         (TaskKind::SEMANTIC_UNARY_EXPR, SE_UNARY_CHIP, 4),
         (TaskKind::SEMANTIC_ASSIGNMENT_EXPR, SE_ASSIGN_CHIP, 4),
+        (TaskKind::SEMANTIC_CALL_EXPR, SE_CALL_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -426,7 +427,10 @@ fn expression_postorder(
         .nodes
         .get(root)
         .map_err(|_| format!("expression node {} vanished", root.index()))?;
-    for child in &body.children {
+    // A direct call's first child is the callee name, not a value expression:
+    // it must not receive an identifier-expression fact.
+    let start = usize::from(body.kind == NodeKind::Call);
+    for child in &body.children[start..] {
         expression_postorder(bus, *child, out)?;
     }
     out.push(root);
@@ -516,6 +520,17 @@ fn run_expression_node(
                 trace,
                 TaskKind::SEMANTIC_UNARY_EXPR,
                 SE_UNARY_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::Call => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_CALL_EXPR,
+                SE_CALL_CHIP,
                 Payload::from_refs(vec![RecordRef::Node(node)]),
             )?;
             Ok(())
@@ -1295,6 +1310,387 @@ fn run_emit(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Vec<u8>
     emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
 }
 
+/// One function discovered for `/54` multi-function orchestration.
+struct ProgramFunction {
+    funcdef: NodeId,
+    compound: NodeId,
+    signature: cc_silicon_compiler::ids::TypeId,
+    symbol: cc_silicon_compiler::ids::SymbolId,
+    parameters: Vec<NodeId>,
+}
+
+fn symbol_name_matches(
+    bus: &CompilerBus,
+    symbol: cc_silicon_compiler::ids::SymbolId,
+    wanted: &[u8],
+) -> bool {
+    bus.arenas
+        .symbols
+        .get(symbol)
+        .ok()
+        .map(|record| record.name)
+        .and_then(|name| bus.intern.get(name).ok())
+        .map(|bytes| bytes == wanted)
+        .unwrap_or(false)
+}
+
+/// `/54` multi-function orchestration for the direct-call subset.
+///
+/// Lexing, parsing, and VF05 have already committed the whole TU. This host
+/// driver performs only protocol plumbing: it discovers functions in source
+/// order, asks TY/SE/IR/VF chips for every decision, then emits through the
+/// host-only AArch64 prototype. It does not perform C semantics itself.
+fn run_program(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    tu: NodeId,
+    input: &str,
+    asm_output: Option<&str>,
+) -> Result<Evidence, String> {
+    let funcdefs = nodes_of(bus, NodeKind::FunctionDefinition);
+    if funcdefs.is_empty() {
+        return Err("program has no function definition".to_string());
+    }
+    if funcdefs.len() > CALL_MAX_FUNCTIONS {
+        return Err(format!(
+            "program has {} functions; the direct-call slice allows at most {}",
+            funcdefs.len(),
+            CALL_MAX_FUNCTIONS
+        ));
+    }
+    let int = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SYMBOL_INT_TYPE,
+        TY_TYPE_CHIP,
+        Payload::empty(),
+    )? {
+        ResultValue::Record(RecordRef::Type(id)) => id,
+        other => return Err(format!("expected type ref, got {other:?}")),
+    };
+    let file_scope = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SYMBOL_SCOPE_ENTER,
+        TY_SCOPE_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(tu)]),
+    )? {
+        ResultValue::Record(RecordRef::Scope(id)) => id,
+        other => return Err(format!("expected file scope ref, got {other:?}")),
+    };
+
+    let mut functions = Vec::with_capacity(funcdefs.len());
+    for funcdef in funcdefs {
+        let body = bus
+            .arenas
+            .nodes
+            .get(funcdef)
+            .map_err(|_| "function definition vanished".to_string())?
+            .clone();
+        if body.children.len() != 3 {
+            return Err("function definition does not have three children".to_string());
+        }
+        let declarator = body.children[1];
+        let compound = body.children[2];
+        let declarator_body = bus
+            .arenas
+            .nodes
+            .get(declarator)
+            .map_err(|_| "function declarator vanished".to_string())?
+            .clone();
+        if declarator_body.kind != NodeKind::Declarator || declarator_body.name.is_none() {
+            return Err("function declarator is malformed".to_string());
+        }
+        let parameters: Vec<NodeId> = match declarator_body.children.as_slice() {
+            [] => Vec::new(),
+            [parameter_list] => {
+                let list = bus
+                    .arenas
+                    .nodes
+                    .get(*parameter_list)
+                    .map_err(|_| "parameter list vanished".to_string())?
+                    .clone();
+                if list.kind != NodeKind::ParameterList {
+                    return Err("function declarator child is not a parameter list".to_string());
+                }
+                for parameter in &list.children {
+                    let parameter_body = bus
+                        .arenas
+                        .nodes
+                        .get(*parameter)
+                        .map_err(|_| "parameter vanished".to_string())?;
+                    if parameter_body.kind != NodeKind::Parameter || parameter_body.name.is_none() {
+                        return Err("parameter node is malformed".to_string());
+                    }
+                }
+                list.children
+            }
+            _ => return Err("function declarator has an unsupported child shape".to_string()),
+        };
+        if parameters.len() > cc_silicon_compiler::limits::CALL_MAX_PARAMETERS {
+            return Err(
+                "function has more parameters than the direct-call slice allows".to_string(),
+            );
+        }
+        let mut type_refs = vec![RecordRef::Type(int)];
+        type_refs.extend(parameters.iter().map(|_| RecordRef::Type(int)));
+        let signature = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_FUNC_TYPE,
+            TY_TYPE_CHIP,
+            Payload::from_refs(type_refs),
+        )? {
+            ResultValue::Record(RecordRef::Type(id)) => id,
+            other => return Err(format!("expected function type ref, got {other:?}")),
+        };
+        let symbol = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_DECLARE,
+            TY_SYMBOL_CHIP,
+            Payload::from_refs(vec![
+                RecordRef::Node(declarator),
+                RecordRef::Type(signature),
+                RecordRef::Scope(file_scope),
+            ]),
+        )? {
+            ResultValue::Record(RecordRef::Symbol(id)) => id,
+            other => return Err(format!("expected function symbol ref, got {other:?}")),
+        };
+        let block_scope = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_SCOPE_ENTER,
+            TY_SCOPE_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(compound)]),
+        )? {
+            ResultValue::Record(RecordRef::Scope(id)) => id,
+            other => return Err(format!("expected block scope ref, got {other:?}")),
+        };
+        for parameter in &parameters {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SYMBOL_DECLARE,
+                TY_SYMBOL_CHIP,
+                Payload::from_refs(vec![
+                    RecordRef::Node(*parameter),
+                    RecordRef::Type(int),
+                    RecordRef::Scope(block_scope),
+                ]),
+            )?;
+        }
+        let compound_body = bus
+            .arenas
+            .nodes
+            .get(compound)
+            .map_err(|_| "function body vanished".to_string())?
+            .clone();
+        for statement in &compound_body.children {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| "function statement vanished".to_string())?;
+            if statement_body.kind != NodeKind::Declaration {
+                continue;
+            }
+            if statement_body.children.len() != 3 {
+                return Err("local declaration is malformed".to_string());
+            }
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SYMBOL_DECLARE,
+                TY_SYMBOL_CHIP,
+                Payload::from_refs(vec![
+                    RecordRef::Node(statement_body.children[1]),
+                    RecordRef::Type(int),
+                    RecordRef::Scope(block_scope),
+                ]),
+            )?;
+        }
+        functions.push(ProgramFunction {
+            funcdef,
+            compound,
+            signature,
+            symbol,
+            parameters,
+        });
+    }
+
+    // Materialize every literal once, in source/pre-order, so T09 can select
+    // constants by `ConstRecord.origins`. Binary folds appended later do not
+    // replace these literal folds.
+    for literal in nodes_of(bus, NodeKind::IntLiteral) {
+        run_literal(bus, workers, trace, literal, true)?;
+    }
+
+    for function in &functions {
+        let compound_body = bus
+            .arenas
+            .nodes
+            .get(function.compound)
+            .map_err(|_| "function body vanished".to_string())?
+            .clone();
+        let mut saw_return = false;
+        for statement in &compound_body.children {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| "function statement vanished".to_string())?
+                .clone();
+            match statement_body.kind {
+                NodeKind::Declaration => {}
+                NodeKind::Assignment => {
+                    if statement_body.children.len() != 2 {
+                        return Err("assignment statement is malformed".to_string());
+                    }
+                    let mut order = Vec::new();
+                    expression_postorder(bus, statement_body.children[1], &mut order)?;
+                    for node in order {
+                        run_expression_node(bus, workers, trace, node)?;
+                    }
+                    step(
+                        bus,
+                        workers,
+                        trace,
+                        TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
+                        SE_ASSIGN_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(*statement)]),
+                    )?;
+                }
+                NodeKind::Return => {
+                    if saw_return || statement_body.children.len() != 1 {
+                        return Err("function has a malformed or repeated return".to_string());
+                    }
+                    saw_return = true;
+                    let mut order = Vec::new();
+                    expression_postorder(bus, statement_body.children[0], &mut order)?;
+                    for node in order {
+                        run_expression_node(bus, workers, trace, node)?;
+                    }
+                    step(
+                        bus,
+                        workers,
+                        trace,
+                        TaskKind::SEMANTIC_RETURN_STMT,
+                        SE_RET_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(*statement)]),
+                    )?;
+                }
+                _ => return Err("function body has an unsupported statement".to_string()),
+            }
+        }
+        if !saw_return {
+            return Err("function has no return statement".to_string());
+        }
+        match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SEMANTIC_FUNCTION_DEF,
+            SE_FUNC_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(function.funcdef)]),
+        )? {
+            ResultValue::Record(RecordRef::Sem(_)) => {}
+            other => return Err(format!("expected sem ref, got {other:?}")),
+        }
+    }
+
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_TYPED_INVARIANT,
+        VF06_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(tu)]),
+    )?;
+
+    let mut main_function = None;
+    for function in &functions {
+        let lowered = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::IR_FUNCTION,
+            IR_FUNCTION_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(function.funcdef)]),
+        )? {
+            ResultValue::Record(RecordRef::Function(id)) => id,
+            other => return Err(format!("expected function ref, got {other:?}")),
+        };
+        let _ = function.signature;
+        if symbol_name_matches(bus, function.symbol, b"main") {
+            if main_function.is_some() {
+                return Err("duplicate main function".to_string());
+            }
+            if !function.parameters.is_empty() {
+                return Err("main must not have parameters in the direct-call slice".to_string());
+            }
+            main_function = Some(lowered);
+        }
+    }
+    let Some(main_function) = main_function else {
+        return Err("program has no main function".to_string());
+    };
+
+    let (modeled_value, modeled_negative) = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_IR_INTERPRET,
+        VF12_CHIP,
+        Payload::from_refs(vec![RecordRef::Function(main_function)]),
+    )? {
+        ResultValue::Record(RecordRef::Const(id)) => {
+            let body = bus
+                .arenas
+                .consts
+                .get(id)
+                .map_err(|_| "modeled const vanished".to_string())?;
+            let integer = body
+                .value
+                .as_integer()
+                .ok_or_else(|| "modeled const is not an integer".to_string())?;
+            (integer.magnitude.clone(), integer.negative)
+        }
+        ResultValue::Integer(integer) => (integer.magnitude, integer.negative),
+        other => return Err(format!("expected modeled integer, got {other:?}")),
+    };
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_STORE_INVARIANT,
+        VF01_CHIP,
+        Payload::empty(),
+    )?;
+    if let Some(path) = asm_output {
+        let assembly = target_m1::emit_m1_assembly(bus)?;
+        std::fs::write(path, assembly)
+            .map_err(|error| format!("cannot write assembly {path}: {error}"))?;
+    }
+    let snapshot = Snapshot::capture(bus);
+    Ok(Evidence {
+        snapshot,
+        trace: trace.clone(),
+        value: modeled_value,
+        negative: modeled_negative,
+        input: input.to_string(),
+    })
+}
+
 fn run(
     input: &str,
     seeds: &[macro_flags::MacroFlagSeed],
@@ -1361,6 +1757,15 @@ fn run(
         VF05_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
+    // `/54` direct-call programs use the multi-function orchestration below.
+    // The legacy single-function shapes keep their existing byte-identical
+    // path.
+    if nodes_of(&bus, NodeKind::FunctionDefinition).len() > 1
+        || !nodes_of(&bus, NodeKind::ParameterList).is_empty()
+        || !nodes_of(&bus, NodeKind::Call).is_empty()
+    {
+        return run_program(&mut bus, &workers, &mut trace, tu[0], input, asm_output);
+    }
     // Types and symbols by tree walk (no fixed node IDs). The `/49` locals
     // shape has one function declarator plus one block-scope declarator.
     let declarations = nodes_of(&bus, NodeKind::Declaration);
