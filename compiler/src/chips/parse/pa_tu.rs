@@ -17,6 +17,10 @@ use crate::bus::{NodeKind, NodeRecord, TokenKind};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, NameId, RecordRef, TaskId, TokenId};
+use crate::limits::{
+    CALL_MAX_ARGUMENTS, CALL_MAX_AST_NODES, CALL_MAX_EXPRESSION_DEPTH, CALL_MAX_FUNCTIONS,
+    CALL_MAX_PARAMETERS,
+};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, PA_TU_CHIP};
 use crate::records::{G1DraftBody, RecordDraft};
 use crate::task::{
@@ -150,6 +154,7 @@ impl Worker for PaTuChip {
             tests: vec![
                 "compiler/tests/c12_parse.rs",
                 "compiler/tests/c40_pa_guard.rs",
+                "compiler/tests/call_parse.rs",
             ],
             dependencies: vec![],
         }
@@ -219,6 +224,90 @@ const M1_LOCALS_PREFIX_WORDS: &[(&[u8], usize)] = &[
 const M1_LOCALS_PREFIX_PUNCTUATORS: &[(usize, &[u8])] =
     &[(2, b"("), (4, b")"), (5, b"{"), (8, b"="), (10, b";")];
 
+/// Whether the token stream is exactly the legacy canonical M1 shape.
+fn is_legacy_canonical(input: &PaTuInput) -> bool {
+    if input.tokens.len() != M1_KINDS.len() {
+        return false;
+    }
+    for (position, id) in input.tokens.iter().enumerate() {
+        let Some(projected) = input.bodies.get(id) else {
+            return false;
+        };
+        if projected.kind != M1_KINDS[position] {
+            return false;
+        }
+    }
+    for (spelling, position) in [
+        (b"int".as_slice(), 0usize),
+        (b"main".as_slice(), 1),
+        (b"void".as_slice(), 3),
+        (b"return".as_slice(), 6),
+    ] {
+        if input.bodies[&input.tokens[position]].spelling != spelling {
+            return false;
+        }
+    }
+    for (position, spelling) in M1_PUNCTUATORS {
+        if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
+            return false;
+        }
+    }
+    let eof = &input.bodies[&input.tokens[12]];
+    eof.pp_spelling.is_empty() && eof.name.is_none()
+}
+
+/// Whether the stream is one of the legacy `/52`/`/53` single-local forms.
+/// Calls and non-local identifiers belong to the general parser.
+fn is_legacy_locals(input: &PaTuInput) -> bool {
+    if input.tokens.len() < 16 {
+        return false;
+    }
+    for (position, expected) in M1_LOCALS_PREFIX_KINDS.iter().enumerate() {
+        let Some(projected) = input.bodies.get(&input.tokens[position]) else {
+            return false;
+        };
+        if projected.kind != *expected {
+            return false;
+        }
+    }
+    for (spelling, position) in M1_LOCALS_PREFIX_WORDS {
+        if input.bodies[&input.tokens[*position]].spelling != *spelling {
+            return false;
+        }
+    }
+    for (position, spelling) in M1_LOCALS_PREFIX_PUNCTUATORS {
+        if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
+            return false;
+        }
+    }
+    let Some(local_name) = input.bodies[&input.tokens[7]].name else {
+        return false;
+    };
+    for (position, id) in input.tokens.iter().enumerate().skip(11) {
+        let Some(projected) = input.bodies.get(id) else {
+            return false;
+        };
+        if projected.kind == TokenKind::Eof {
+            return true;
+        }
+        if projected.kind != TokenKind::Identifier {
+            continue;
+        }
+        if projected.name != Some(local_name) {
+            return false;
+        }
+        if input
+            .tokens
+            .get(position + 1)
+            .and_then(|next| input.bodies.get(next))
+            .is_some_and(|next| next.kind == TokenKind::Punctuator && next.pp_spelling == b"(")
+        {
+            return false;
+        }
+    }
+    true
+}
+
 /// One parsed local expression node. IDs are assigned after the parse.
 struct ExprNode {
     kind: NodeKind,
@@ -252,9 +341,20 @@ impl PaTuChip {
                 ),
             )];
         }
-        if input.tokens.len() >= 16 {
+        // The legacy paths keep their exact node order and spans. The
+        // classifier is final: a legacy shape that fails is never retried by
+        // the general parser.
+        if is_legacy_canonical(input) {
+            return self.compute_canonical(input);
+        }
+        if is_legacy_locals(input) {
             return self.compute_locals(input);
         }
+        self.compute_general(input)
+    }
+
+    /// Canonical M1 shape (`int main(void){return 2+3;}` plus EOF).
+    fn compute_canonical(&self, input: &PaTuInput) -> Vec<Proposal> {
         if input.tokens.len() != M1_KINDS.len() {
             return vec![fail(
                 input.task,
@@ -725,8 +825,507 @@ impl PaTuChip {
             };
             specs.push(spec);
         }
+        if specs.len() > CALL_MAX_AST_NODES {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("translation unit exceeds the 4096-node AST budget"),
+            )];
+        }
         append_nodes(input, specs)
     }
+
+    /// `/54`/`/55` multi-function parser. Every node is built locally first;
+    /// the single append happens only after the whole TU validates.
+    fn compute_general(&self, input: &PaTuInput) -> Vec<Proposal> {
+        let mut parser = CallParser::new(input);
+        let (root, node_count) = match parser.parse_translation_unit() {
+            Ok(parsed) => parsed,
+            Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+        };
+        if node_count > CALL_MAX_AST_NODES {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("translation unit exceeds the 4096-node AST budget"),
+            )];
+        }
+        append_general(input, root, node_count)
+    }
+}
+
+/// One parsed direct-call translation unit.
+struct CallParser<'a> {
+    input: &'a PaTuInput,
+    pos: usize,
+    node_count: usize,
+}
+
+impl<'a> CallParser<'a> {
+    fn new(input: &'a PaTuInput) -> Self {
+        Self {
+            input,
+            pos: 0,
+            node_count: 0,
+        }
+    }
+
+    fn body(&self, index: usize) -> Result<&'a ProjectedToken, DiagnosticDraft> {
+        let id = self.input.tokens.get(index).ok_or_else(|| {
+            DiagnosticDraft::unsupported("direct-call token sequence ends before a closed shape")
+        })?;
+        self.input.bodies.get(id).ok_or_else(|| {
+            DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("parse reads missing token {}", id.index()),
+            )
+        })
+    }
+
+    fn bump(&mut self) -> Result<usize, DiagnosticDraft> {
+        let index = self.pos;
+        let _ = self.body(index)?;
+        self.pos += 1;
+        Ok(index)
+    }
+
+    fn keyword(&self, index: usize, word: &[u8]) -> bool {
+        self.body(index)
+            .is_ok_and(|body| body.kind == TokenKind::Keyword && body.spelling == word)
+    }
+
+    fn punct(&self, index: usize, spelling: &[u8]) -> bool {
+        self.body(index)
+            .is_ok_and(|body| body.kind == TokenKind::Punctuator && body.pp_spelling == spelling)
+    }
+
+    fn expect_keyword(&mut self, word: &[u8]) -> Result<usize, DiagnosticDraft> {
+        if self.keyword(self.pos, word) {
+            return self.bump();
+        }
+        Err(DiagnosticDraft::unsupported(
+            "expected an `int`, `void`, or `return` keyword",
+        ))
+    }
+
+    fn expect_punct(&mut self, spelling: &[u8]) -> Result<usize, DiagnosticDraft> {
+        if self.punct(self.pos, spelling) {
+            return self.bump();
+        }
+        Err(DiagnosticDraft::unsupported("missing expected punctuator"))
+    }
+
+    fn expect_identifier(&mut self) -> Result<(usize, NameId), DiagnosticDraft> {
+        let index = self.pos;
+        let body = self.body(index)?;
+        if body.kind != TokenKind::Identifier {
+            return Err(DiagnosticDraft::unsupported("expected an identifier"));
+        }
+        let Some(name) = body.name else {
+            return Err(DiagnosticDraft::unsupported(
+                "identifier has no interned name",
+            ));
+        };
+        self.pos += 1;
+        Ok((index, name))
+    }
+
+    fn make(
+        &mut self,
+        kind: NodeKind,
+        first: usize,
+        last: usize,
+        name: Option<NameId>,
+        literal: Option<LiteralId>,
+        children: Vec<ExprNode>,
+    ) -> ExprNode {
+        self.node_count += 1;
+        ExprNode {
+            kind,
+            first,
+            last,
+            name,
+            literal,
+            children,
+        }
+    }
+
+    fn literal(&mut self) -> Result<(usize, LiteralId), DiagnosticDraft> {
+        let index = self.pos;
+        let body = self.body(index)?;
+        if body.kind != TokenKind::Integer {
+            return Err(DiagnosticDraft::unsupported("expected an integer literal"));
+        }
+        let token = self.input.tokens[index];
+        let Some(literal) = self.input.literals_by_token.get(&token) else {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("parse reads missing literal for token {}", token.index()),
+            ));
+        };
+        self.pos += 1;
+        Ok((index, *literal))
+    }
+
+    fn parse_translation_unit(&mut self) -> Result<(ExprNode, usize), DiagnosticDraft> {
+        let mut functions = Vec::new();
+        loop {
+            let body = self.body(self.pos)?;
+            if body.kind == TokenKind::Eof {
+                break;
+            }
+            if functions.len() == CALL_MAX_FUNCTIONS {
+                return Err(DiagnosticDraft::unsupported(
+                    "translation unit exceeds the 32-function budget",
+                ));
+            }
+            functions.push(self.parse_function()?);
+        }
+        if functions.is_empty() {
+            return Err(DiagnosticDraft::unsupported(
+                "translation unit has no function definition",
+            ));
+        }
+        let eof = self.pos;
+        let body = self.body(eof)?;
+        if !body.pp_spelling.is_empty() || body.name.is_some() {
+            return Err(DiagnosticDraft::unsupported("malformed EOF token"));
+        }
+        self.pos += 1;
+        if self.pos != self.input.tokens.len() {
+            return Err(DiagnosticDraft::unsupported(
+                "tokens after the trailing EOF",
+            ));
+        }
+        let root = self.make(NodeKind::TranslationUnit, 0, eof, None, None, functions);
+        Ok((root, self.node_count))
+    }
+
+    fn parse_function(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        let first = self.expect_keyword(b"int")?;
+        let specifiers = self.make(NodeKind::Specifiers, first, first, None, None, vec![]);
+        let (name_index, name) = self.expect_identifier()?;
+        let open = self.expect_punct(b"(")?;
+        let mut parameters = Vec::new();
+        if self.keyword(self.pos, b"void") {
+            let _ = self.bump()?;
+            let close = self.expect_punct(b")")?;
+            let declarator = self.make(
+                NodeKind::Declarator,
+                name_index,
+                close,
+                Some(name),
+                None,
+                vec![],
+            );
+            return self.finish_function(first, specifiers, declarator);
+        }
+        if self.punct(self.pos, b")") {
+            return Err(DiagnosticDraft::unsupported(
+                "empty `()` parameter lists are not accepted",
+            ));
+        }
+        loop {
+            let parameter_first = self.expect_keyword(b"int")?;
+            let (parameter_last, parameter_name) = self.expect_identifier()?;
+            parameters.push(self.make(
+                NodeKind::Parameter,
+                parameter_first,
+                parameter_last,
+                Some(parameter_name),
+                None,
+                vec![],
+            ));
+            if parameters.len() > CALL_MAX_PARAMETERS {
+                return Err(DiagnosticDraft::unsupported(
+                    "function exceeds the eight-parameter budget",
+                ));
+            }
+            if self.punct(self.pos, b",") {
+                let _ = self.bump()?;
+                continue;
+            }
+            break;
+        }
+        let close = self.expect_punct(b")")?;
+        let parameter_list =
+            self.make(NodeKind::ParameterList, open, close, None, None, parameters);
+        let declarator = self.make(
+            NodeKind::Declarator,
+            name_index,
+            close,
+            Some(name),
+            None,
+            vec![parameter_list],
+        );
+        self.finish_function(first, specifiers, declarator)
+    }
+
+    fn finish_function(
+        &mut self,
+        first: usize,
+        specifiers: ExprNode,
+        declarator: ExprNode,
+    ) -> Result<ExprNode, DiagnosticDraft> {
+        let open = self.expect_punct(b"{")?;
+        let mut statements = Vec::new();
+        if self.keyword(self.pos, b"int") {
+            statements.push(self.parse_local_declaration()?);
+            if self.keyword(self.pos, b"int") {
+                return Err(DiagnosticDraft::unsupported(
+                    "only one local declaration is accepted",
+                ));
+            }
+        }
+        while self.body(self.pos)?.kind == TokenKind::Identifier {
+            let (lhs_index, lhs_name) = self.expect_identifier()?;
+            if !self.punct(self.pos, b"=") {
+                return Err(DiagnosticDraft::unsupported(
+                    "call statements and non-assignment identifier statements are rejected",
+                ));
+            }
+            let _ = self.bump()?;
+            let rhs = self.parse_expression(0)?;
+            let semicolon = self.expect_punct(b";")?;
+            let _ = semicolon;
+            let lhs = self.make(
+                NodeKind::Identifier,
+                lhs_index,
+                lhs_index,
+                Some(lhs_name),
+                None,
+                vec![],
+            );
+            let last = rhs.last;
+            statements.push(self.make(
+                NodeKind::Assignment,
+                lhs_index,
+                last,
+                None,
+                None,
+                vec![lhs, rhs],
+            ));
+        }
+        let return_index = self.expect_keyword(b"return")?;
+        let expression = self.parse_expression(0)?;
+        let semicolon = self.expect_punct(b";")?;
+        let returned = self.make(
+            NodeKind::Return,
+            return_index,
+            semicolon,
+            None,
+            None,
+            vec![expression],
+        );
+        statements.push(returned);
+        let close = self.expect_punct(b"}")?;
+        let compound = self.make(NodeKind::Compound, open, close, None, None, statements);
+        Ok(self.make(
+            NodeKind::FunctionDefinition,
+            first,
+            close,
+            None,
+            None,
+            vec![specifiers, declarator, compound],
+        ))
+    }
+
+    fn parse_local_declaration(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        let first = self.expect_keyword(b"int")?;
+        let specifiers = self.make(NodeKind::Specifiers, first, first, None, None, vec![]);
+        let (name_index, name) = self.expect_identifier()?;
+        let declarator = self.make(
+            NodeKind::Declarator,
+            name_index,
+            name_index,
+            Some(name),
+            None,
+            vec![],
+        );
+        let _ = self.expect_punct(b"=")?;
+        let (literal_index, literal) = self.literal()?;
+        let semicolon = self.expect_punct(b";")?;
+        let initializer = self.make(
+            NodeKind::IntLiteral,
+            literal_index,
+            literal_index,
+            None,
+            Some(literal),
+            vec![],
+        );
+        Ok(self.make(
+            NodeKind::Declaration,
+            first,
+            semicolon,
+            None,
+            None,
+            vec![specifiers, declarator, initializer],
+        ))
+    }
+
+    /// `depth` counts grouping, unary, and call-argument nesting; left-folded
+    /// binary chains stay at their current level.
+    fn parse_expression(&mut self, depth: usize) -> Result<ExprNode, DiagnosticDraft> {
+        if depth > CALL_MAX_EXPRESSION_DEPTH {
+            return Err(DiagnosticDraft::unsupported(
+                "expression nesting exceeds the 32-level budget",
+            ));
+        }
+        self.parse_additive(depth)
+    }
+
+    fn parse_additive(&mut self, depth: usize) -> Result<ExprNode, DiagnosticDraft> {
+        let mut lhs = self.parse_multiplicative(depth)?;
+        loop {
+            let kind = if self.punct(self.pos, b"+") {
+                NodeKind::BinaryAdd
+            } else if self.punct(self.pos, b"-") {
+                NodeKind::BinarySub
+            } else {
+                break;
+            };
+            let _ = self.bump()?;
+            let rhs = self.parse_multiplicative(depth)?;
+            let first = lhs.first;
+            let last = rhs.last;
+            lhs = self.make(kind, first, last, None, None, vec![lhs, rhs]);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_multiplicative(&mut self, depth: usize) -> Result<ExprNode, DiagnosticDraft> {
+        let mut lhs = self.parse_unary(depth)?;
+        loop {
+            let kind = if self.punct(self.pos, b"*") {
+                NodeKind::BinaryMul
+            } else if self.punct(self.pos, b"/") {
+                NodeKind::BinaryDiv
+            } else if self.punct(self.pos, b"%") {
+                NodeKind::BinaryRem
+            } else {
+                break;
+            };
+            let _ = self.bump()?;
+            let rhs = self.parse_unary(depth)?;
+            let first = lhs.first;
+            let last = rhs.last;
+            lhs = self.make(kind, first, last, None, None, vec![lhs, rhs]);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_unary(&mut self, depth: usize) -> Result<ExprNode, DiagnosticDraft> {
+        if depth > CALL_MAX_EXPRESSION_DEPTH {
+            return Err(DiagnosticDraft::unsupported(
+                "expression nesting exceeds the 32-level budget",
+            ));
+        }
+        let kind = if self.punct(self.pos, b"+") {
+            NodeKind::UnaryPlus
+        } else if self.punct(self.pos, b"-") {
+            NodeKind::UnaryMinus
+        } else {
+            return self.parse_primary(depth);
+        };
+        let first = self.bump()?;
+        let operand = self.parse_unary(depth + 1)?;
+        let last = operand.last;
+        Ok(self.make(kind, first, last, None, None, vec![operand]))
+    }
+
+    fn parse_primary(&mut self, depth: usize) -> Result<ExprNode, DiagnosticDraft> {
+        let index = self.pos;
+        let body = self.body(index)?;
+        match body.kind {
+            TokenKind::Integer => {
+                let (first, literal) = self.literal()?;
+                Ok(self.make(
+                    NodeKind::IntLiteral,
+                    first,
+                    first,
+                    None,
+                    Some(literal),
+                    vec![],
+                ))
+            }
+            TokenKind::Identifier => {
+                let (first, name) = self.expect_identifier()?;
+                let callee =
+                    self.make(NodeKind::Identifier, first, first, Some(name), None, vec![]);
+                if !self.punct(self.pos, b"(") {
+                    return Ok(callee);
+                }
+                let _ = self.bump()?;
+                let mut arguments = vec![callee];
+                if self.punct(self.pos, b")") {
+                    let close = self.bump()?;
+                    let last = close;
+                    return Ok(self.make(NodeKind::Call, first, last, None, None, arguments));
+                }
+                if self.keyword(self.pos, b"void") {
+                    return Err(DiagnosticDraft::unsupported(
+                        "`f(void)` call arguments are not accepted",
+                    ));
+                }
+                loop {
+                    arguments.push(self.parse_expression(depth + 1)?);
+                    if arguments.len() > CALL_MAX_ARGUMENTS + 1 {
+                        return Err(DiagnosticDraft::unsupported(
+                            "call exceeds the eight-argument budget",
+                        ));
+                    }
+                    if self.punct(self.pos, b",") {
+                        let _ = self.bump()?;
+                        continue;
+                    }
+                    break;
+                }
+                let close = self.expect_punct(b")")?;
+                Ok(self.make(NodeKind::Call, first, close, None, None, arguments))
+            }
+            TokenKind::Punctuator if body.pp_spelling == b"(" => {
+                let _ = self.bump()?;
+                let inner = self.parse_expression(depth + 1)?;
+                let _ = self.expect_punct(b")")?;
+                Ok(inner)
+            }
+            _ => Err(DiagnosticDraft::unsupported(
+                "expression primary is not covered by the direct-call slice",
+            )),
+        }
+    }
+}
+
+fn append_general(input: &PaTuInput, root: ExprNode, node_count: usize) -> Vec<Proposal> {
+    let mut specs: Vec<Option<NodeSpec>> = (0..node_count).map(|_| None).collect();
+    let mut next = 0u32;
+    let _ = assign_general(root, None, &mut next, input.nodes_allocated, &mut specs);
+    let specs = specs.into_iter().flatten().collect();
+    append_nodes(input, specs)
+}
+
+fn assign_general(
+    node: ExprNode,
+    parent: Option<crate::ids::NodeId>,
+    next: &mut u32,
+    base: u32,
+    specs: &mut [Option<NodeSpec>],
+) -> crate::ids::NodeId {
+    let offset = *next;
+    *next += 1;
+    let id = crate::ids::NodeId::from_index(base.saturating_add(offset));
+    let mut children = Vec::new();
+    for child in node.children {
+        children.push(assign_general(child, Some(id), next, base, specs));
+    }
+    specs[offset as usize] = Some((
+        node.kind,
+        parent,
+        children,
+        node.first,
+        node.last,
+        node.name,
+        node.literal,
+    ));
+    id
 }
 
 struct ExprParser<'a> {
