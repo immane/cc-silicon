@@ -23,8 +23,8 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/47` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593` |
+| Contract version | `t01-c01-c06/48` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
@@ -39,10 +39,10 @@ continues on this foundation.
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/47
-hash=3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593
+version=t01-c01-c06/48
+hash=820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e
 target=aarch64-unknown-linux-gnu
-target_verification=unverified
+target_verification=probe-attested
 probe_substrate=linux-ci-vm (planned, not provisioned)
 corpus_fetch=on-demand hash-locked
 reference_baseline=authorized, not available, not candidate evidence

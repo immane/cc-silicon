@@ -85,7 +85,7 @@ game. Its six frozen components (C01–C06) are:
    to the chip responsible for it, within a per-tick proposal budget
    and bounded recovery.
 
-The frozen identity is `t01-c01-c06/47`
+The frozen identity is `t01-c01-c06/48`
 (see [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION)).
 It also carries partial PP/LX/PA/TY/SE/IR/VF slices, the `/40` M1 A3
 closure (SE29 dispatch, VF06 four-kind typed-fact set, T09 committed-fact
@@ -115,10 +115,11 @@ misunderstandings:
   program* is generated for (AArch64 Linux first).
 
 The framework backend is implemented. The AArch64 target's *identity*
-is frozen. One pinned containerized Linux probe report is now
-H07-classified and attested, but the official T00 reference
-baseline/substrate is still open, the global target state remains
-unverified, and candidate code generation stays fail-closed.
+is frozen. One pinned containerized Linux probe report is
+H07-classified and attested; the global target state is
+`probe-attested`. The official T00 CI/bare-metal reference
+baseline/substrate is still open, and candidate code generation stays
+fail-closed.
 
 ## Sources
 

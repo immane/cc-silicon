@@ -15,8 +15,8 @@ pipeline and get exit code 5. M1 splits into two halves:
 - **Part B (target-dependent, probe-gated):** IR through AArch64
   assembly, external assemble/link, run, exit code 5.
 
-Part B stays disabled until the official T00 reference
-baseline/substrate is accepted; one provisional containerized probe
+Part B stays disabled until target codegen and the official T00
+reference CI/bare-metal baseline are available; one containerized probe
 report is already classified/attested. Part A is where implementation
 starts. Both halves are acceptance documents today, not running code:
 

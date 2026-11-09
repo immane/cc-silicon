@@ -9,7 +9,7 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/47`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/48`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
 | Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/47` |
@@ -20,7 +20,7 @@ re-verify. This page records observed state, not a new acceptance run.
 | Type/layout/init (`/46`) | **Schema frozen; producers/verifier not implemented** | ADR-0006 pointer/array/aggregate/enum types; typed layout/init arenas and append handles; symbolic-or-bit extents. Target byte layout and VF07 remain future |
 | Diagnostic taxonomy (`/47`) | **Registry frozen; migration pending** | ADR-0007 groups/codes/helpers; legacy `Task:4` call sites remain until owner migration |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
-| AArch64 target values | **One attested probe report; official baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=unverified` and candidate codegen gate remain |
+| AArch64 target values | **Probe-attested baseline; official CI/bare-metal baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=probe-attested`; candidate codegen gate remains |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
 | Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 16 tests after Stage B; catches common violations only |
@@ -31,13 +31,13 @@ claimed by this repository or this page.
 
 ## What "frozen `/43`" means
 
-The frozen artifact is `t01-c01-c06/47`:
+The frozen artifact is `t01-c01-c06/48`:
 
 ```text
-version=t01-c01-c06/47
-hash=3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593
+version=t01-c01-c06/48
+hash=820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e
 target=aarch64-unknown-linux-gnu
-target_verification=unverified
+target_verification=probe-attested
 ```
 
 **It does mean:**
@@ -70,10 +70,10 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **723 tests across 60 suites passed** after `/47` (adds AST, IR/CFG, constant-v3, type/layout/init, and diagnostic-taxonomy schema tests on top of tagged constants, PP driver/include, and target attestation) |
+| Compiler | **724 tests across 60 suites passed** after `/47` (adds AST, IR/CFG, constant-v3, type/layout/init, and diagnostic-taxonomy schema tests on top of tagged constants, PP driver/include, and target attestation) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
-| Probe self-tests | 57 tests; real probe not run |
+| Probe self-tests | 57 tests; one containerized real probe report + H07 classification |
 
 ## Known limitations
 
@@ -90,9 +90,9 @@ are discovery/run observations, not a permanent promise; the source tree and
 - `ConstRecord.ty`/`ir.op-immediate-type` are implemented at `/42`, but this is
   not full M1 acceptance or target execution.
 - A pinned Debian-GCC-12.2.0 containerized probe has run and its report is
-  attested in `c48_target_probe`; the official T00 reference baseline/CI
-  substrate is still open, the global target state remains unverified, and no
-  concrete target value drives candidate codegen yet.
+  attested in `c48_target_probe`; the global target state is
+  `probe-attested`. The official T00 reference baseline/CI substrate is still
+  open, and no target codegen exists yet.
 - H05 process supervision is implemented in `tools/runner` (timeout/output
   caps/cancellation/Linux process-group+prlimit). It is not a kernel namespace
   sandbox, and H02/H03 target orchestration remains absent.

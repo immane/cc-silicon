@@ -6,25 +6,25 @@
 | Updated | 2026-11-09 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/47` — hash `3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593` |
-| Branch / HEAD | `wave4-development` / `6fe12b3` (code through H05 committed; this status-doc commit follows) |
-| Workspace note | `/42`–`/47`, B-INT-00, B3-03a/B, and the target probe are committed; no push was performed |
+| Contract baseline | `t01-c01-c06/48` — hash `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e` |
+| Branch / HEAD | `wave4-development` / `4cffc3a` (code through `/48` committed; this status-doc commit follows) |
+| Workspace note | `/42`–`/48`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; no push was performed |
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **723 tests across 60 suites after `/47`** | Observed in the `/47` diagnostics session. Adds `c54_diag_taxonomy` 3 tests on top of `/46`. |
+| Compiler package tests | **PASS**, **724 tests across 60 suites after `/48`** | Observed in the `/48` target-baseline session. Adds the third `c48_target_probe` assertion on top of `/47`. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
 | Root tests after B3-03a | **PASS**, 21 tests | `cargo test --workspace --locked` |
 | Torture package after B3-03a | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
 | Chip-lint after B3-03a | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
 | Compiler clippy after B3-03a | **PASS** | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings`; D-04 closed by B-INT-00 |
-| Target probe | **ONE CONTAINERIZED RUN / H07 CLASSIFIED / ATTESTATION TEST PASSES** | Debian 12 aarch64 + GCC 12.2.0; `c48_target_probe` 2/2; official T00 baseline/CI substrate and global `target_verification=unverified` remain open |
+| Target probe | **PINNED PROBE-ATTESTED BASELINE** | Debian 12 aarch64 + GCC 12.2.0; `c48_target_probe` 3/3; global `target_verification=probe-attested`; official T00 CI/bare-metal baseline and corpus remain open |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
 
-The current `/47` schema baseline is green for the configured root, compiler,
+The current `/48` schema baseline is green for the configured root, compiler,
 chip-lint, and torture checks. This is a repository check result, not target
 execution or a GCC pass rate.
 
@@ -80,15 +80,15 @@ not duplicate A1 files or edit any shared source.
 | D-04 | **P1** | Current clippy gate fails with 137 diagnostics from five declared parse drafts; four additional drafts are not compiled at all. `/40` changed files have zero diagnostics. | A13 §5-6; `/40` clippy run | **FIXED / VERIFIED by B-INT-00** — all nine unregistered drafts parked; clippy clean; see [disposition](B_INT_00_DRAFT_DISPOSITION.md) |
 | D-05 | **P1** | Duplicate candidate local 27 / `ChipId(58)` across several drafts; PA15 has two implementations (`pa_init.rs`, `pa_expr_ext.rs`). | A04 §7; A13 §5 | **DISPOSITIONED by B-INT-00** — no parked draft is compiled/registered; `pa_init.rs` is the future PA15 candidate, `pa_expr_ext.rs` is non-canonical; IDs stay unfrozen under B3-04 |
 | D-06 | **P1** | All 65 chips use local `Worker`/`handle(&CompilerBus)`, not `RestrictedChip`/`ChipAdapter`; contract has two competing chip boundaries. | A02 F01 | Contract freeze decision |
-| D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | **PARTIALLY FIXED 2026-11-09** — one pinned Debian-GCC-12.2.0 containerized probe ran; H07 `classify.py` resolved the four ABI fields; `c48_target_probe` attests/tamper-checks the report. Official T00 baseline/substrate and global target verification remain open |
+| D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | **FIXED for the pinned probe baseline 2026-11-09** — containerized Debian GCC 12.2.0 report, H07 classification, global `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, `c48_target_probe` 3/3. Official T00 CI/bare-metal baseline and corpus remain open |
 | D-08 | **P1** | H05 isolated execution is absent; no timeout/resource/cancellation/crash boundary. | A10; A24 H-01 | **IMPLEMENTED / VERIFIED (host tooling)** — `tools/runner` provides per-instance dirs, cleared env, timeout, output caps, cancellation, Linux `prlimit`/process-group termination, and outcome classification. `docs/tasks/H05_ISOLATED_RUNNER.md`; 10 Linux tests / 8 macOS tests |
 | D-09 | **P1** | `ConstRecord` has no `ty`; documented immediate-type rule cannot be enforced. A14 proposes a tagged v2 record. | A05 G4; A14 §4.2 | **FIXED / VERIFIED by `/42`** — `ConstRecord { ty, value: ConstValue::Integer(..) }`; T09/VF12 enforce `ir.op-immediate-type`; `c45_const_ty` 8/8 |
 | D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | **FIXED / VERIFIED** by B1-03; dated audit retained with banner |
 | D-11 | **P2** | `-std`/`-O` are validated but not propagated; exit code 2 conflates usage/unsupported/Part B refusal; output writes are non-atomic. | A10 §1.3 F-02..F-04, F-12 | B2 candidate hardening |
 | D-12 | **P0** | `AppendRecords` wire proposals encode only the draft count in snapshots; different append batches with equal counts hash identically. This contradicts `snapshot.wire-payloads-encoded`. | A23 A23-F01; `snapshot.rs` | **FIXED / VERIFIED by `/41`** — handles and full bodies encode in stored order; c05 sensitivity covers all 18 body variants |
 | D-13 | **P1** | Scheduler order uses task-group ordinal, not `STAGE_ASSIGNMENT`; T01 three-key order conflicts with M1 D5 four-key stage-first order. | A23 finding 5; `routing.rs` | **FIXED / VERIFIED by `/41`** — stage-first `(stage, group, enqueue, TaskId)`; `STAGE_ASSIGNMENT` authoritative; c06 19/19 |
-| D-14 | **P1** | `allocated_total()` omits macros; `stage_queue_bound` is unused; zero quota is clamped; typed appends do not bump `store_versions`; `ResultRecord.version` is always 0. | A23 findings 14-16; A02 F04 | **FIXED / VERIFIED by `/41`** — macro total, store/Names bumps, typed zero-quota failure, 1-based result version; `stage_queue_bound` explicitly reserved to `/48` |
-| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | **FIXED / VERIFIED minimal by `/41`** — pin digests, trace decoder/first divergence, `Task.id`, `ReplayEvidence`; full restore is `/48` |
+| D-14 | **P1** | `allocated_total()` omits macros; `stage_queue_bound` is unused; zero quota is clamped; typed appends do not bump `store_versions`; `ResultRecord.version` is always 0. | A23 findings 14-16; A02 F04 | **FIXED / VERIFIED by `/41`** — macro total, store/Names bumps, typed zero-quota failure, 1-based result version; `stage_queue_bound` explicitly reserved to `/49` |
+| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | **FIXED / VERIFIED minimal by `/41`** — pin digests, trace decoder/first divergence, `Task.id`, `ReplayEvidence`; full restore is `/49` |
 | D-16 | **P1** | Diagnostic codes are ad hoc: `Task:4` has 339 sites and `Unsupported:1` 106; capacity, invalid, and verification faults lack distinct groups/codes; spans/task attribution are rare. | A18 §1 | Diagnostic CCR B2 |
 | D-17 | **P0** | `#if X` does not macro-expand identifiers; a `-DX=1` probe takes the false branch, silently selecting the wrong conditional branch. | A03 §2.3, probe in §1.2 | **FIXED / VERIFIED** by B3-01 for object-like macros; function-like invocations remain explicit Unsupported |
 | D-18 | **P0** | Integer `010` is classified/decode as decimal 10 instead of octal 8; radix/suffix/type/range handling is absent. | A03 §2.5 | **FIXED / VERIFIED** for decimal/octal/hex by B3-02; suffix/type/range remain future |
@@ -115,7 +115,7 @@ ledger, or other reports.
 
 | Order | Scope | Output | State / session |
 |---|---|---|---|
-| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/48` |
+| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/49` |
 | B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/40` (hash `c6961ac6…10c14`); `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05` |
 | B2-02 | Tagged, typed constants D-09: `ConstRecord.ty`, closed integer payload, fold type resolution, T09/VF12 immediate-type enforcement, snapshot codec, `/42` freeze. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_TAGGED_CONSTANTS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/42` (hash `a9a1da92…abf1a5`); `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10; candidate `value=05` |
 
@@ -134,7 +134,7 @@ triaged the critical path as follows.
    is **accepted, implemented, and verified as `/42`**; `/43` parser/AST and
    `/44` IR/CFG and `/45` constant v3 are **frozen schemas**. The next schema
    next schema freeze is the deferred
-   restore/quota>1/VF13/`StorePatch` package at `/48`; H05/torture are host/tooling work without a language-schema bump.
+   restore/quota>1/VF13/`StorePatch` package at `/49`; H05/torture are host/tooling work without a language-schema bump.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
    D-20 (literal token kinds).
@@ -156,7 +156,7 @@ triaged the critical path as follows.
 | ID-IR-01 | Prefer A15's `InstructionRecord.successors` + `Branch`/`CondBranch` over A07's separate `CfgEdgeRecord`; keep the edge family only as a documented fallback. | Recommendation pending IR freeze |
 | ID-TARGET-01 | All concrete ABI/scalar values remain probe-gated. No target codegen or `-S`/`-c` from proposal values. | Existing accepted boundary |
 | ID-CHIP-01 | Do not add new chips until the Worker-vs-RestrictedChip template decision (A02 F01) is resolved; B1/B3 fixes may continue because they touch existing files. | Recommendation pending contract decision |
-| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = type/layout/init common base (frozen), `/47` = diagnostic taxonomy (frozen), `/48` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/47` hash `3c3d722d…f593`. | Accepted by T01 integrator |
+| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = type/layout/init common base (frozen), `/47` = diagnostic taxonomy (frozen), `/48` = probe-attested target baseline (frozen), `/49` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/48` hash `820230c4…ad58e`. | Accepted by T01 integrator |
 
 ### Stage B3 candidate queue (not dispatched)
 
@@ -176,7 +176,7 @@ triaged the critical path as follows.
 B2-01 was **accepted on 2026-11-09** and implemented as `/40`; B2-00 was
 **accepted on 2026-11-09** and implemented as `/41`; B2-02 was **accepted on
 2026-11-09** and implemented as `/42`. The rows below are the accepted
-defaults. The deferred restore package is `/48`.
+defaults. The deferred restore package is `/49`.
 
 | CCR | Decision | Recommendation |
 |---|---|---|
@@ -197,11 +197,11 @@ defaults. The deferred restore package is `/48`.
 | B2-00 OD-3 | `stage_queue_bound` | Reserve in `/41`; enforce with stage queues/projection |
 | B2-00 OD-4 | Zero quota | Remove clamp; typed fail-closed |
 | B2-00 OD-5 | `ResultRecord.version` | 1-based global commit ordinal |
-| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/48` |
+| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/49` |
 | B2-00 OD-7 | Pins | Trace digest + Host envelope |
 | B2-00 OD-8 | `Task.id` | Encode and test divergence |
-| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics (frozen), `/48` deferred restore |
-| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/48` |
+| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics (frozen), `/48` probe baseline (frozen), `/49` deferred restore |
+| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/49` |
 | B2-02 T-01 | Constant type field | `ConstRecord.ty` is a committed T06 `TypeId` |
 | B2-02 T-02 | Payload family | Closed `/42` tag `Integer` only; float/address append-only future tags |
 | B2-02 T-03 | Integer carrier | Big-endian minimal magnitude + sign; no host width |
@@ -243,7 +243,7 @@ defaults. The deferred restore package is `/48`.
 | Implementation | Append handles/bodies in snapshots; stage-first selection + zero-quota typed error; macro total; typed-append and Names store versions; 1-based result commit ordinal; `Task.id`; pin digest; bounded trace decoder/diff; Host `ReplayEvidence` |
 | Tests | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22, `c11_lex` 11, `freeze` 15, `c20_ppscan` 8, `h04_candidate` 18; full compiler suite 723 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/41)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/48` (was `/43` before the schema train); D-09 tagged constants → `/42` |
+| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/49` (was `/43` before the schema train); D-09 tagged constants → `/42` |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
 
 ## 3H. `/42` Freeze Record (2026-11-09)
@@ -259,7 +259,7 @@ defaults. The deferred restore package is `/48`.
 | Implementation | Typed fold resolution from committed `SemRecord.ty` (binary) / unique canonical `int` (literal); canonical integer codec; T09 immediate-type check; VF12 same-type check; VF14 integer gate decode; candidate integer evidence extraction |
 | Tests | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, `c05_codec` 29, `freeze` 15; full compiler suite 684 tests / 51 suites after B-INT-00 parking |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/42)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/48` (was `/43` before the schema train) |
+| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/49` (was `/43` before the schema train) |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution |
 
 ## 3I. `/43` Freeze Record (2026-11-09)
@@ -337,6 +337,21 @@ defaults. The deferred restore package is `/48`.
 | Explicit deferrals | Full `Task:4` call-site migration, per-fault span/task enrichment, diagnostic UI/renderer |
 | Non-claims | No full migration, no target codegen, no torture result |
 
+## 3N. `/48` Freeze Record (2026-11-09)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/48` |
+| Hash | `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e` |
+| Authority | T01 integrator acceptance; R1 auto-bump; `/47` preserved as history |
+| Contract text | [T01 §7.1 `/48` amendment](T01_COMPILER_CONTRACT.md); [probe run record](../reviews/target-probe/2026-11-09_DOCKER_AARCH64_PROBE.md) |
+| Baseline | Debian 12 arm64 image `sha256:268fb24c…3ff8`, GCC 12.2.0, binutils 2.40; attested report hash `57eadb28…c4f90` |
+| Shape impact | `target_verification=probe-attested`, `probe_substrate=docker-linux-arm64`; target model values unchanged |
+| Implementation | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested()`; fixture + `c48_target_probe`; H07 classifier |
+| Tests | `c48_target_probe` 3; full compiler suite 724 tests / 60 suites |
+| Explicit deferrals | Official T00 CI/bare-metal reference baseline, corpus freeze, HVA/mixed-linking, target codegen |
+| Non-claims | No target execution, codegen, or torture rate |
+
 ## 4. Dispatch Rules for This Batch
 
 1. A worker may write only its report path; reports are English markdown.
@@ -356,7 +371,7 @@ defaults. The deferred restore package is `/48`.
   verified. B2-01 is accepted, implemented, and verified as `/40`; B2-00 is
   accepted, implemented, and verified as `/41`; B2-02 is accepted, implemented,
   and verified as `/42`.
-- **Next freeze train:** `/48` remains the deferred
+- **Next freeze train:** `/49` remains the deferred
   restore/quota>1/VF13/`StorePatch` package. Each needs an explicit integrator
   decision, implementation, dependent tests, and a recomputed hash.
 - **Next integration blockers:** B3-03c/W3 `#line`/`#pragma` (carrier or
