@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/46");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/47");
 }
 
 #[test]
@@ -311,6 +311,13 @@ fn frozen_enum_names_match_implementations() {
         (DiagGroup::Semantic, "semantic"),
         (DiagGroup::Unsupported, "unsupported"),
         (DiagGroup::Internal, "internal"),
+        (DiagGroup::Lex, "lex"),
+        (DiagGroup::Parse, "parse"),
+        (DiagGroup::Type, "type"),
+        (DiagGroup::Const, "const"),
+        (DiagGroup::Ir, "ir"),
+        (DiagGroup::Codegen, "codegen"),
+        (DiagGroup::Host, "host"),
     ];
     assert_eq!(DIAG_GROUP_NAMES.len(), groups.len());
     for (i, (variant, name)) in groups.iter().enumerate() {

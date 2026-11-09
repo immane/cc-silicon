@@ -45,14 +45,14 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
 /// IR/CFG schema append (local load/store, arithmetic, branch successors),
 /// the `/45` constant v3 append (float/address payload tags), and the `/46`
-/// T06 type-model/layout/init common base.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/46";
+/// T06 type-model/layout/init common base, and the `/47` diagnostic taxonomy.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/47";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "3416b176c23f3802e2c57978db74f89bcc7719337c968c0c12c9d7b19aa6972f";
+pub const CONTRACT_HASH: &str = "3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -288,6 +288,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "ty.array-bound",
     "ty.aggregate-members",
     "ty.enum-underlying",
+    // `/47` diagnostic taxonomy.
+    "diag.taxonomy-stable",
+    "diag.code-unique",
+    "diag.span-task-attribution",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -382,6 +386,13 @@ pub const DIAG_GROUP_NAMES: &[&str] = &[
     "semantic",
     "unsupported",
     "internal",
+    "lex",
+    "parse",
+    "type",
+    "const",
+    "ir",
+    "codegen",
+    "host",
 ];
 /// The Gate 1 (`/7`) `LiteralRecord` field names, in frozen field order.
 pub const LITERAL_RECORD_FIELDS: &[&str] = &[
@@ -766,6 +777,12 @@ impl FrozenSchema {
         push_str_list(&mut w, CHIP_PHASE_NAMES);
         push_str_list(&mut w, HOST_REQUEST_NAMES);
         push_str_list(&mut w, DIAG_GROUP_NAMES);
+        w.u64(crate::diagnostic::DIAGNOSTIC_CODES.len() as u64);
+        for spec in crate::diagnostic::DIAGNOSTIC_CODES {
+            w.str(spec.name);
+            w.str(spec.code.group.name());
+            w.u16(spec.code.code);
+        }
         push_str_list(&mut w, ARTIFACT_KIND_NAMES);
         push_str_list(&mut w, PPTOKEN_KIND_NAMES);
         push_str_list(&mut w, TOKEN_KIND_NAMES);

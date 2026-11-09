@@ -1051,6 +1051,23 @@ layout, codegen, or torture result is added. New artifact `t01-c01-c06/46`
 `c53_layout_init_schema` (2) plus the full compiler suite at 720 tests across
 59 suites.
 
+`/47` amendment — stable diagnostic taxonomy (2026-11-09;
+[ADR-0007](../architecture/ADR-0007-DIAGNOSTIC-TAXONOMY.md) accepted by the T01
+integrator; R1 auto-bump; `/46` preserved as history): `DiagGroup` appends
+`lex`, `parse`, `type`, `const`, `ir`, `codegen`, and `host`, preserving the
+existing group order. New named code registry `DIAGNOSTIC_CODES` includes the
+legacy `Task:4`/`Task:3`/`Unsupported:1` entries and new lex/parse/type/
+semantic/const/IR/codegen/Host codes; names and `(group, code)` pairs are
+unique. New helpers `missing_record`, `parse_unexpected`, `type_mismatch`,
+`ir_invalid`, and `host_io` use named codes. Existing call sites may keep
+legacy codes until their owner migrates them; no silent reclassification is
+allowed. New hashed rules `diag.taxonomy-stable`, `diag.code-unique`,
+`diag.span-task-attribution`; the registry hashes name + group name + code.
+New artifact `t01-c01-c06/47` (`3c3d722d…f593`); acceptance
+`c54_diag_taxonomy` (3 tests) plus the full compiler suite at 723 tests across
+60 suites. No full `Task:4` migration, new panic path, target codegen, or
+torture result is claimed.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

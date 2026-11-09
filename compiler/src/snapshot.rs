@@ -1457,6 +1457,13 @@ fn diag_group_from_name(name: &str) -> Result<DiagGroup, CodecError> {
         "semantic" => Ok(DiagGroup::Semantic),
         "unsupported" => Ok(DiagGroup::Unsupported),
         "internal" => Ok(DiagGroup::Internal),
+        "lex" => Ok(DiagGroup::Lex),
+        "parse" => Ok(DiagGroup::Parse),
+        "type" => Ok(DiagGroup::Type),
+        "const" => Ok(DiagGroup::Const),
+        "ir" => Ok(DiagGroup::Ir),
+        "codegen" => Ok(DiagGroup::Codegen),
+        "host" => Ok(DiagGroup::Host),
         _ => Err(CodecError::Unsupported("unknown diagnostic group name")),
     }
 }
