@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | **PRESENT (Part A + `-E`/`-D`/`-U`)** 2026-10-06 — binary `candidate` (`compiler/src/bin/candidate.rs`); host tooling, no contract change, no version bump |
-| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset) plus host-only `-E` emission and `-D`/`-U` macro seeds |
+| Status | **PRESENT (Part A + `-E`/`-D`/`-U` + B3-03a `#define`/`#undef`)** 2026-11-09 — binary `candidate` (`compiler/src/bin/candidate.rs`); host tooling, no contract change, no version bump |
+| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset) plus host-only `-E` emission, `-D`/`-U` seeds, and ordered source `#define`/`#undef` processing |
 | Authority | [T00](T00_GCC_TORTURE_GATE.md) H04 + [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) P7/§9 (Part A portion) |
 | Non-goal | `-I`, multi-source, `-S`/`-c` emission (all explicit errors) |
 
@@ -38,14 +38,15 @@ no evidence); 2 = driver error.
 ## 3. Evidence
 
 ```text
-candidate evidence (t01-c01-c06/19)
+candidate evidence (t01-c01-c06/42)
 input: main.c
 snapshot: <hex>
 trace: <hex>
 interpret: value=05 negative=false
 ```
 
-Repeated runs are byte-identical (pinned by `h04_candidate`).
+Repeated runs are byte-identical (pinned by `h04_candidate`). The B3-03a
+source-macro path is pinned by `c46_pp_driver`.
 
 ## 4. Execution record
 
@@ -55,10 +56,17 @@ determinism, invalid-input diagnostic with exit 1 and no evidence,
 `-o` report file with section selection, `-E` golden/determinism/`-o`/
 `#error`/clash coverage, plus `-D` bare-default, `-D` value expansion,
 `-U` undef, `-D`/`-U` last-wins, empty-`-D`-stays-defined, bad-macro-flag
-exit 2, and `-D`-with-evidence intactness).
+exit 2, and `-D`-with-evidence intactness). B3-03a adds
+`compiler/tests/c46_pp_driver.rs` (10 tests): source `#define`/`#undef`
+ordering, benign/non-benign redefinition, leading-define-driven `#if`,
+inactive/active post-conditional defines, include/error fail-closed,
+continuation rejection, directive removal, and deterministic reruns. See
+[PP_DRIVER_SLICE.md](PP_DRIVER_SLICE.md).
 
 ## 5. Explicitly deferred (still absent)
 
+- `#include`/`#line`/`#pragma` effects (H04 include policy, T03/T01
+  logical-location and pragma carriers; W2/W3 of B3-03).
 - `-I`, multi-source compilation, quoting edge cases (need
   include/multi-source freezes).
 - `-S`/`-c` target emission (Part B, probe-gated; the fail-closed rule

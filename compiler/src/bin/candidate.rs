@@ -24,10 +24,11 @@
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
-    PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
-    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip,
-    SeFuncChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip,
-    Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
+    PpEmitChip, PpInvokeChip, PpNormalizeChip, PpRedefineChip, PpScanChip, PpSpliceChip,
+    PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip, SeLitChip, SeRetChip, TyConvChip,
+    TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker,
+    WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -35,10 +36,10 @@ use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP,
-    PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_LIT_CHIP, SE_RET_CHIP,
-    TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP,
-    VF12_CHIP,
+    PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP,
+    PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP,
+    SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP,
+    VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -57,6 +58,10 @@ mod emit_helper;
 /// with the integrator so chips own every semantic decision).
 #[path = "candidate/macro_flags.rs"]
 mod macro_flags;
+
+/// B3-03a host-only PP line/directive grouping helper.
+#[path = "candidate/pp_driver.rs"]
+mod pp_driver;
 
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
@@ -225,6 +230,9 @@ fn install(bus: &mut CompilerBus) {
         &PpSpliceChip,
         &PpCommentChip,
         &PpScanChip,
+        &PpDefineChip,
+        &PpRedefineChip,
+        &PpUndefChip,
         &PpConditionalChip,
         &PpInvokeChip,
         &PpSubstituteChip,
@@ -258,6 +266,9 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_SPLICE, PP_SPLICE_CHIP, 1),
         (TaskKind::PREPROCESS_COMMENT, PP_COMMENT_CHIP, 1),
         (TaskKind::PREPROCESS_SCAN, PP_SCAN_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_DEFINE, PP06_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_REDEFINE, PP07_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_UNDEF, PP08_CHIP, 1),
         (TaskKind::PREPROCESS_CONDITIONAL, PP19_CHIP, 1),
         (TaskKind::PREPROCESS_MACRO_INVOKE, PP09_CHIP, 1),
         (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, PP12_CHIP, 1),
@@ -397,6 +408,15 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpScanChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpDefineChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpRedefineChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpUndefChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpConditionalChip)
@@ -571,13 +591,52 @@ fn commit_macro_flags(
     Ok(())
 }
 
-/// Shared preprocessing prefix: source bytes through PP01→PP04, PP19
-/// conditional, PP09 expansion, and the PP05 directive gate. Returns the
-/// final pp-token stream (`expanded_tokens`, post-conditional,
-/// post-expansion, post-directive) that both the evidence pipeline and the
-/// `-E` emit step thread onward. Host owns the file read; chips own every
-/// semantic decision. `-D`/`-U` seeds commit in flag order before the
-/// first PP step so conditionals and expansion observe them.
+/// Run one PP step and require a `Records` result.
+fn step_records(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    kind: TaskKind,
+    owner: ChipId,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    match step(bus, workers, trace, kind, owner, Payload::from_refs(refs))? {
+        ResultValue::Records(refs) => Ok(refs),
+        other => Err(format!("expected pp-token refs, got {other:?}")),
+    }
+}
+
+/// Run PP09 over one contiguous text run and return the expanded refs.
+fn expand_text_run(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    if refs.is_empty() {
+        return Ok(Vec::new());
+    }
+    step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_MACRO_INVOKE,
+        PP09_CHIP,
+        refs,
+    )
+}
+
+/// Shared preprocessing prefix: source bytes through PP01→PP04, then the
+/// bounded B3-03a line walk.
+///
+/// Leading source `#define`/`#undef` lines are applied with PP06/PP08 before
+/// conditional evaluation; contiguous text runs are expanded with PP09 at
+/// their stream position. At the first conditional line, PP19 runs once over
+/// the remaining stream; active non-conditional directives are then handled
+/// by PP05 or rejected (active source macro mutation after the first
+/// conditional). Every consumed directive line is removed and exactly one
+/// EOF is preserved. `-D`/`-U` seeds commit in flag order before the first
+/// PP step, so conditionals and expansion observe them.
 fn pp_prefix(
     input: &str,
     seeds: &[macro_flags::MacroFlagSeed],
@@ -636,56 +695,185 @@ fn pp_prefix(
         PP_COMMENT_CHIP,
         Payload::from_refs(vec![RecordRef::Artifact(spliced)]),
     )?)?;
-    let scanned = step(
+    let pp_tokens = step_records(
         &mut bus,
         &workers,
         &mut trace,
         TaskKind::PREPROCESS_SCAN,
         PP_SCAN_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(comment_free)]),
+        vec![RecordRef::Artifact(comment_free)],
     )?;
-    let pp_tokens = match scanned {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected pp-token refs, got {other:?}")),
-    };
-    // Conditional inclusion over the scanned stream (M1 sources carry no
-    // conditionals and pass through; inactive lines are dropped).
-    let active_tokens = match step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_CONDITIONAL,
-        PP19_CHIP,
-        Payload::from_refs(pp_tokens),
-    )? {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected active refs, got {other:?}")),
-    };
-    // Macro expansion over the active stream (M1 sources carry no
-    // invocations and stitch to themselves; per-line PP06 fan-out stays
-    // a host task until the expansion-runner slice).
-    let expanded_tokens = match step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_MACRO_INVOKE,
-        PP09_CHIP,
-        Payload::from_refs(active_tokens),
-    )? {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected expanded refs, got {other:?}")),
-    };
-    // Directive dispatch over every expanded pp-token (M1 sources carry no
-    // directives and acknowledge here; `#error` fails with its message).
-    step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_DIRECTIVE,
-        PP05_CHIP,
-        Payload::from_refs(expanded_tokens.clone()),
-    )?;
-    Ok((bus, workers, trace, expanded_tokens))
+    let stream = pp_driver::group_lines(&bus, &pp_tokens)?;
+    let mut final_refs: Vec<RecordRef> = Vec::new();
+    let mut index = 0usize;
+    let mut conditional_at: Option<usize> = None;
+    while index < stream.lines.len() {
+        let line = &stream.lines[index];
+        if !pp_driver::line_is_directive(&bus, line) {
+            let start = index;
+            while index < stream.lines.len()
+                && !pp_driver::line_is_directive(&bus, &stream.lines[index])
+            {
+                index += 1;
+            }
+            let mut refs = Vec::new();
+            for text_line in &stream.lines[start..index] {
+                refs.extend(text_line.refs());
+            }
+            let expanded = expand_text_run(&mut bus, &workers, &mut trace, refs)?;
+            final_refs.extend(expanded);
+            continue;
+        }
+        if pp_driver::line_has_continuation(&bus, line) {
+            return Err(format!(
+                "unsupported preprocessing: directive on raw line {} spans multiple physical lines; logical-line grouping is not frozen",
+                line.line + 1
+            ));
+        }
+        let name = pp_driver::directive_name(&bus, line);
+        match name.as_deref() {
+            Some(name) if pp_driver::is_conditional_name(name) => {
+                conditional_at = Some(index);
+                break;
+            }
+            Some(name) if pp_driver::is_define(name) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_MACRO_DEFINE,
+                    PP06_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_undef(name) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_MACRO_UNDEF,
+                    PP08_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(_) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_DIRECTIVE,
+                    PP05_CHIP,
+                    Payload::from_refs(line.refs()),
+                )?;
+            }
+            None if line.tokens.len() == 1 => {
+                // Null directive: drop it.
+            }
+            None => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_DIRECTIVE,
+                    PP05_CHIP,
+                    Payload::from_refs(line.refs()),
+                )?;
+            }
+        }
+        index += 1;
+    }
+    if let Some(start) = conditional_at {
+        let mut remaining = Vec::new();
+        for line in &stream.lines[start..] {
+            remaining.extend(line.refs());
+        }
+        let eof = stream
+            .eof
+            .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+        remaining.push(RecordRef::PpToken(eof));
+        let active = step_records(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::PREPROCESS_CONDITIONAL,
+            PP19_CHIP,
+            remaining,
+        )?;
+        let active_stream = pp_driver::group_lines(&bus, &active)?;
+        let mut active_index = 0usize;
+        while active_index < active_stream.lines.len() {
+            let line = &active_stream.lines[active_index];
+            if !pp_driver::line_is_directive(&bus, line) {
+                let start = active_index;
+                while active_index < active_stream.lines.len()
+                    && !pp_driver::line_is_directive(&bus, &active_stream.lines[active_index])
+                {
+                    active_index += 1;
+                }
+                let mut refs = Vec::new();
+                for text_line in &active_stream.lines[start..active_index] {
+                    refs.extend(text_line.refs());
+                }
+                let expanded = expand_text_run(&mut bus, &workers, &mut trace, refs)?;
+                final_refs.extend(expanded);
+                continue;
+            }
+            if pp_driver::line_has_continuation(&bus, line) {
+                return Err(format!(
+                    "unsupported preprocessing: active directive on raw line {} spans multiple physical lines; logical-line grouping is not frozen",
+                    line.line + 1
+                ));
+            }
+            match pp_driver::directive_name(&bus, line).as_deref() {
+                Some(name) if pp_driver::is_define(name) || pp_driver::is_undef(name) => {
+                    return Err(format!(
+                        "unsupported preprocessing: source #define/#undef after the first conditional (raw line {}) is not supported; PP19 has already fixed the active stream",
+                        line.line + 1
+                    ));
+                }
+                Some(name) if pp_driver::is_conditional_name(name) => {
+                    return Err(
+                        "internal preprocessing error: conditional directive survived PP19"
+                            .to_string(),
+                    );
+                }
+                Some(_) => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::PREPROCESS_DIRECTIVE,
+                        PP05_CHIP,
+                        Payload::from_refs(line.refs()),
+                    )?;
+                }
+                None if line.tokens.len() == 1 => {
+                    // Null directive: drop it.
+                }
+                None => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::PREPROCESS_DIRECTIVE,
+                        PP05_CHIP,
+                        Payload::from_refs(line.refs()),
+                    )?;
+                }
+            }
+            active_index += 1;
+        }
+        let active_eof = active_stream
+            .eof
+            .ok_or_else(|| "PP19 returned a stream with no EOF token".to_string())?;
+        final_refs.push(RecordRef::PpToken(active_eof));
+    } else {
+        let eof = stream
+            .eof
+            .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+        final_refs.push(RecordRef::PpToken(eof));
+    }
+    Ok((bus, workers, trace, final_refs))
 }
 
 /// Part B `-E` terminal: the shared prefix, then the frozen PP28 worker
