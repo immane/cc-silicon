@@ -9,10 +9,10 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/54`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/55`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
-| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/55` |
+| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/56` |
 | Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
 | Parser architecture + V1 AST (`/43`) | **Schema frozen; producer not implemented** | ADR-0003 single-task V1 parser decision; append-only `NodeKind` inventory; snapshot names/round-trip. V1 parser and VF05 V1 shape table remain future |
 | IR/CFG common base (`/44`) | **Schema frozen; producer/verifier not implemented** | ADR-0004 `InstructionRecord.local`/`successors`; local/arithmetic/branch op append; snapshot round-trip. V1/V2 lowering and VF07/VF08 remain future |
@@ -25,7 +25,9 @@ re-verify. This page records observed state, not a new acceptance run.
 | Local binary operators (`/51`) | **Implemented and tested** | `-`, `*`, `/`, `%` lower to the matching IR and native AArch64 exits 255, 6, 0, 2; `c56_source_locals` 7 macOS / 10 Linux |
 | Local expression trees (`/52`) | **Implemented and tested** | Precedence, parentheses, literal-left forms, and unary `+`/`-` parse/check/lower/interpret; native AArch64 covers the tree cases; `c56_source_locals` 8 macOS / 12 Linux |
 | Local assignments (`/53`) | **Implemented and tested** | Ordered `x = <expr>;` statements, effect-carrying facts, `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 Linux |
-| C source → executable | **M1 constant-return and local expression/assignment paths only** | `candidate --emit-asm` + native AArch64 assembler/linker/run covers `return 2+3`, closed local expression trees, and ordered assignments over one `int`. No general codegen, `-S`/`-c`, calls, memory, or control flow |
+| Direct-call schema (`/54`) | **Schema frozen** | Parameter/call AST, `FunctionRecord.parameters`, explicit callee IR, `ConstRecord.origins`, call task/chip reservation, call budgets; no producer in `/54` |
+| Direct calls (`/55`) | **Implemented and tested** | Same-TU acyclic `int` calls, 0–8 parameters/arguments, multi-function VF12 frames and AArch64 emission; `call_source` 7 macOS / 8 native AArch64 Linux, `c55_target_m1` 24/25, `call_abi` 1 shape test with two reference directions blocked. No recursion, variadics, external/indirect calls, stack arguments, or wider ABI |
+| C source → executable | **M1 constant-return, local, and same-TU direct-call paths only** | `candidate --emit-asm` + native AArch64 assembler/linker/run covers `return 2+3`, local expression/assignment programs, and same-TU direct calls with up to eight `int` arguments. No general codegen, `-S`/`-c`, memory, control flow, recursion, or wider ABI |
 | AArch64 target values | **Probe-attested baseline; official CI/bare-metal baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=probe-attested`; candidate codegen gate remains |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
@@ -35,13 +37,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/53`" means
+## What "frozen `/55`" means
 
-The frozen artifact is `t01-c01-c06/54`:
+The frozen artifact is `t01-c01-c06/55`:
 
 ```text
-version=t01-c01-c06/54
-hash=850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39
+version=t01-c01-c06/55
+hash=e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 ```
@@ -104,7 +106,7 @@ are discovery/run observations, not a permanent promise; the source tree and
   sandbox, and H02/H03 target orchestration remains absent.
 - Replay is recorded-input re-execution over a canonical fingerprint, not bus
   restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
-  projections, and per-stage queues remain deferred to `/55`.
+  projections, and per-stage queues remain deferred to `/56`.
 - Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 

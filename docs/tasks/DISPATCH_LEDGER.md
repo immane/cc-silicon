@@ -6,67 +6,63 @@
 | Updated | 2026-11-10 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/54` — hash `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
-| Branch / HEAD | `wave4-development` / `a33c066` (code through the `/53` local-assignment slice committed; this status-doc commit follows) |
-| Workspace note | `/42`–`/53`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; no push was performed |
+| Contract baseline | `t01-c01-c06/55` — hash `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Branch / HEAD | `wave4-development` / `a7596a1` (code through the `/55` direct-call implementation committed; this status-doc commit follows) |
+| Workspace note | `/42`–`/55`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; five call lanes and five auxiliary lanes completed; no push was performed |
 
 ### CALL Lane Dispatch (2026-11-10; RUNNING)
 
 Baseline commit `9d715a7` (`t01-c01-c06/54`, shape-only direct-call schema),
 contract hash
-`850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39`.
+`e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652`.
 Five implementation lanes run in independent worktrees. The main worktree is
 reserved for CALL-F0 orchestration and integration.
 
 | Lane | Session | Worktree | Branch | State |
 |---|---|---|---|---|
-| CALL-P1 parser | `ses_e3e03d818fferNP3h3ZvvKfrpU` | `../cc-silicon-call-p1` | `call-p1` | RUNNING |
-| CALL-S1 types/symbols/semantics | `ses_e3e03d817ffeJHnGGwaCb3HDqA` | `../cc-silicon-call-s1` | `call-s1` | RUNNING |
-| CALL-I1 IR lowering | `ses_e3e03d808ffeYFzQba3HU4HqTN` | `../cc-silicon-call-i1` | `call-i1` | RUNNING |
-| CALL-V1 verification/modeling | `ses_e3e03d807ffeoyf4X401wxaaxd` | `../cc-silicon-call-v1` | `call-v1` | RUNNING |
-| CALL-A1 AArch64 emitter | `ses_e3e03d807ffdDpwNi27WLTXgZQ` | `../cc-silicon-call-a1` | `call-a1` | RUNNING |
+| CALL-P1 parser | `ses_e3e03d818fferNP3h3ZvvKfrpU` | `../cc-silicon-call-p1` | `call-p1` | COMPLETE — `44983c1` |
+| CALL-S1 types/symbols/semantics | `ses_e3e03d817ffeJHnGGwaCb3HDqA` | `../cc-silicon-call-s1` | `call-s1` | COMPLETE — `fb9ea6c` |
+| CALL-I1 IR lowering | `ses_e3e03d808ffeYFzQba3HU4HqTN` | `../cc-silicon-call-i1` | `call-i1` | COMPLETE — `2660910` |
+| CALL-V1 verification/modeling | `ses_e3e03d807ffeoyf4X401wxaaxd` | `../cc-silicon-call-v1` | `call-v1` | COMPLETE — `1ff14fb` + `e47ef21` |
+| CALL-A1 AArch64 emitter | `ses_e3e03d807ffdDpwNi27WLTXgZQ` | `../cc-silicon-call-a1` | `call-a1` | COMPLETE — `2bf6fbd` |
 
-### CALL Auxiliary Lanes (2026-11-10; RUNNING)
+### CALL Auxiliary Lanes (2026-11-10; COMPLETE)
 
-Five auxiliary tasks run without touching CALL production files or shared
-schema. They raise the logical concurrency to 10 while the production writer
-count remains five and the native target queue remains one.
+Five auxiliary tasks ran without touching CALL production files or shared
+schema. They raised logical concurrency to 10 while the production writer
+count remained five and the native target queue remained one.
 
 | Lane | Session | Scope | State |
 |---|---|---|---|
-| CALL-T1 acceptance | `ses_e3dfe3639ffe0dzTWZWy2D7mrn` | `../cc-silicon-call-t1`; new `call_source`/`call_abi` tests only | RUNNING |
-| CFG design | `ses_e3dfe362fffeRQovU6x4PY2CBd` | read-only next-slice contract | RUNNING |
-| MEMORY design | `ses_e3dfe360effeCdqNzO22uvt4S6` | read-only next-slice contract | RUNNING |
-| HOST-RUN audit | `ses_e3dfe360cffeadGRXY4GpvwZoF` | read-only H05 readiness audit | RUNNING |
-| LEX integer design | `ses_e3dfe3608ffeH2Rl499fGs1qY9` | read-only zero/octal/radix plan | RUNNING |
+| CALL-T1 acceptance | `ses_e3dfe3639ffe0dzTWZWy2D7mrn` | `../cc-silicon-call-t1`; new `call_source`/`call_abi` tests only | COMPLETE — `74d40e3` |
+| CFG design | `ses_e3dfe362fffeRQovU6x4PY2CBd` | read-only next-slice contract | COMPLETE — report returned |
+| MEMORY design | `ses_e3dfe360effeCdqNzO22uvt4S6` | read-only next-slice contract | COMPLETE — report returned |
+| HOST-RUN audit | `ses_e3dfe360cffeadGRXY4GpvwZoF` | read-only H05 readiness audit | COMPLETE — defects reported |
+| LEX integer design | `ses_e3dfe3608ffeH2Rl499fGs1qY9` | read-only zero/octal/radix plan | COMPLETE — report returned |
 
-No auxiliary lane may edit production code. T1 may commit tests that are
-integration-pending; a failing test is not a passing delivery.
+T1's tests are now integrated and pass. The five design/audit reports remain
+proposals or findings; they are not implementation evidence until accepted.
 
-No lane may edit shared schema, `candidate.rs`, Cargo, `mod.rs` (except S1's
-module registration for its new worker), contract markers, or another lane's
-files. Each lane returns a branch commit; CALL-F0 cherry-picks in dependency
-order, resolves module aggregation, implements multi-function orchestration,
-and runs the real closed loop. No call implementation or native result is
-claimed yet.
+CALL-F0 cherry-picked the lane commits in dependency order, registered the call
+worker, fixed literal-fold duplication and schema-compatibility migrations, and
+ran the real closed loop. The final `/55` evidence is recorded in the freeze
+records below.
 
-### Next Dispatch Procedure (2026-11-10; In Progress)
+### Next Dispatch Procedure (2026-11-10; Completed `/55`)
 
-The post-`/53` procedure is in
-[MASS_PARALLEL_DISPATCH.md §13](MASS_PARALLEL_DISPATCH.md#13-next-dispatch-from-53).
-`CALL-F0` froze the shape-only `/54` schema and the five production lanes are
-`RUNNING` against it; `CALL-T1` independent acceptance follows integration. `CALL-R1` and read-only
-interface/test review are eligible for assignment, but no role/session is assigned
-by this documentation update. No call schema, amendment number, ChipId or test
-result is frozen here. Capture actual HEAD and ownership before dispatch; the
-historical baseline checks below have not been rerun for this documentation edit.
+The direct-call dispatch in
+[MASS_PARALLEL_DISPATCH.md §13](MASS_PARALLEL_DISPATCH.md#13-next-dispatch-from-53)
+is complete for its bounded subset. The next design queues are CFG, memory, and
+the integer zero/octal fix described by the auxiliary reports; none is an
+accepted implementation contract yet.
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **740 tests across 62 suites (746 on native AArch64 Linux) after `/53`** | Observed in the `/53` local-assignment session. Adds statement-order and effect-mask coverage. |
+| Compiler package tests | **PASS**, **839 tests across 68 suites (848 on native AArch64 Linux) after `/55`** | Direct-call integration session: `call_source` 7/8, `c55_target_m1` 24/25, `call_abi` 1 pass + 2 ignored blocked directions. Native Docker `rust:1.99-bookworm` linux/arm64 run. |
+| Direct-call tests | **PASS** | macOS: `call_parse` 12, `call_semantic` 15, `call_ir` 12, `call_verify` 28, `call_source` 7, `call_abi` 1 pass/2 ignored, `c55_target_m1` 24, `c56_source_locals` 10. Native AArch64: `call_source` 8, `c55_target_m1` 25, `call_abi` 3 pass/2 ignored, `c56_source_locals` 15. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
 | Root tests after B3-03a | **PASS**, 21 tests | `cargo test --workspace --locked` |
 | Torture package after B3-03a | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
@@ -75,7 +71,7 @@ historical baseline checks below have not been rerun for this documentation edit
 | Target probe | **PINNED PROBE-ATTESTED BASELINE** | Debian 12 aarch64 + GCC 12.2.0; `c48_target_probe` 3/3; global `target_verification=probe-attested`; official T00 CI/bare-metal baseline and corpus remain open |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
 
-The current `/53` schema baseline is green for the configured root, compiler,
+The current `/55` schema baseline is green for the configured root, compiler,
 chip-lint, and torture checks. This is a repository check result, not target
 execution or a GCC pass rate.
 
@@ -166,7 +162,7 @@ ledger, or other reports.
 
 | Order | Scope | Output | State / session |
 |---|---|---|---|
-| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/55` |
+| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/56` |
 | B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/40` (hash `c6961ac6…10c14`); `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05` |
 | B2-02 | Tagged, typed constants D-09: `ConstRecord.ty`, closed integer payload, fold type resolution, T09/VF12 immediate-type enforcement, snapshot codec, `/42` freeze. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_TAGGED_CONSTANTS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/42` (hash `a9a1da92…abf1a5`); `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10; candidate `value=05` |
 
@@ -185,7 +181,7 @@ triaged the critical path as follows.
    is **accepted, implemented, and verified as `/42`**; `/43` parser/AST and
    `/44` IR/CFG and `/45` constant v3 are **frozen schemas**; `/46`–`/53`
    followed. The next schema freeze is the deferred
-   restore/quota>1/VF13/`StorePatch` package at `/55`; H05/torture are
+   restore/quota>1/VF13/`StorePatch` package at `/56`; H05/torture are
    host/tooling work without a language-schema bump.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
@@ -260,7 +256,7 @@ defaults. The deferred restore package is `/55`.
 | B2-00 OD-7 | Pins | Trace digest + Host envelope |
 | B2-00 OD-8 | `Task.id` | Encode and test divergence |
 | B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics (frozen), `/48` probe baseline (frozen), `/49` source locals (frozen), `/50` modeled integer/local add (frozen), `/51` local binary operators (frozen), `/52` local expression trees (frozen), `/53` local assignments (frozen), `/54` direct-call schema (frozen), `/55` deferred restore |
-| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/55` |
+| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/56` |
 | B2-02 T-01 | Constant type field | `ConstRecord.ty` is a committed T06 `TypeId` |
 | B2-02 T-02 | Payload family | Closed `/42` tag `Integer` only; float/address append-only future tags |
 | B2-02 T-03 | Integer carrier | Big-endian minimal magnitude + sign; no host width |
@@ -302,7 +298,7 @@ defaults. The deferred restore package is `/55`.
 | Implementation | Append handles/bodies in snapshots; stage-first selection + zero-quota typed error; macro total; typed-append and Names store versions; 1-based result commit ordinal; `Task.id`; pin digest; bounded trace decoder/diff; Host `ReplayEvidence` |
 | Tests | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22, `c11_lex` 11, `freeze` 15, `c20_ppscan` 8, `h04_candidate` 18; full compiler suite 723 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/41)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/55` (was `/43` before the schema train; `/54` is the direct-call schema); D-09 tagged constants → `/42` |
+| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/56` (was `/43` before the schema train; `/54` is the direct-call schema); D-09 tagged constants → `/42` |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
 
 ## 3H. `/42` Freeze Record (2026-11-09)
@@ -318,7 +314,7 @@ defaults. The deferred restore package is `/55`.
 | Implementation | Typed fold resolution from committed `SemRecord.ty` (binary) / unique canonical `int` (literal); canonical integer codec; T09 immediate-type check; VF12 same-type check; VF14 integer gate decode; candidate integer evidence extraction |
 | Tests | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, `c05_codec` 29, `freeze` 15; full compiler suite 684 tests / 51 suites after B-INT-00 parking |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/42)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/55` (was `/43` before the schema train; `/54` is the direct-call schema) |
+| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/56` (was `/43` before the schema train; `/54` is the direct-call schema) |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution |
 
 ## 3I. `/43` Freeze Record (2026-11-09)
@@ -471,8 +467,8 @@ defaults. The deferred restore package is `/55`.
 
 | Field | Value |
 |---|---|
-| Artifact | `t01-c01-c06/54` |
-| Hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
+| Artifact | `t01-c01-c06/53` |
+| Hash | `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e` |
 | Authority | T01 integrator acceptance; R1 auto-bump; `/52` preserved as history |
 | Contract text | [T01 §7.1 `/53` amendment](T01_COMPILER_CONTRACT.md); [slice record](M1_SOURCE_LOCALS_SLICE.md) |
 | Shape impact | assignment statements; `SEMANTIC_ASSIGNMENT_EXPR`; `EFFECT_WRITES_LOCAL`; VF05/VF06 statement/effect coverage; ordered T09 stores |
@@ -480,6 +476,34 @@ defaults. The deferred restore package is `/55`.
 | Tests | `c56_source_locals` 10 macOS / 13 native AArch64 Linux; full compiler suite 740 tests / 62 suites (746 on native AArch64 Linux) |
 | Explicit deferrals | Calls, parameters, memory objects, branches, loops, general ABI, object emission, corpus/runner |
 | Non-claims | No general codegen, `-S`/`-c`, target torture rate, or full M1 acceptance |
+
+## 3T. `/54` Freeze Record (2026-11-10)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/54` |
+| Hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
+| Authority | T01 integrator acceptance; R1 auto-bump; `/53` preserved as history |
+| Contract text | [T01 `/54` amendment](T01_COMPILER_CONTRACT.md); [direct-call slice](DIRECT_CALL_SLICE.md) |
+| Shape impact | shape-only call AST/IR/schema: `ParameterList`/`Parameter`/`Call`, `FunctionRecord.parameters`, `InstructionRecord.callee`, `IrOp::Call`, `ConstRecord.origins`, call task/chip reservation, budgets |
+| Implementation | schema/codec/registry only; no parser, semantic, lowering, interpreter, or emitter producer |
+| Tests | full compiler suite 740 tests / 62 suites on macOS |
+| Explicit deferrals | All source call behavior, multi-function orchestration, interpreter frames, ABI emission, native call execution |
+| Non-claims | No call capability, ABI acceptance, corpus result, or torture rate |
+
+## 3U. `/55` Freeze Record (2026-11-10)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/55` |
+| Hash | `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Authority | T01 integrator acceptance; R1 auto-bump; `/54` preserved as history |
+| Contract text | [T01 `/55` amendment](T01_COMPILER_CONTRACT.md); [direct-call slice](DIRECT_CALL_SLICE.md) |
+| Shape impact | none beyond `/54`; implementation amendment for the frozen direct-call shape |
+| Implementation | `pa_tu.rs`, `ty_types.rs`, `ty_symbol.rs`, `se_{function,return,identifier,assignment,binary,unary,call}.rs`, `ir_function.rs`, `vf_{syntax,invariant,interpret}.rs`, `target_m1.rs`, `candidate.rs` |
+| Tests | `call_source` 7 macOS / 8 native AArch64 Linux; `c55_target_m1` 24 / 25; `call_abi` 1 passing shape test, 2 ignored blocked directions; full compiler suite 839 / 68 macOS and 848 / 68 native AArch64 Linux |
+| Explicit deferrals | Recursion, variadics, external/indirect calls, stack arguments, wider scalar/FP/aggregate ABI, two-way mixed-link boundary, memory, control flow, object emission, corpus/runner |
+| Non-claims | No general codegen, `-S`/`-c`, full ABI, target torture rate, or full M1 acceptance |
 
 ## 4. Dispatch Rules for This Batch
 

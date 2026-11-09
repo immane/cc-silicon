@@ -1,16 +1,19 @@
-# Direct-Call Slice — `/54` Schema and `/55` Implementation Plan
+# Direct-Call Slice — `/54` Schema, `/55` Implementation
 
 | Field | Value |
 |---|---|
-| Status | **`/54` schema frozen; `/55` source implementation dispatched** |
-| Baseline | `t01-c01-c06/54`, hash `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
+| Status | **IMPLEMENTED / VERIFIED as `/55` (2026-11-10)**; `/54` is the schema-only predecessor |
+| Baseline | `t01-c01-c06/55`, hash `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Implementation baseline | `9d715a7` schema; lane commits merged through the `/55` integration batch |
 | Dispatch | [MASS_PARALLEL_DISPATCH §13](MASS_PARALLEL_DISPATCH.md#13-next-dispatch-from-53) |
 | Goal | Same-TU, acyclic direct calls with canonical `int` parameters/result and a native AArch64 closed loop |
+| Evidence | `call_source` 7 macOS / 8 native AArch64 Linux; `c55_target_m1` 24 / 25; `call_abi` 1 shape test with both reference directions explicitly ignored/blocked; full compiler suite 839/68 macOS and 848/68 native AArch64 Linux |
 | Non-claims | No recursion, variadics, external/indirect calls, more than eight arguments, stack-passed arguments, general ABI, `-S`/`-c`, object writer, corpus result, or torture rate |
 
 ## 1. Frozen `/54` Shape
 
-`/54` freezes carriers only; it adds no producer and proves no call behavior.
+`/54` froze carriers only; it added no producer and proved no call behavior.
+`/55` implements the bounded source path described in this document.
 
 - `NodeKind` appends `ParameterList`, `Parameter`, `Call`.
 - `FunctionDefinition` keeps its existing three children
@@ -120,6 +123,23 @@ assembler/linker only; reference GCC must never compile the candidate function
 under test. Linux-gated tests that return early on non-AArch64 hosts are not
 execution evidence.
 
+## 4A. `/55` Result
+
+The implementation now covers the frozen shape end to end:
+
+- multi-function parser with atomic AST append and the frozen budgets;
+- parameterized `int` signatures and block-scope parameter symbols;
+- `SE_CALL_CHIP` callee/arity/argument/effect checks;
+- explicit-callee `IrOp::Call` lowering with ordered argument values;
+- multi-function VF12 frames with cycle, depth, step, and uninitialized-local rejection;
+- multi-function AArch64 emission with `w0`–`w7` arguments, `w0` results, leaf/non-leaf LR handling, aligned frames, and no callee-saved registers;
+- candidate discovery of all functions, source-order lowering, and `main` selection.
+
+The canonical and `/49`–`/53` paths retain their modeled and native behavior.
+The two-way reference ABI directions remain blocked because no frozen
+function-only or external-callee test boundary exists; they are ignored tests,
+not passes.
+
 ## 5. Verification Commands
 
 ```sh
@@ -136,6 +156,6 @@ cargo test --locked --manifest-path compiler/Cargo.toml
 cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings
 ```
 
-The `call_*` targets are planned and do not exist at `/54`. The final `/55`
-amendment, hash, test counts, and native evidence are recorded only after the
-real producers and closed loop pass.
+The `call_*` targets exist at `/55`. The native commands must run on the pinned
+Linux AArch64 substrate; macOS runs exercise modeled values and assembly shape
+only.

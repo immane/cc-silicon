@@ -6,7 +6,7 @@
 | Updated | 2026-11-10 |
 | Scope | Compiler application, Host tooling, verification, and integration; does not extend root-framework responsibilities |
 | Goal | Provide 100–150 parallel task slots when interfaces and file isolation permit, while prioritizing a real execution closed loop |
-| Checked baseline | `t01-c01-c06/54`; re-read the version, hash, and workspace state at dispatch time |
+| Checked baseline | `t01-c01-c06/55`; re-read the version, hash, and workspace state at dispatch time |
 | This document does not provide | Started agents, completed implementations, rerun tests, target probe results, or a GCC pass rate |
 
 **Next dispatch:** use [Section 13](#13-next-dispatch-from-53) for the concrete
@@ -445,22 +445,21 @@ functionality and the T00 gate, not by all agents exiting.
 
 ### 13.1 Binding Baseline and Dispatch Status
 
-This section is a dispatch procedure over the accepted `/54` call **schema**;
-the call behavior/ABI implementation remains `/55` work, not an accepted
-behavior contract. All
-roles below are unassigned; no implementation agent is running as a result of this
-document. Work-order IDs are scheduling labels, never ChipIds or TaskKinds.
+This section records the completed `/54` schema → `/55` implementation
+dispatch. The bounded direct-call behavior is accepted for the covered subset;
+the wider ABI and remaining language work below are still unstarted plans.
+Work-order IDs are scheduling labels, never ChipIds or TaskKinds.
 
 | Item | Required binding |
 |---|---|
-| Starting artifact | `t01-c01-c06/54` |
-| Starting hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
-| Known committed baseline | `14e779e` documentation / `a33c066` implementation; capture actual HEAD at dispatch |
-| Existing closed loop | One `main(void)`, one automatic `int`, expressions, ordered assignments, return, modeled result, prototype AArch64 assembly |
-| Frozen call schema | `ParameterList`/`Parameter`/`Call`, `FunctionRecord.parameters`, `InstructionRecord.callee`, `IrOp::Call`, and the call semantic reservation (no producer yet) |
-| Missing call producers | Parser, signatures/parameters/call semantics, IR lowering, verification/modeling, multi-function orchestration, emitter |
+| Starting artifact | `t01-c01-c06/55` |
+| Starting hash | `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Known committed baseline | `/55` integration batch; capture actual HEAD and worktree state at dispatch |
+| Existing closed loop | Constant return, `/49`–`/53` locals/expressions/assignments, and `/55` same-TU acyclic direct calls with 0–8 `int` arguments; modeled and native AArch64 evidence |
+| Implemented call path | General parser, parameterized signatures/parameter symbols, `SE_CALL_CHIP`, explicit-callee IR, multi-function VF12 frames, multi-function AArch64 emission, candidate orchestration |
+| Remaining call limits | Recursion, variadics, external/indirect calls, stack-passed arguments, wider scalar/FP/aggregate ABI, two-way reference mixed-link boundary |
 | Target boundary | Linux AArch64 pinned probe baseline only; no Darwin ABI, official T00 baseline, or universal ABI claim |
-| Numbering | Allocate the next amendment only after checking T01; `/54` is the direct-call common schema; the deferred restore package moves to `/55` |
+| Numbering | Allocate the next amendment only after checking T01; `/54` is the direct-call common schema; the deferred restore package moves to `/56` |
 
 Read [T01](T01_COMPILER_CONTRACT.md), [parallel rules](PARALLEL_EXECUTION.md),
 [task template](TASK_TEMPLATE.md), [source slice](M1_SOURCE_LOCALS_SLICE.md),

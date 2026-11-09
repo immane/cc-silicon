@@ -1,8 +1,8 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/54`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/55`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-10 after freezing `/53` local assignments, with the full compiler
-> suite green (740 tests / 62 suites (746 on native AArch64 Linux); clippy
+> 2026-11-10 after freezing `/55` same-TU direct calls, with the full compiler
+> suite green (839 tests / 68 suites (848 on native AArch64 Linux); clippy
 > clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
@@ -10,9 +10,10 @@
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/54` (source local expression trees and ordered
-  assignments over one `int`, modeled integer result, parser/semantic facts,
-  T09 recursive lowering, VF12 program interpreter), hash `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39`.
+- Frozen artifact: `t01-c01-c06/55` (direct-call schema plus same-TU acyclic
+  `int` calls, source locals/expressions/assignments, modeled integer results,
+  parser/semantic facts, T09 lowering, VF12 frames, and AArch64 emission), hash
+  `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -34,16 +35,17 @@
   (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization (deferred
-  package now `/55`); B3-03 PP driver orchestration implementation (design complete,
+  package now `/56`); B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
   Part B general target codegen; full M1 acceptance. A host-only M1
-  `--emit-asm` prototype now emits/runs the constant-return and `/49`–`/53`
-  local expression/assignment fixtures; the modeled integer result carrier
-  avoids verification writes. One pinned containerized AArch64
+  `--emit-asm` prototype now emits/runs constant-return, `/49`–`/53` local, and
+  `/55` same-TU direct-call fixtures (0–8 int arguments, nested calls, aligned
+  frames, LR handling); the modeled integer result carrier avoids verification
+  writes. One pinned containerized AArch64
   probe report is H07-classified and attested by `c48_target_probe`; the global
   target state is `probe-attested`, while the official T00 CI/bare-metal
   baseline remains open. No torture-corpus target run or GCC pass rate is claimed.
-- Branch: `wave4-development`. Commits through `/53` are local; no push was
+- Branch: `wave4-development`. Commits through `/55` are local; no push was
   performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,

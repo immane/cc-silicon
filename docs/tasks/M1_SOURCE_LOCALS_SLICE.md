@@ -118,8 +118,10 @@ New hashed rules: `parse.tu-local-expression-tree`,
 `se.assignment-writes-local`, `ir.local-assignment-order`, and
 `vf12.local-assignment-model`.
 
-Artifact: `t01-c01-c06/54`, hash
-`850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39`.
+Artifact for this slice: `t01-c01-c06/53`, hash
+`b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e`.
+The repository contract has since advanced through `/55`; see
+[DIRECT_CALL_SLICE.md](DIRECT_CALL_SLICE.md) for the call amendment.
 
 ## 3. AST shape
 

@@ -75,8 +75,10 @@ batches; `/47` is the diagnostic taxonomy; `/48` is the probe-attested
 target baseline; `/49` is the source local load/store slice; `/50` adds
 modeled-integer results and source local add; `/51` adds local `- * / %`; `/52`
 adds local expression trees with precedence, parentheses, and unary operators;
-`/53` adds ordered assignments; `/54` freezes the direct-call schema. `/55` owns full snapshot restore, quota>1
-order, VF13 projections, per-stage queues, and `StorePatch` materialization.
+`/53` adds ordered assignments; `/54` freezes the direct-call schema; `/55`
+implements same-TU acyclic `int` calls through the modeled and native AArch64
+path. `/56` owns full snapshot restore, quota>1 order, VF13 projections,
+per-stage queues, and `StorePatch` materialization.
 
 ## After M1: the longer climb
 

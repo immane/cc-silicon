@@ -1,12 +1,13 @@
-# M1 Target Emission Prototype — AArch64 Constant Return and Integer IR
+# M1 Target Emission Prototype — AArch64 Integer IR and Direct Calls
 
 | Field | Value |
 |---|---|
 | Status | **IMPLEMENTED / VERIFIED (2026-11-10)** — host-only T11 bootstrap; no full target chip family |
-| Input | Committed single-block `int(void)` IR: `Constant` + `Return`, or automatic-local load/store plus integer arithmetic and one `Return` |
-| Output | GNU AArch64 assembly for `int main(void)` |
-| Command | `candidate --emit-asm <path> <source.c>` (constant-return, local expression-tree, and assignment source paths) |
-| Non-claims | No calls, memory, control flow, general codegen, object emission, or torture rate |
+| Input | Committed single-block per-function integer IR: constants, locals, arithmetic, and same-TU direct `int` calls |
+| Output | GNU AArch64 assembly for one `main` plus acyclic local helper functions |
+| Command | `candidate --emit-asm <path> <source.c>` (constant-return, local expression/assignment, and direct-call source paths) |
+| Evidence | `c55_target_m1` 24 macOS / 25 native AArch64 Linux; `call_source` 7 macOS / 8 native AArch64 Linux; full suite 839/68 macOS and 848/68 Linux |
+| Non-claims | No recursion, variadics, external/indirect calls, stack arguments, wider ABI, memory, control flow, general codegen, object emission, or torture rate |
 
 ## 1. Scope
 
@@ -42,7 +43,10 @@ fails closed.
 The host candidate frontend produces the local load/store shape, a closed
 expression tree over one automatic `int` and integer literals (binary
 `+ - * / %`, precedence, parentheses, unary `+`/`-`), and ordered assignment
-statements. Calls, memory, and control flow remain absent.
+statements. `/55` adds acyclic same-TU direct calls with 0–8 signed-`int`
+parameters, `w0`–`w7` arguments, `w0` results, leaf/non-leaf LR handling, aligned
+frames, and explicit callee symbols. Recursion, variadics, external/indirect
+calls, stack arguments, memory, and control flow remain absent.
 
 ## 2. Emission
 

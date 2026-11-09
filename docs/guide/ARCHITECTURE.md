@@ -85,14 +85,14 @@ game. Its six frozen components (C01–C06) are:
    to the chip responsible for it, within a per-tick proposal budget
    and bounded recovery.
 
-The frozen identity is `t01-c01-c06/54`
+The frozen identity is `t01-c01-c06/55`
 (see [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION)).
 It also carries partial PP/LX/PA/TY/SE/IR/VF slices, the `/40` M1 A3
 closure (SE29 dispatch, VF06 four-kind typed-fact set, T09 committed-fact
 consumption), the `/41` determinism/limits/replay closure, the `/42`
-tagged, typed constants, the `/43` parser/AST common base, and `/44`–`/53`
-schema/source slices through local expression trees, assignments, and modeled-integer results; the complete pipeline is not
-implemented.
+tagged, typed constants, the `/43` parser/AST common base, and `/44`–`/55`
+schema/source slices through local expression trees, assignments, modeled-integer
+results, and same-TU direct calls; the complete pipeline is not implemented.
 The hash pins the normative shapes and rule IDs — not the source code,
 not the chip logic, and not a proof of correctness.
 

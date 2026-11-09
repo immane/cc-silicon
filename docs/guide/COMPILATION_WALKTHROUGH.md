@@ -111,10 +111,15 @@ cargo run --manifest-path compiler/Cargo.toml --bin candidate -- \
 - `int main(void){int x=2;return (x+3)*2;}` and unary forms parse a closed
   local expression tree.
 - `int main(void){int x=2;x=x+3;return x;}` lowers the assignment as a store.
+- `int add(int a,int b){return a+b;} int main(void){return add(2,3);}` models 5
+  and emits two function symbols with `w0`/`w1` arguments and a direct `bl`.
+- `int inc(int x){return x+1;} int main(void){return inc(2)+inc(3);}` models 7
+  and keeps each call result live across the second call.
 
 On native AArch64 Linux the emitted assembly assembles, links, and exits the
-modeled values. This is not a general compiler: calls, memory, branches, loops,
-object emission, and `-S`/`-c` remain absent. Full setup is
+modeled values. This is not a general compiler: recursion, variadics,
+external/indirect calls, stack arguments, memory, branches, loops, object
+emission, and `-S`/`-c` remain absent. Full setup is
 in [design/GETTING_STARTED.md](../design/GETTING_STARTED.md).
 
 ## Sources
