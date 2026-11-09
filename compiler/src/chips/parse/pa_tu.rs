@@ -259,7 +259,7 @@ fn is_legacy_canonical(input: &PaTuInput) -> bool {
 /// Whether the stream is one of the legacy `/52`/`/53` single-local forms.
 /// Calls and non-local identifiers belong to the general parser.
 fn is_legacy_locals(input: &PaTuInput) -> bool {
-    if input.tokens.len() < 16 {
+    if input.tokens.len() < 16 || input.tokens.len() > crate::limits::CALL_MAX_AST_NODES {
         return false;
     }
     for (position, expected) in M1_LOCALS_PREFIX_KINDS.iter().enumerate() {
@@ -587,6 +587,7 @@ impl PaTuChip {
             input,
             pos: 11,
             local_name: Some(decl_name),
+            depth: 0,
         };
         let mut assignments = Vec::new();
         let (return_index, return_expression, semicolon, brace, eof) = loop {
@@ -1332,6 +1333,7 @@ struct ExprParser<'a> {
     input: &'a PaTuInput,
     pos: usize,
     local_name: Option<NameId>,
+    depth: usize,
 }
 
 impl<'a> ExprParser<'a> {
@@ -1406,6 +1408,19 @@ impl<'a> ExprParser<'a> {
     }
 
     fn parse_unary(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        self.depth += 1;
+        if self.depth > crate::limits::CALL_MAX_EXPRESSION_DEPTH + 1 {
+            self.depth -= 1;
+            return Err(DiagnosticDraft::unsupported(
+                "local expression exceeds the expression-depth budget",
+            ));
+        }
+        let result = self.parse_unary_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<ExprNode, DiagnosticDraft> {
         let kind = match self.punct(self.pos) {
             Some(b"+") => NodeKind::UnaryPlus,
             Some(b"-") => NodeKind::UnaryMinus,
