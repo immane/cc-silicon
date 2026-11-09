@@ -1082,7 +1082,27 @@ for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
 not a target codegen implementation, and not a torture result. New artifact
 `t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
 the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
-moves to `/49`.
+moves to `/50`.
+
+`/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
+auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts
+two closed token shapes — canonical `int main(void){return 2+3;}` and
+`int main(void){int x=2;return x;}`. The latter commits an 11-node tree using
+the existing `/43` `Declaration`/`Identifier` kinds. `TySymbolChip` may declare
+an automatic `int` object in a committed block scope. A new
+`semantic.identifier_expr` kind (`SEMANTIC` local 22, `SE_ID_CHIP = ChipId(58)`,
+stage 4, one `sem.records` allowlist row) checks the binding and appends one
+`NonLvalue`/zero-effect `SemRecord`. `SE_RETURN` accepts an identifier operand;
+`SE_FUNCTION` accepts the one-declaration-plus-return body; VF05 and VF06 cover
+the new shapes; T09 lowers `Constant`, `LocalStore`, `LocalLoad`, `Return`; VF12
+models the stored/loaded initializer. The canonical constant-return path is
+unchanged. New hashed rules `parse.tu-shape-gated-tree` (replacing
+`parse.tu-fixed-nine-node-tree`), `symbol.declare-block-object`,
+`se.identifier-checked-nonlvalue`, `ir.local-load-store-return`, and
+`vf12.local-load-store-return`. New artifact `t01-c01-c06/49`
+(`ecf40bd3…62bd9`); acceptance `c56_source_locals` 5 macOS / 6 native AArch64
+Linux tests plus the full compiler suite. No source arithmetic, calls, memory,
+branch, ABI, object-emission, or torture result is claimed.
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|

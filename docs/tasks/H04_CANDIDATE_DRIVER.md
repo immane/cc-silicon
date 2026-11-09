@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | **PRESENT (Part A + `-E`/`-D`/`-U` + B3-03a `#define`/`#undef` + B3-03b quote include)** 2026-11-09 — binary `candidate` (`compiler/src/bin/candidate.rs`); host tooling, no contract change, no version bump |
-| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset), host-only `-E` emission, `-D`/`-U` seeds, ordered source `#define`/`#undef`, single-level quoted `#include "..."`, and the M1 `--emit-asm` AArch64 prototype |
+| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset), host-only `-E` emission, `-D`/`-U` seeds, ordered source `#define`/`#undef`, single-level quoted `#include "..."`, and the M1 `--emit-asm` AArch64 prototype (constant return and `/49` local return) |
 | Authority | [T00](T00_GCC_TORTURE_GATE.md) H04 + [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) P7/§9 (Part A portion) |
 | Non-goal | `-I`, multi-source, `-S`/`-c` emission (all explicit errors) |
 
@@ -29,7 +29,7 @@ out to another C compiler.
 | `-D NAME=value` | Defines `NAME` with `value` scanned by the frozen PP scan into pp-tokens (empty `value` defines it as empty, still defined) |
 | `-U NAME` | Undefines `NAME` (tombstone, supersedes by commit order); repeated `-D`/`-U` for one name resolve last-wins |
 | `-E` | Emits the preprocessed source (PP28, host-only Part B) to stdout or `-o <path>` |
-| `--emit-asm <path>` | Host-only M1 AArch64 prototype: emits GNU assembly for the committed `int main(void){return <constant>;}` IR shape. Fails closed on any other IR |
+| `--emit-asm <path>` | Host-only M1 AArch64 prototype: emits GNU assembly for the constant-return IR shape and the `/49` local-return source shape. Fails closed on any other IR |
 | `-I`, multi-source | **Deferred**: explicit error (exit 2), never a silent fallback |
 | unknown flags | Usage error (exit 2) |
 

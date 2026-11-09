@@ -15,10 +15,11 @@ pipeline and get exit code 5. M1 splits into two halves:
 - **Part B (target-dependent, probe-gated):** IR through AArch64
   assembly, external assemble/link, run, exit code 5.
 
-Part B stays disabled until target codegen and the official T00
-reference CI/bare-metal baseline are available; one containerized probe
-report is already classified/attested. Part A is where implementation
-starts. Both halves are acceptance documents today, not running code:
+The CLI still refuses `-S`/`-c`; a host-only `--emit-asm` prototype covers
+constant return and the `/49` local-return fixture, and one containerized
+probe report is classified/attested. General target codegen and the official
+T00 reference CI/bare-metal baseline remain blocked. The acceptance documents
+still describe the full milestone, not the current narrow slices:
 
 - [tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md](../tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md)
 - [tasks/M1_TARGET_ACCEPTANCE.md](../tasks/M1_TARGET_ACCEPTANCE.md)
@@ -53,14 +54,16 @@ remain ahead. Roughly, in dependency order:
 6. **Join/progress edge semantics.** One documented timing difference
    needs a ruling before it is frozen.
 7. **Diagnostics.** Per-group language error codes and attribution.
-8. **Target values.** Run the Linux probe, attest the report, unblock
-   Part B. Independent of language work except at the emission edge.
+8. **Target values.** A pinned Linux probe has run and its report is
+   attested; the official T00 CI/bare-metal baseline and general target
+   codegen remain open. Independent of language work except at the emission
+   edge.
 
 The standing rule for this work: **grow through small, complete
 vertical slices.** Freeze one slice's schemas, implement it with tests,
 then widen. Do not declare all 331 interfaces ready before they are.
 
-**Current freeze state (2026-11-09):** `/40` closed the M1 Part A A3 path,
+**Current freeze state (2026-11-10):** `/40` closed the M1 Part A A3 path,
 `/41` closed the B2-00 determinism/limits/replay package (append wire
 bodies, stage-first scheduling, macro/store/result versions, pin-aware
 trace evidence), and `/42` closed B2-02 tagged, typed constants
@@ -68,8 +71,10 @@ trace evidence), and `/42` closed B2-02 tagged, typed constants
 single-task V1 parser decision and append-only V1 AST inventory. Host-only
 B3-03a/B3-03b add source `#define`/`#undef` and bounded quoted includes.
 `/44`–`/46` are the IR/CFG, layout/init/constant, and diagnostic schema
-batches; `/47` owns full snapshot restore, quota>1 order, VF13 projections,
-per-stage queues, and `StorePatch` materialization.
+batches; `/47` is the diagnostic taxonomy; `/48` is the probe-attested
+target baseline; `/49` is the source local load/store slice. `/50` owns full
+snapshot restore, quota>1 order, VF13 projections, per-stage queues, and
+`StorePatch` materialization.
 
 ## After M1: the longer climb
 

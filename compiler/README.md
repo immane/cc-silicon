@@ -17,14 +17,14 @@ continues on this foundation.
 |---|---|
 | CPU dynamic arena extension | Approved — see [ADR-0001](../docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) |
 | Target identity | Frozen: `aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64 |
-| Target concrete values | **UNVERIFIED**; codegen readiness fails closed |
+| Target concrete values | **Probe-attested** (Debian 12 arm64 / GCC 12.2.0); official T00 CI/bare-metal baseline open |
 | Verification | Private verified representation; `attest` validates caller-supplied report data (not authenticity) |
-| Probe substrate | Planned Linux CI/VM; **not provisioned** |
+| Probe substrate | Pinned `docker-linux-arm64` probe; official Linux CI/VM **not provisioned** |
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/48` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e` |
+| Contract version | `t01-c01-c06/49` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
@@ -34,15 +34,16 @@ continues on this foundation.
 | Type/layout/init (`/46`) | Schema frozen: pointer/array/aggregate/enum `TypeKind`; typed `LayoutRecord`/`InitRecord`; `G1DraftBody::Layout`/`Init`; symbolic-or-bit extents. Producers, target byte layout, and validation remain future |
 | Diagnostic taxonomy (`/47`) | Schema frozen: lex/parse/type/const/ir/codegen/host groups; named code registry and structured helpers. Full legacy `Task:4` migration remains future |
 | Probe-attested target baseline (`/48`) | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, pinned H07 report; `c48_target_probe` 3. Official CI/bare-metal baseline and general codegen remain future |
-| M1 target prototype | `candidate --emit-asm` emits constant-return AArch64 assembly; `c55_target_m1` verifies native Linux assemble/link/run (exit 5). The emitter also lowers automatic-local/integer-arithmetic IR fixtures, with no source producer yet. Not a T11 chip family or `-S`/`-c` |
+| Source locals (`/49`) | Implemented and tested: shape-gated TU parser, block automatic `int`, identifier fact, `Constant`/`LocalStore`/`LocalLoad`/`Return` IR, VF12 local model; `c56_source_locals` 5 macOS / 6 native AArch64 Linux. Source arithmetic, calls, and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return and `/49` local-return AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run (exit 5 and 2). The emitter also lowers arithmetic IR fixtures, but source arithmetic is absent. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/48
-hash=820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e
+version=t01-c01-c06/49
+hash=ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 probe_substrate=linux-ci-vm (planned, not provisioned)
@@ -132,7 +133,7 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c55 + freeze + h04_candidate + Stage B regression tests
+  tests/           c01..c56 + freeze + h04_candidate + Stage B regression tests
 ```
 
 The test breakdown below is a dated 2026-10-04 record, not the current test

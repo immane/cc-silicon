@@ -1,19 +1,18 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/48`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/49`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-09 after accepting `/43` parser architecture/V1 AST, implementing
-> B2-02 `/42`, B-INT-00, B3-03a source `#define`/`#undef`, B3-03b bounded
-> quote include, and the target probe, with the full compiler suite green
-> (730 tests / 61 suites (731 on native AArch64 Linux); clippy clean).
+> 2026-11-10 after freezing `/49` source locals, with the full compiler
+> suite green (735 tests / 62 suites (737 on native AArch64 Linux); clippy
+> clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/48` (parser architecture/V1 AST, IR/CFG common
-  base, constant v3 float/address, determinism/limits/replay), hash
-  `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e`.
+- Frozen artifact: `t01-c01-c06/49` (source local load/store shape, parser,
+  identifier fact, T09 lowering, VF12 local model), hash
+  `ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -34,19 +33,18 @@
   clippy is clean, and no candidate ID is frozen
   (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
-  projections, per-stage queues, and `StorePatch` materialization for
-  `/47`; B3-03 PP driver orchestration implementation (design complete,
+  projections, per-stage queues, and `StorePatch` materialization (deferred
+  package now `/50`); B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
   Part B general target codegen; full M1 acceptance. A host-only M1
-  `--emit-asm` prototype now emits/runs the constant-return fixture and
-  lowers manually constructed automatic-local/integer-arithmetic IR with
-  native-execution unit tests; the host frontend still has no producer for
-  that shape. One pinned containerized AArch64
+  `--emit-asm` prototype now emits/runs the constant-return and `/49`
+  local-return fixtures and lowers arithmetic IR with native-execution unit
+  tests; source arithmetic still has no result carrier. One pinned containerized AArch64
   probe report is H07-classified and attested by `c48_target_probe`; the global
   target state is `probe-attested`, while the official T00 CI/bare-metal
-  baseline remains open. No target execution or GCC pass rate is claimed.
-- Branch: `wave4-development`. Commits through B3-03b are local (the
-  B3-03b commit follows `9d38cdd`); no push was performed (no force-push).
+  baseline remains open. No torture-corpus target run or GCC pass rate is claimed.
+- Branch: `wave4-development`. Commits through `/49` are local; no push was
+  performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
   integrate + verify per slice, continue without stopping.
@@ -99,9 +97,11 @@
 | `/45` | Constant v3 float/address tags | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c51_const_v3` 3 |
 | `/46` | Type/layout/init common base | `bus.rs`, `snapshot.rs`, `records.rs`, `commit.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c52_type_schema` 3, `c53_layout_init_schema` 2 |
 | `/47` | Diagnostic taxonomy | `diagnostic.rs`, `contract.rs`, `snapshot.rs`, `contracts/CONTRACT_VERSION` | `c54_diag_taxonomy` 3, full 725/61 |
+| `/48` | Probe-attested target baseline | `target.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c48_target_probe` 3, full 725/61 |
+| `/49` | M1 source locals (`int x=2;return x;`) | `task.rs`, `manifest.rs`, `chips/{parse,symbols,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 5 macOS / 6 Linux, full 735/62 (737 Linux) |
 | — | M1 AArch64 constant-return assembly prototype (`candidate --emit-asm`) | `compiler/src/bin/candidate/target_m1.rs`, `compiler/tests/c55_target_m1.rs` | `c55_target_m1` 1 macOS / 2 native AArch64 Linux |
-| — | M1 automatic-local/integer-arithmetic IR slice (host-only, no source producer) | `candidate/target_m1.rs` | 12 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` execution of add/div/rem/mul/sub/neg fixtures |
-| — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2 |
+| — | M1 automatic-local/integer-arithmetic IR slice | `candidate/target_m1.rs` | 14 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` execution of add/div/rem/mul/sub/neg and signed-constant fixtures |
+| — | H01/H07 containerized target probe + attestation test (`/48`) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 3 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -197,12 +197,9 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: the proposed `/49` M1 source-locals slice
-  (`docs/tasks/M1_SOURCE_LOCALS_SLICE.md`) — a real source-to-IR producer for
-  `int x = 2; return x + 3;`, including the parser, local symbol, identifier
-  fact, IR lowering, and symbolic interpreter changes. The contract change and
-  hash must be approved before implementation; then the Batch G torture chain
-  (official corpus/runner still absent); H05 process
+- NEXT UP: source arithmetic (`int x=2;return x+3;`) needs an approved
+  modeled-value carrier (the current VF12 result is a `ConstId`), then the
+  Batch G torture chain (official corpus/runner still absent); H05 process
   supervision is implemented (`tools/runner`). B3-03c `#line`/`#pragma` and the
   wider H04 include policy remain open. Continue the PP remainder in pipeline
   order — then T04 LX

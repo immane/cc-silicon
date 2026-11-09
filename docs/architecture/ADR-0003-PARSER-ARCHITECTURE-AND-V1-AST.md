@@ -74,7 +74,8 @@ one node. Two AST producers must never run concurrently.
 
 `VF05` remains the M1 shape verifier at `/43`. It explicitly fails closed on
 the new V1 kinds until the V1 shape table and parser producer land. This is a
-recorded gap, not a pass.
+recorded gap, not a pass. `/49` lands a narrow producer and shape table for
+`Declaration` and `Identifier` only; the other V1 kinds still fail closed.
 
 ## 3. Rationale
 
@@ -110,5 +111,5 @@ recorded gap, not a pass.
 
 - [A06 V1 contract requirements](../reviews/dispatch/A06_V1_CONTRACT_REQUIREMENTS.md) §3.3
 - [A07 V2 control-flow contract](../reviews/dispatch/A07_V2_CONTROL_FLOW_CONTRACT.md) §3.1–3.2
-- [T01 compiler contract](../tasks/T01_COMPILER_CONTRACT.md) §7.1 `/43`
+- [T01 compiler contract](../tasks/T01_COMPILER_CONTRACT.md) §7.1 `/43`, `/49`
 - [T05 parse chips](../tasks/T05_PARSE_CHIPS.md)

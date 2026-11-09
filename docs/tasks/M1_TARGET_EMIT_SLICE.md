@@ -5,8 +5,8 @@
 | Status | **IMPLEMENTED / VERIFIED (2026-11-10)** — host-only T11 bootstrap; no full target chip family |
 | Input | Committed single-block `int(void)` IR: `Constant` + `Return`, or automatic-local load/store plus integer arithmetic and one `Return` |
 | Output | GNU AArch64 assembly for `int main(void)` |
-| Command | `candidate --emit-asm <path> <source.c>` (constant-return source path) |
-| Non-claims | No general codegen, calls, memory, control flow, frontend producer for locals, object emission, or torture rate |
+| Command | `candidate --emit-asm <path> <source.c>` (constant-return and local-return source paths) |
+| Non-claims | No source arithmetic, general codegen, calls, memory, control flow, object emission, or torture rate |
 
 ## 1. Scope
 
@@ -39,9 +39,10 @@ be last. Stack frames are 16-byte aligned and must fit the AArch64 `sub sp,
 sp, #imm` range (at most 4080 bytes after alignment). Any other IR shape
 fails closed.
 
-The host candidate frontend still produces only the `Constant` + `Return`
-shape. The local/arithmetic emitter is currently exercised by unit-test IR
-fixtures, not by a source-level frontend producer.
+The host candidate frontend now produces the local load/store shape for
+`int main(void){int x=2;return x;}`. Source-level arithmetic (`x + 3`) is not
+produced yet; the arithmetic emitter remains exercised by unit-test IR
+fixtures.
 
 ## 2. Emission
 
@@ -98,6 +99,8 @@ cargo test --locked --manifest-path compiler/Cargo.toml --bin candidate
 # 14 passed
 cargo test --locked --manifest-path compiler/Cargo.toml --test c55_target_m1
 # 1 passed
+cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
+# 5 passed
 ```
 
 Native Linux AArch64 (same unit tests plus assemble/link/run):
@@ -109,6 +112,7 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   --manifest-path compiler/Cargo.toml --bin candidate
 # 14 passed; the local/add fixture exits 5, the all-operator fixture exits
 # 252 (-4), and the signed-constant fixture exits 255 (-1)
+# c56_source_locals: 6 passed; source local return exits 2
 ```
 
 The `c55_target_m1` integration test separately assembles, links, and runs the
@@ -122,8 +126,8 @@ skip when the host GCC is not an AArch64 target.
   ABI argument classification, relocations, or object emission.
 - Stack frames larger than the `sub sp, sp, #imm` range fail closed; no
   large-frame materialization yet.
-- The stack-machine IR path has no source-level producer yet; only the
-  constant-return path is reachable through `--emit-asm`.
+- Source-level arithmetic has no producer yet; the local load/store path is
+  reachable, and arithmetic remains IR-fixture-only.
 - `-S`/`-c` remain refused; `--emit-asm` is an explicit bootstrap flag.
 - External assembler/linker/sysroot/runtime are host inputs, not frozen here.
 - No GCC torture corpus or pass rate is involved.
