@@ -5,8 +5,8 @@
 | Status | **IMPLEMENTED / VERIFIED (2026-11-10)** — host-only T11 bootstrap; no full target chip family |
 | Input | Committed single-block `int(void)` IR: `Constant` + `Return`, or automatic-local load/store plus integer arithmetic and one `Return` |
 | Output | GNU AArch64 assembly for `int main(void)` |
-| Command | `candidate --emit-asm <path> <source.c>` (constant-return, local-return, and local-add source paths) |
-| Non-claims | No general source arithmetic beyond local add, general codegen, calls, memory, control flow, object emission, or torture rate |
+| Command | `candidate --emit-asm <path> <source.c>` (constant-return, local-return, and local binary-operator source paths) |
+| Non-claims | No source chains/parentheses/unary operators, general codegen, calls, memory, control flow, object emission, or torture rate |
 
 ## 1. Scope
 
@@ -40,9 +40,9 @@ sp, #imm` range (at most 4080 bytes after alignment). Any other IR shape
 fails closed.
 
 The host candidate frontend produces the local load/store shape for
-`int main(void){int x=2;return x;}` and the local-add shape for
-`int main(void){int x=2;return x+3;}`. Other source operators remain
-IR-fixture-only.
+`int main(void){int x=2;return x;}` and the local binary shapes for `+`, `-`,
+`*`, `/`, and `%`. Chained expressions, parentheses, and unary operators
+remain IR-fixture-only.
 
 ## 2. Emission
 
@@ -100,7 +100,7 @@ cargo test --locked --manifest-path compiler/Cargo.toml --bin candidate
 cargo test --locked --manifest-path compiler/Cargo.toml --test c55_target_m1
 # 1 passed
 cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 6 passed
+# 7 passed
 ```
 
 Native Linux AArch64 (same unit tests plus assemble/link/run):
@@ -112,7 +112,8 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   --manifest-path compiler/Cargo.toml --bin candidate
 # 14 passed; the local/add fixture exits 5, the all-operator fixture exits
 # 252 (-4), and the signed-constant fixture exits 255 (-1)
-# c56_source_locals: 8 passed; local return exits 2 and local add exits 5
+# c56_source_locals: 10 passed; local return exits 2, local add exits 5,
+# and the -, *, /, % cases exit 255/6/0/2
 ```
 
 The `c55_target_m1` integration test separately assembles, links, and runs the
@@ -126,8 +127,8 @@ skip when the host GCC is not an AArch64 target.
   ABI argument classification, relocations, or object emission.
 - Stack frames larger than the `sub sp, sp, #imm` range fail closed; no
   large-frame materialization yet.
-- Source arithmetic is limited to local add; other operators remain
-  IR-fixture-only.
+- Source arithmetic is limited to one binary operator per return; chained or
+  parenthesized expressions and unary operators remain IR-fixture-only.
 - `-S`/`-c` remain refused; `--emit-asm` is an explicit bootstrap flag.
 - External assembler/linker/sysroot/runtime are host inputs, not frozen here.
 - No GCC torture corpus or pass rate is involved.

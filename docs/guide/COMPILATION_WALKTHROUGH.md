@@ -106,10 +106,13 @@ cargo run --manifest-path compiler/Cargo.toml --bin candidate -- \
 - `int main(void){return 2+3;}` models 5 and emits a constant-return leaf.
 - `int main(void){int x=2;return x;}` models 2 and emits local load/store IR.
 - `int main(void){int x=2;return x+3;}` models 5 and emits local-add IR.
+- `int main(void){int x=2;return x-3;}` (and `*`, `/`, `%`) emit the matching
+  local binary IR.
 
 On native AArch64 Linux the emitted assembly assembles, links, and exits 5,
-2, and 5 respectively. This is not a general compiler: other source operators,
-calls, memory, branches, object emission, and `-S`/`-c` remain absent. Full setup is
+2, 5, and the operator-specific values respectively. This is not a general
+compiler: chains, parentheses, unary operators, calls, memory, branches,
+object emission, and `-S`/`-c` remain absent. Full setup is
 in [design/GETTING_STARTED.md](../design/GETTING_STARTED.md).
 
 ## Sources

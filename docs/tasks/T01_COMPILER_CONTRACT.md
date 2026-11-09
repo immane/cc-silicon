@@ -1082,7 +1082,7 @@ for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
 not a target codegen implementation, and not a torture result. New artifact
 `t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
 the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
-moves to `/51`.
+moves to `/52`.
 
 `/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
 auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts
@@ -1117,6 +1117,23 @@ remain unchanged. New hashed rules `se.binary-identifier-operand`,
 `ir.local-add-return`, `vf12.local-add-modeled-integer`, and
 `result.integer-modeled`. New artifact `t01-c01-c06/50`
 (`ff7177a9…006c`); acceptance `c56_source_locals` 6 macOS / 8 native AArch64
+Linux tests plus the full compiler suite. No calls, memory, branches, general
+ABI, object emission, or torture result is claimed.
+
+`/51` amendment — local binary operators (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/50` preserved as history): the local-binary TU
+shape now accepts `+`, `-`, `*`, `/`, and `%` at the fixed operator position,
+committing the matching `BinaryAdd`/`BinarySub`/`BinaryMul`/`BinaryDiv`/
+`BinaryRem` node. `SEMANTIC_BINARY_EXPR` covers all five kinds; constant folding
+still applies only to literal/literal `+`, while identifier/literal forms append
+the checked fact directly. `SE_RETURN`, VF05, and VF06 cover the new binary
+kinds. T09 emits the matching `IrOp`, and VF12 evaluates the six-instruction
+shape with checked canonical-`int` arithmetic; division/remainder by zero and
+out-of-range results fail closed. The canonical and `/49`/`/50` paths remain
+unchanged. New hashed rules `parse.tu-local-binary-operators`,
+`se.local-binary-operators`, `ir.local-binary-operators`, and
+`vf12.local-binary-operators`. New artifact `t01-c01-c06/51`
+(`4f110d09…a6ce`); acceptance `c56_source_locals` 7 macOS / 10 native AArch64
 Linux tests plus the full compiler suite. No calls, memory, branches, general
 ABI, object emission, or torture result is claimed.
 
