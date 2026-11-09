@@ -17,10 +17,10 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, CompilerPins, ConstRecord,
-    ConstValue, EffectMask, FunctionRecord, InstructionRecord, IntRank, IntegerConst, IrOp,
-    Linkage, LiteralRecord, MacroRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord,
-    ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord,
+    AddressConst, ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, CompilerPins,
+    ConstRecord, ConstValue, EffectMask, FloatConst, FunctionRecord, InstructionRecord, IntRank,
+    IntegerConst, IrOp, Linkage, LiteralRecord, MacroRecord, NodeKind, NodeRecord, PpTokenKind,
+    PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord,
     StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord,
     ValueCategory, ValueRecord,
 };
@@ -1956,6 +1956,23 @@ pub fn encode_const(record: &ConstRecord) -> Vec<u8> {
             w.bytes(&value.magnitude);
             w.bool(value.negative);
         }
+        ConstValue::Float(value) => {
+            w.u8(ConstValue::FLOAT_TAG);
+            w.str(value.format.name());
+            w.bytes(&value.bits);
+        }
+        ConstValue::Address(value) => {
+            w.u8(ConstValue::ADDRESS_TAG);
+            match value.base {
+                Some(base) => {
+                    w.u8(1);
+                    w.u32(base.index());
+                }
+                None => w.u8(0),
+            }
+            w.bytes(&value.addend.magnitude);
+            w.bool(value.addend.negative);
+        }
     }
     w.finish()
 }
@@ -1981,6 +1998,38 @@ pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
                 ));
             }
             ConstValue::Integer(value)
+        }
+        ConstValue::FLOAT_TAG => {
+            let format = crate::target::FloatFormat::parse(&r.string()?)
+                .ok_or(CodecError::Unsupported("unknown float format"))?;
+            let bits = r.bytes()?;
+            let value = FloatConst { format, bits };
+            if !value.is_canonical() {
+                return Err(CodecError::Unsupported(
+                    "constant float bit length does not match its format",
+                ));
+            }
+            ConstValue::Float(value)
+        }
+        ConstValue::ADDRESS_TAG => {
+            let base = match r.u8()? {
+                0 => None,
+                1 => Some(crate::ids::SymbolId::from_index(r.u32()?)),
+                tag => return Err(CodecError::InvalidTag(tag)),
+            };
+            let magnitude = r.bytes()?;
+            let negative = r.bool()?;
+            let addend = IntegerConst {
+                magnitude,
+                negative,
+            };
+            let value = AddressConst { base, addend };
+            if !value.is_canonical() {
+                return Err(CodecError::Unsupported(
+                    "non-canonical constant address addend",
+                ));
+            }
+            ConstValue::Address(value)
         }
         other => return Err(CodecError::InvalidTag(other)),
     };

@@ -43,14 +43,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload,
 /// immediate-type enforcement), and the `/43` parser/AST common-base append
 /// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
-/// IR/CFG schema append (local load/store, arithmetic, branch successors).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/44";
+/// IR/CFG schema append (local load/store, arithmetic, branch successors),
+/// and the `/45` constant v3 append (float/address payload tags).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/45";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "73131cdfd251802c33756a7434d1b89aa2ae71f8a62c0fe8098ecdd57acae0f7";
+pub const CONTRACT_HASH: &str = "c4e84ccbd756b15faa9415192636ed93105d339e005e3b9e9d18a3f8cf30bac8";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -277,6 +278,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "ir.op-table-v1",
     "ir.local-symbol-link",
     "ir.cfg-successors-ordered",
+    // `/45` constant v3.
+    "const.float-format-bits",
+    "const.address-symbolic",
+    "snapshot.const-v3-tags",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -386,9 +391,13 @@ pub const LITERAL_RECORD_FIELDS: &[&str] = &[
 /// The `/42` `ConstRecord` field names, in frozen field order.
 pub const CONST_RECORD_FIELDS: &[&str] = &["ty", "value"];
 /// The `/42` `ConstValue` tag names, in encoding order.
-pub const CONST_VALUE_NAMES: &[&str] = &["integer"];
+pub const CONST_VALUE_NAMES: &[&str] = &["integer", "float", "address"];
 /// The `/42` `IntegerConst` field names, in frozen field order.
 pub const INTEGER_CONST_FIELDS: &[&str] = &["magnitude", "negative"];
+/// The `/45` `FloatConst` field names, in frozen field order.
+pub const FLOAT_CONST_FIELDS: &[&str] = &["format", "bits"];
+/// The `/45` `AddressConst` field names, in frozen field order.
+pub const ADDRESS_CONST_FIELDS: &[&str] = &["base", "addend"];
 /// The `LiteralKind` member names (only `integer` produced in M1).
 pub const LITERAL_KIND_NAMES: &[&str] = &["integer", "character", "string"];
 /// The `LiteralSuffix` member names (only `none` produced in M1).
@@ -894,6 +903,8 @@ impl FrozenSchema {
         push_str_list(&mut w, CONST_RECORD_FIELDS);
         push_str_list(&mut w, CONST_VALUE_NAMES);
         push_str_list(&mut w, INTEGER_CONST_FIELDS);
+        push_str_list(&mut w, FLOAT_CONST_FIELDS);
+        push_str_list(&mut w, ADDRESS_CONST_FIELDS);
         push_str_list(&mut w, LITERAL_KIND_NAMES);
         push_str_list(&mut w, LITERAL_SUFFIX_NAMES);
         push_str_list(&mut w, LX08_CANDIDATE_NAMES);

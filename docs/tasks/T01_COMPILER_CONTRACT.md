@@ -1013,6 +1013,24 @@ artifact `t01-c01-c06/44` (`73131cdf…ae0f7`); acceptance `c50_ir_schema`
 (2 tests) plus the full compiler suite at 712 tests across 56 suites. No target
 codegen or torture result is claimed.
 
+`/45` amendment — constant v3 float/address append (2026-11-09;
+[ADR-0005](../architecture/ADR-0005-CONSTANT-V3.md) accepted by the T01
+integrator; R1 auto-bump; `/44` preserved as history): `ConstValue` appends
+`Float(FloatConst)` and `Address(AddressConst)` after `Integer`. `FloatConst`
+carries a target `FloatFormat` plus big-endian raw bits whose length must match
+the format (`IeeeBinary16/32/64/128` = 2/4/8/16 bytes, `X87Extended` = 10);
+`AddressConst` carries an optional committed `SymbolId` base and a canonical
+integer addend, never a host pointer. Snapshot tags append as integer `0`,
+float `1`, address `2`; new hashed tables `FLOAT_CONST_FIELDS = [format,
+bits]` and `ADDRESS_CONST_FIELDS = [base, addend]`; new hashed rules
+`const.float-format-bits`, `const.address-symbolic`, `snapshot.const-v3-tags`.
+VF14 gates accept only `Integer`; float/address gate constants are invalid
+gates. Type compatibility for the new tags waits on the T06 pointer/float type
+extension; no producer is added. New artifact `t01-c01-c06/45`
+(`c4e84ccb…0bac8`); acceptance `c51_const_v3` (3 tests) plus the full compiler
+suite at 715 tests across 57 suites. No layout/init record, float/address
+producer, target width, codegen, or torture result is claimed.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

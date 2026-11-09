@@ -166,6 +166,9 @@ fn fold_commits_the_committed_sem_type() {
             assert_eq!(value.magnitude, vec![5]);
             assert!(!value.negative);
         }
+        ConstValue::Float(_) | ConstValue::Address(_) => {
+            panic!("integer fold produced a non-integer payload")
+        }
     }
 }
 
@@ -274,7 +277,7 @@ fn const_codec_round_trips_and_rejects_noncanonical_payloads() {
 #[test]
 fn contract_fields_name_the_tagged_shape() {
     assert_eq!(CONST_RECORD_FIELDS, &["ty", "value"]);
-    assert_eq!(CONST_VALUE_NAMES, &["integer"]);
+    assert_eq!(CONST_VALUE_NAMES, &["integer", "float", "address"]);
     assert_eq!(INTEGER_CONST_FIELDS, &["magnitude", "negative"]);
 }
 

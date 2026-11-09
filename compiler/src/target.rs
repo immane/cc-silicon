@@ -117,6 +117,17 @@ impl FloatFormat {
         }
     }
 
+    /// Raw bit length in bytes for the format.
+    pub const fn byte_len(self) -> usize {
+        match self {
+            Self::IeeeBinary16 => 2,
+            Self::IeeeBinary32 => 4,
+            Self::IeeeBinary64 => 8,
+            Self::IeeeBinary128 => 16,
+            Self::X87Extended => 10,
+        }
+    }
+
     /// Parse a probe report format label.
     pub fn parse(label: &str) -> Option<Self> {
         match label {

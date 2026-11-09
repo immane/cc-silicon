@@ -667,17 +667,58 @@ pub struct ConstRecord {
 pub enum ConstValue {
     /// An integer constant.
     Integer(IntegerConst),
+    /// A floating constant with raw IEEE-format bits (`/45` append).
+    Float(FloatConst),
+    /// A symbolic address constant (`/45` append).
+    Address(AddressConst),
 }
 
 impl ConstValue {
     /// Wire tag for `Integer` (`/42` freeze).
     pub const INTEGER_TAG: u8 = 0;
+    /// Wire tag for `Float` (`/45` append).
+    pub const FLOAT_TAG: u8 = 1;
+    /// Wire tag for `Address` (`/45` append).
+    pub const ADDRESS_TAG: u8 = 2;
 
     /// The integer payload, if this is an integer constant.
     pub fn as_integer(&self) -> Option<&IntegerConst> {
         match self {
             Self::Integer(value) => Some(value),
+            Self::Float(_) | Self::Address(_) => None,
         }
+    }
+}
+
+/// A floating constant: target format plus big-endian raw IEEE bits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FloatConst {
+    /// Target floating format; concrete values remain probe-gated.
+    pub format: crate::target::FloatFormat,
+    /// Big-endian raw bits; length must match [`FloatFormat::byte_len`].
+    pub bits: Vec<u8>,
+}
+
+impl FloatConst {
+    /// Whether the bit length matches the declared format.
+    pub fn is_canonical(&self) -> bool {
+        self.bits.len() == self.format.byte_len()
+    }
+}
+
+/// A symbolic address constant: optional base symbol plus a signed addend.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AddressConst {
+    /// Base symbol, if any; `None` with a zero addend is a null pointer constant.
+    pub base: Option<crate::ids::SymbolId>,
+    /// Link-time addend, represented without a host pointer.
+    pub addend: IntegerConst,
+}
+
+impl AddressConst {
+    /// Whether the addend is canonical.
+    pub fn is_canonical(&self) -> bool {
+        self.addend.is_canonical()
     }
 }
 

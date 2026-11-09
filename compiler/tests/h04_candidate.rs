@@ -154,9 +154,9 @@ fn candidate_models_m1_return_5() {
         .expect("candidate runs");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8 evidence");
-    assert!(stdout.contains("candidate evidence (t01-c01-c06/44)"));
+    assert!(stdout.contains("candidate evidence (t01-c01-c06/45)"));
     assert!(
-        stdout.starts_with("candidate evidence (t01-c01-c06/44)\n"),
+        stdout.starts_with("candidate evidence (t01-c01-c06/45)\n"),
         "evidence header names /42: {stdout}"
     );
     assert!(stdout.contains("interpret: value=05 negative=false"));

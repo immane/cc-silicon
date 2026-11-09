@@ -374,10 +374,12 @@ pub fn project_vf14_input(
             format!("vf14 reads missing gate const {}", gate_id.index()),
         )
     })?;
-    let (negative, magnitude) = match &gate_body.value {
-        crate::bus::ConstValue::Integer(value) => (value.negative, value.magnitude.as_slice()),
+    let (stage_raw, stage) = match &gate_body.value {
+        crate::bus::ConstValue::Integer(value) => {
+            decode_gate_raw(value.negative, value.magnitude.as_slice())
+        }
+        crate::bus::ConstValue::Float(_) | crate::bus::ConstValue::Address(_) => (0xFF, None),
     };
-    let (stage_raw, stage) = decode_gate_raw(negative, magnitude);
     let mut evidence = [StageEvidence::Missing; 4];
     let mut slot = 0;
     while slot < 4 {
