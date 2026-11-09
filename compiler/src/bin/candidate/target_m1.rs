@@ -792,6 +792,10 @@ fn build_layouts(
     functions: &[FunctionEntry<'_>],
     instructions: &FunctionInstructions<'_>,
 ) -> Result<BTreeMap<FunctionId, FunctionLayout>, String> {
+    let mut all_parameters: BTreeSet<SymbolId> = BTreeSet::new();
+    for function in functions {
+        all_parameters.extend(function.record.parameters.iter().copied());
+    }
     let mut layouts = BTreeMap::new();
     for function in functions {
         let list = instructions.get(&function.id).ok_or_else(|| {
@@ -806,6 +810,12 @@ fn build_layouts(
         for (_, record) in list {
             if matches!(record.op, IrOp::LocalLoad | IrOp::LocalStore) {
                 if let Some(local) = record.local {
+                    if all_parameters.contains(&local) && !parameters.contains(&local) {
+                        return Err(format!(
+                            "target emit: local symbol {} belongs to another function",
+                            local.index()
+                        ));
+                    }
                     if !parameters.contains(&local) {
                         locals.insert(local);
                     }
@@ -969,7 +979,19 @@ fn emit_function(
         assembly.push_str(&format!("    str w{index}, [sp, #{slot}]\n"));
     }
 
+    let mut initialized: BTreeSet<SymbolId> = function.record.parameters.iter().copied().collect();
     for (instruction_id, record) in instructions {
+        if record.op == IrOp::LocalLoad {
+            let local = record
+                .local
+                .ok_or_else(|| "target emit: LocalLoad has no local".to_string())?;
+            if !initialized.contains(&local) {
+                return Err(format!(
+                    "target emit: LocalLoad reads uninitialized local {}",
+                    local.index()
+                ));
+            }
+        }
         emit_instruction(
             bus,
             int,
@@ -980,6 +1002,11 @@ fn emit_function(
             call_targets,
             assembly,
         )?;
+        if record.op == IrOp::LocalStore {
+            if let Some(local) = record.local {
+                initialized.insert(local);
+            }
+        }
     }
     Ok(())
 }
