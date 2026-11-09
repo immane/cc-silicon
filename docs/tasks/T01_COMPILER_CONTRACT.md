@@ -1082,7 +1082,7 @@ for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
 not a target codegen implementation, and not a torture result. New artifact
 `t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
 the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
-moves to `/52`.
+moves to `/53`.
 
 `/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
 auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts
@@ -1136,6 +1136,24 @@ unchanged. New hashed rules `parse.tu-local-binary-operators`,
 (`4f110d09…a6ce`); acceptance `c56_source_locals` 7 macOS / 10 native AArch64
 Linux tests plus the full compiler suite. No calls, memory, branches, general
 ABI, object emission, or torture result is claimed.
+
+`/52` amendment — local expression trees (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/51` preserved as history): the locals source shape
+now parses a closed expression tree over the single automatic `int` and integer
+literals, with `+ - * / %` precedence, parentheses, and unary `+`/`-`. The
+parser commits pre-order AST nodes and leaves the bus untouched on failure.
+`SEMANTIC_UNARY_EXPR` (`SEMANTIC` local 23, `SE_UNARY_CHIP = ChipId(59)`, stage
+4, one `sem.records` allowlist row) checks unary operands; `SE_BIN`, `SE_RETURN`,
+VF05, and VF06 cover nested binary/unary nodes. T09 lowers the tree in
+post-order, and VF12 interprets the covered instruction program with value/local
+maps instead of fixed shapes. Literal constants are paired to literals in fold
+order, so repeated literal values are no longer ambiguous. The canonical and
+`/49`–`/51` paths remain unchanged. New hashed rules
+`parse.tu-local-expression-tree`, `se.unary-checked-nonlvalue`,
+`ir.local-expression-tree`, and `vf12.local-expression-program`. New artifact
+`t01-c01-c06/52` (`c9ed8129…ae23`); acceptance `c56_source_locals` 8 macOS / 12
+native AArch64 Linux tests plus the full compiler suite. No calls, memory,
+branches, general ABI, object emission, or torture result is claimed.
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|

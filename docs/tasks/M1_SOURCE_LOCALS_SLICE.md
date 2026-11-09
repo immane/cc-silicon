@@ -1,10 +1,10 @@
-# M1 Source Locals Slice — Return, Local Add, and Binary Operators
+# M1 Source Locals Slice — Expression Trees
 
 | Field | Value |
 |---|---|
-| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/51` (`/49` local return, `/50` local add + modeled integer, `/51` local binary operators) |
-| Goal | Produce local load/store and local binary IR from source, emit AArch64, execute on native Linux |
-| Evidence | `c56_source_locals` 7 macOS / 10 native AArch64 Linux; runs exit 2, 5, 255, 6, 0, and 2 |
+| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/52` (`/49` local return, `/50` local add + modeled integer, `/51` binary operators, `/52` expression trees) |
+| Goal | Parse, check, lower, symbolically model, and execute a closed local expression tree over one automatic `int` and integer literals |
+| Evidence | `c56_source_locals` 8 macOS / 12 native AArch64 Linux; native runs cover precedence, parentheses, literal-left forms, and unary minus |
 | Non-claims | No calls, memory objects, branches, general ABI, object emission, or torture rate |
 
 ## 1. Supported source shapes
@@ -12,30 +12,37 @@
 ```c
 int main(void) { int x = 2; return x; }
 int main(void) { int x = 2; return x + 3; }
-int main(void) { int x = 2; return x - 3; }
-int main(void) { int x = 2; return x * 3; }
-int main(void) { int x = 2; return x / 3; }
-int main(void) { int x = 2; return x % 3; }
+int main(void) { int x = 2; return (x + 3) * 2; }
+int main(void) { int x = 2; return 8 - x * 3; }
+int main(void) { int x = 2; return -(x + 3) * 2; }
+int main(void) { int x = 2; return +(x + 1); }
 ```
 
-The binary forms commit the matching `BinaryAdd`, `BinarySub`, `BinaryMul`,
-`BinaryDiv`, or `BinaryRem` node. The IR is the same closed shape with the
-operator substituted:
+The return expression is a closed tree over:
 
-```text
-Constant 2 -> v0
-LocalStore x, v0
-LocalLoad x -> v1
-Constant 3 -> v2
-<Add|Sub|Mul|Div|Rem> v1, v2 -> v3
-Return v3
-```
+- the single automatic `int` local `x`;
+- decimal integer literals;
+- binary `+ - * / %` with C precedence and left associativity;
+- parentheses;
+- unary `+` and `-`.
 
-The symbolic interpreter returns `2`, `5`, `-1`, `6`, `0`, and `2`
-respectively. Native AArch64 execution exits 2, 5, 255, 6, 0, and 2.
+The initializer remains exactly one integer literal. The canonical
+`int main(void){return 2+3;}` path is unchanged.
 
-Other expression forms — chained operators, parentheses, literal-left binary
-expressions, unary `-`, and assignment — remain a later slice.
+Expected examples:
+
+| Source expression | Modeled | Native exit |
+|---|---|---|
+| `x` | 2 | 2 |
+| `x + 3` | 5 | 5 |
+| `x - 3` | -1 | 255 |
+| `x * 3` | 6 | 6 |
+| `x / 3` | 0 | 0 |
+| `x % 3` | 2 | 2 |
+| `x + 3 * 2` | 8 | 8 |
+| `(x + 3) * 2` | 10 | 10 |
+| `8 - x * 3` | 2 | 2 |
+| `-(x + 3) * 2` | -10 | 246 |
 
 ## 2. Contract impact
 
@@ -57,7 +64,7 @@ expressions, unary `-`, and assignment — remain a later slice.
 - `ResultValue` appends `Integer(IntegerConst)` at wire tag 5. Verification can
   return a computed scalar without writing a `ConstRecord`; canonical constant
   folding still uses `Record(RecordRef::Const)`.
-- The TU parser adds the 18-token local-binary shape.
+- The TU parser adds the local binary shape.
 - `SE_BIN` accepts an identifier operand with a committed `int` fact and skips
   constant folding when a non-literal operand is present.
 - T09 emits the six-instruction local binary IR.
@@ -65,79 +72,86 @@ expressions, unary `-`, and assignment — remain a later slice.
 
 ### `/51` local binary operators
 
-- The same local-binary token shape accepts `+`, `-`, `*`, `/`, and `%`.
+- The local binary shape accepts `+`, `-`, `*`, `/`, and `%`.
 - `SEMANTIC_BINARY_EXPR`, `SE_RETURN`, VF05, and VF06 cover all five node kinds.
 - Constant folding remains literal/literal `+` only.
 - T09 maps the node kind to `IrOp::Add`/`Sub`/`Mul`/`Div`/`Rem`.
-- VF12 evaluates with checked canonical-`int` arithmetic; division/remainder by
-  zero and out-of-range results fail closed.
+- VF12 evaluates with checked canonical-`int` arithmetic; zero divisors and
+  out-of-range results fail closed.
 
-New hashed rules: `parse.tu-local-binary-operators`,
-`se.local-binary-operators`, `ir.local-binary-operators`, and
-`vf12.local-binary-operators`.
+### `/52` local expression trees
 
-Artifact: `t01-c01-c06/51`, hash
-`4f110d098a54d56b8c39d1c90d902141e0e9e4f6aab1192203763017fe57a6ce`.
+- The parser uses precedence climbing plus recursive unary/primary parsing.
+  Parentheses are grouping only and create no AST node.
+- AST nodes are committed in pre-order; any parse failure appends nothing.
+- `SEMANTIC_UNARY_EXPR` (`SEMANTIC` local 23, `SE_UNARY_CHIP = ChipId(59)`,
+  stage 4, one `sem.records` allowlist row) checks unary operands.
+- `SE_BIN` accepts nested binary/unary operands with committed `int` facts.
+- `SE_RETURN` accepts any covered expression root.
+- VF05 covers `UnaryPlus`/`UnaryMinus`; VF06 adds them to the checked set.
+- T09 recursively lowers the checked tree in post-order.
+- VF12 interprets the covered instruction program with value/local maps,
+  canonical-`int` checked arithmetic, and fail-closed uninitialized loads,
+  zero divisors, and unsupported control flow.
+- Literal constants are paired to literals in fold order, so repeated literal
+  values are not ambiguous.
+
+New hashed rules: `parse.tu-local-expression-tree`,
+`se.unary-checked-nonlvalue`, `ir.local-expression-tree`, and
+`vf12.local-expression-program`.
+
+Artifact: `t01-c01-c06/52`, hash
+`c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23`.
 
 ## 3. AST shape
 
-Local return token order:
+Fixed prefix:
 
 ```text
-0 int   1 main  2 (   3 void  4 )   5 {
-6 int   7 x     8 =   9 2     10 ;
-11 return 12 x  13 ;   14 }    15 EOF
+int main ( void ) { int x = <int> ; return <expr> ; } EOF
 ```
 
-Local binary token order:
-
-```text
-0 int   1 main  2 (   3 void  4 )   5 {
-6 int   7 x     8 =   9 2     10 ;
-11 return 12 x  13 <op> 14 3  15 ;
-16 }     17 EOF
-```
-
-Local return pre-order nodes:
+The prefix nodes remain:
 
 | Node | Children | Range |
 |---|---|---|
-| `TranslationUnit` | FunctionDefinition | 0..15 |
-| `FunctionDefinition` | Specifiers, Declarator(main), Compound | 0..14 |
+| `TranslationUnit` | FunctionDefinition | 0..EOF |
+| `FunctionDefinition` | Specifiers, Declarator(main), Compound | 0..`}` |
 | `Specifiers` | — | 0..0 |
 | `Declarator(main)` | — | 1..4 |
-| `Compound` | Declaration, Return | 5..14 |
-| `Declaration` | Specifiers, Declarator(x), IntLiteral(2) | 6..10 |
+| `Compound` | Declaration, Return | 5..`}` |
+| `Declaration` | Specifiers, Declarator(x), IntLiteral | 6..10 |
 | `Specifiers` | — | 6..6 |
 | `Declarator(x)` | — | 7..7 |
-| `IntLiteral(2)` | — | 9..9 |
-| `Return` | Identifier(x) | 11..13 |
-| `Identifier(x)` | — | 12..12 |
+| `IntLiteral` | — | 9..9 |
+| `Return` | expression root | 11..`;` |
 
-Local binary adds the selected binary node (12..14) with `Identifier(x)`
-(12..12) and `IntLiteral(3)` (14..14); `Return` spans 11..15 and the
-function/TU ranges extend to 16/17. The canonical 9-node tree is unchanged.
+Expression nodes are allocated after `Return` in pre-order:
+
+- `IntLiteral` and `Identifier` leaves have `first == last`;
+- binary nodes span their first child through their last child;
+- unary nodes span the operator through the operand;
+- parentheses are not represented and may fall outside the inner range.
 
 ## 4. Implemented worker behavior
 
-- **PA01**: dispatches on the closed token length; validates keyword,
-  identifier, punctuator, operator spelling, EOF, matching declaration/use
-  names, and every committed literal before appending. Failures append no
-  nodes.
+- **PA01**: fixed-prefix validation, precedence-climbing expression parser,
+  matching declaration/use identifier names, literal resolution, and pre-order
+  AST assignment. Failures append no nodes.
 - **TySymbol**: block-scope `int` objects are automatic, no linkage.
 - **SE identifier**: exactly one block scope, visible automatic `int` object.
-- **SE binary**: literal/literal `+` still folds; identifier/literal forms for
-  all five operators append the checked fact without a fold child.
-- **SE return / SE function**: accept the local bodies; preserve canonical.
-- **VF05 / VF06**: cover the new node shapes and identifier fact.
-- **IR lowering**: resolves the local and each literal's folded constant by
-  value, requires unique matches, and emits the exact local IR with the matching
-  `IrOp`.
-- **VF12**: models local return and all five local binary operators; arithmetic
-  is checked canonical `int`; zero divisors and out-of-range results fail.
-- **Candidate driver**: enters block scope, declares the local, folds every
-  local-shape literal, checks identifier facts before binary facts, and handles
-  both `Const` and `Integer` verification results.
+- **SE unary**: one checked `int` operand, appends a `NonLvalue`/zero-effect
+  fact.
+- **SE binary**: literal/literal `+` still folds; any checked operand tree
+  appends the binary fact without a fold child.
+- **SE return / SE function**: accept the local body and expression root.
+- **VF05 / VF06**: cover nested binary/unary nodes and unary leaves.
+- **IR lowering**: validates every expression node's committed `int` fact,
+  pairs literals to folded constants in fold order, and emits post-order
+  `Constant`/`LocalLoad`/`LocalStore`/arithmetic/`Neg`/`Return` instructions.
+- **VF12**: general symbolic interpreter over the covered IR ops.
+- **Candidate driver**: checks the initializer literal, then walks the return
+  expression in post-order, dispatching literal/identifier/binary/unary tasks.
 
 ## 5. Verification
 
@@ -145,9 +159,9 @@ macOS:
 
 ```sh
 cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 7 passed (Linux execution tests cfg-skipped)
+# 8 passed (Linux execution tests cfg-skipped)
 cargo test --locked --manifest-path compiler/Cargo.toml
-# 737 tests / 62 suites passed
+# 738 tests / 62 suites passed
 ```
 
 Native AArch64 Linux:
@@ -157,24 +171,18 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   -e CARGO_TARGET_DIR=/tmp/target rust:1.85-bookworm \
   /usr/local/cargo/bin/cargo test --locked \
   --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 10 passed; local return exits 2, local add exits 5, and the four
-# single-operator cases exit 255, 6, 0, and 2 after assemble/link/run
+# 12 passed; native execution covers precedence, parentheses, literal-left
+# forms, unary minus, and the single-operator set
 ```
-
-The integration test also checks the canonical `return 2+3` evidence and
-assembly, rejects mismatched names/unsupported operators/extra statements,
-checks the identifier chip's write scope, and replays the same source
-deterministically.
 
 ## 6. Explicit exclusions
 
-- No chained operators, parentheses, literal-left binary expressions, unary
-  `-`, assignment, multiple declarations, or initializers other than one
-  integer literal.
-- The initializer and binary operand are matched to folded constants by value,
-  so two identical literal values fail closed as ambiguous instead of guessing
-  which fold belongs to which use.
-- No local address-taking, pointers, arrays, aggregates, or static locals.
+- One local declaration and one return statement only.
+- The initializer is one integer literal; no initializer expression.
+- No multiple declarations, assignment, address-taking, pointers, arrays,
+  aggregates, or static locals.
+- No `++`/`--`, casts, `sizeof`, logical/bitwise/comparison operators, or
+  comma/conditional expressions.
 - No calls, parameters, branches, loops, or memory objects.
 - No `-S`/`-c`; the slice remains reachable through the bootstrap
   `--emit-asm` path until the full T11 chip family exists.
