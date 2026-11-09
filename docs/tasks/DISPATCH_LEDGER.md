@@ -554,3 +554,30 @@ after checking T01.
   B3-03a/B3-03b implemented source macros and bounded quote include.
 - Start implementation only for packages whose readiness gates are satisfied, and run
   package-specific `fmt`, tests, and attributed clippy before any integration claim.
+
+## 5. 50-Minute 100-Slot Sprint Closeout (2026-11-10)
+
+| Field | Value |
+|---|---|
+| Window | T0 21:17 UTC; closeout ~21:50 UTC |
+| Baseline | `5f3c753`; contract `t01-c01-c06/55`, hash `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Slots launched | **100/100** (T30, R15, A10, H10, L8, D12, C10, O5) |
+| Accepted code commit | `451c2f3 feat: harden direct calls and host runner` |
+| Compiler tests | **995 / 112 suites macOS; 1006 / 112 native AArch64 Linux** |
+| Runner tests | **34 / 10 suites** |
+| Merged test files | 28 T, 10 A, 5 L, 6 H regression suites; A09/A10 explicitly ignored/blocked |
+| Production fixes | H05 containment/CLI; VF05/VF06 cycle guards; zero-literal normalization; emitter parameter-name, constant-range and x31/w31 guards |
+
+**Confirmed fixes and evidence**
+- H01/H02: per-stream output caps, bounded cleanup, prlimit independent of setsid, symlink rejection, actual child exit/signal reporting. H03–H08 passed (34 runner tests).
+- Canonical zero: `0`/`00`/`0x0` decode as radix 10 with spelling preserved; source zero, repeated origins and divide-by-zero diagnostics pass L02–L06.
+- VF05/VF06 now reject cyclic/shared AST nodes instead of hanging (T22).
+- Emitter accepts legal parameter names such as `x0`, rejects `x31`/`w31`, and fails closed on out-of-i32 constants.
+
+**Unmerged / open findings (not PASS)**
+- T27: VF12 accepts an uncommitted canonical `ConstId` and a stale/foreign local `SymbolId`; RED test remains on `sprint-t`.
+- R01/R02: legacy `/52` local-expression path bypasses the 32-level parser budget and can recurse deeply; no fix landed.
+- R08/R09/R12/R13: VF12/emitter synthetic ownership and local-symbol checks remain weaker than the source path.
+- A09/A10: both two-way reference ABI directions remain `BLOCKED_CONTRACT`; no function-only/external-callee fixture boundary is frozen.
+- D/C slots delivered design packets only; Host H00–H03/H06 and CFG production are not implemented.
+- Many of the 100 slots returned findings/checkpoints rather than mergeable code; unmerged branches/worktrees are retained. No push or force-push occurred.
