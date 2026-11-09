@@ -67,6 +67,10 @@ mod pp_driver;
 #[path = "candidate/pp_include.rs"]
 mod pp_include;
 
+/// M1 AArch64 assembly prototype (host-only T11 bootstrap).
+#[path = "candidate/target_m1.rs"]
+mod target_m1;
+
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
 
@@ -87,12 +91,15 @@ struct Invocation {
     emit: bool,
     /// `-D`/`-U` macro seeds in flag order (last-wins by commit order).
     macro_flags: Vec<macro_flags::MacroFlagSeed>,
+    /// Optional M1 AArch64 assembly output path (`--emit-asm`).
+    asm_output: Option<String>,
 }
 
 fn usage() -> &'static str {
     "usage: candidate [-std=c11] [-O0] [-D NAME[=value]] [-U NAME] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
      usage: candidate -E [-D NAME[=value]] [-U NAME] [-o <path>] file.c\n\
-     Part A evidence driver (M1): snapshot/trace emission and IR interpretation.\n\
+     usage: candidate --emit-asm <path> [-D NAME[=value]] [-U NAME] file.c\n\
+     Part A evidence driver (M1): snapshot/trace emission and IR interpretation; --emit-asm is the host-only M1 AArch64 prototype.\n\
      -D NAME defines NAME as 1; -D NAME=value defines NAME with that replacement text (empty value defines it as empty).\n\
      -U NAME undefines NAME; repeated -D/-U for one name resolve last-wins in flag order.\n\
      -E emits the preprocessed source (PP28) to stdout or -o <path> (Part B, host-only).\n\
@@ -109,6 +116,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         interpret: false,
         emit: false,
         macro_flags: Vec::new(),
+        asm_output: None,
     };
     let mut inputs = Vec::new();
     let mut index = 0;
@@ -122,6 +130,12 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
             ));
         } else if arg == "-E" {
             invocation.emit = true;
+        } else if arg == "--emit-asm" {
+            index += 1;
+            let path = args
+                .get(index)
+                .ok_or_else(|| "--emit-asm requires a path".to_string())?;
+            invocation.asm_output = Some(path.clone());
         } else if arg == "-o" {
             index += 1;
             let path = args
@@ -1153,7 +1167,11 @@ fn run_emit(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Vec<u8>
     emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
 }
 
-fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, String> {
+fn run(
+    input: &str,
+    seeds: &[macro_flags::MacroFlagSeed],
+    asm_output: Option<&str>,
+) -> Result<Evidence, String> {
     let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input, seeds)?;
     // Lex over every expanded pp-token (no fixed positions).
     step(
@@ -1355,6 +1373,11 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF01_CHIP,
         Payload::empty(),
     )?;
+    if let Some(path) = asm_output {
+        let assembly = target_m1::emit_m1_assembly(&bus)?;
+        std::fs::write(path, assembly)
+            .map_err(|error| format!("cannot write assembly {path}: {error}"))?;
+    }
     let snapshot = Snapshot::capture(&bus);
     let modeled_body = bus
         .arenas
@@ -1438,7 +1461,11 @@ fn main() {
         }
         return;
     }
-    match run(&invocation.input, &invocation.macro_flags) {
+    match run(
+        &invocation.input,
+        &invocation.macro_flags,
+        invocation.asm_output.as_deref(),
+    ) {
         Ok(evidence) => {
             let mut report = format!("candidate evidence ({CONTRACT_VERSION})\n");
             report.push_str(&format!("input: {}\n", evidence.input));

@@ -1,5 +1,7 @@
 # T11: AArch64 Linux ABI, Machine IR, and Assembly Chips
 
+**M1 bootstrap note (2026-11-09).** A host-only prototype in `candidate --emit-asm` emits GNU AArch64 assembly for the committed `int main(void){return <constant>;}` IR and has been assembled/linked/run on Linux AArch64 (exit 5). It is not a T11 chip family, does not implement general ABI/locals/calls/memory/control flow, and does not authorize `-S`/`-c`. See [M1_TARGET_EMIT_SLICE.md](M1_TARGET_EMIT_SLICE.md).
+
 Prerequisite: T01 target **identity** frozen and concrete ABI values **probe-verified** (T01 §6); interfaces depend on T09 IR / T08 static data. Directory `chips/target/aarch64/`. Reads typed IR/layout/config; writes ABI plans, machine IR, frame, assembly, and proposals. category=device_specific, backend_class=aarch64-linux; this is a compilation target, not a cc-silicon execution backend.
 
 The first version emits GNU/Linux AArch64 assembly text acceptable to the GNU assembler; the Host invokes an external assembler/linker, and that Host-side toolchain produces the ELF object. T11 owns assembly emission, not ELF writing; implementing an ELF object writer in-house is a later optional project. The Part B compile gate must produce an object. Darwin symbol prefixes, Mach-O directives, or the Darwin variadic ABI must not be used. All AAPCS64 rules are governed by the AAPCS64 specification and the **probe-verified** target model; do not rely on "arm64 is all the same".
