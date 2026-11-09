@@ -6,16 +6,16 @@
 | Updated | 2026-11-09 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/45` — hash `c4e84ccbd756b15faa9415192636ed93105d339e005e3b9e9d18a3f8cf30bac8` |
-| Branch / HEAD | `wave4-development` / `75cb18c` (code through `/45` committed; this status-doc commit follows) |
-| Workspace note | `/42`–`/45`, B-INT-00, B3-03a/B, and the target probe are committed; no push was performed |
+| Contract baseline | `t01-c01-c06/46` — hash `3416b176c23f3802e2c57978db74f89bcc7719337c968c0c12c9d7b19aa6972f` |
+| Branch / HEAD | `wave4-development` / `abb3a78` (code through `/46` committed; this status-doc commit follows) |
+| Workspace note | `/42`–`/46`, B-INT-00, B3-03a/B, and the target probe are committed; no push was performed |
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **715 tests across 57 suites after `/45`** | Observed in the `/45` constant-v3 session. Adds `c51_const_v3` 3 tests on top of `/44`. |
+| Compiler package tests | **PASS**, **720 tests across 59 suites after `/46`** | Observed in the `/46` type/layout/init session. Adds `c52_type_schema` 3 and `c53_layout_init_schema` 2 tests on top of `/45`. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
 | Root tests after B3-03a | **PASS**, 21 tests | `cargo test --workspace --locked` |
 | Torture package after B3-03a | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
@@ -24,7 +24,7 @@
 | Target probe | **ONE CONTAINERIZED RUN / H07 CLASSIFIED / ATTESTATION TEST PASSES** | Debian 12 aarch64 + GCC 12.2.0; `c48_target_probe` 2/2; official T00 baseline/CI substrate and global `target_verification=unverified` remain open |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
 
-The current `/45` schema baseline is green for the configured root, compiler,
+The current `/46` schema baseline is green for the configured root, compiler,
 chip-lint, and torture checks. This is a repository check result, not target
 execution or a GCC pass rate.
 
@@ -133,7 +133,7 @@ triaged the critical path as follows.
    implemented, and verified as `/41`**; B2-02 (tagged, typed constants, D-09)
    is **accepted, implemented, and verified as `/42`**; `/43` parser/AST and
    `/44` IR/CFG and `/45` constant v3 are **frozen schemas**. The next schema
-   freezes are `/46` layout/init and `/47` diagnostics; the deferred
+   freezes are `/47` diagnostics; the deferred
    restore/quota>1/VF13/`StorePatch` package is `/48`.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
@@ -155,7 +155,7 @@ triaged the critical path as follows.
 | ID-IR-01 | Prefer A15's `InstructionRecord.successors` + `Branch`/`CondBranch` over A07's separate `CfgEdgeRecord`; keep the edge family only as a documented fallback. | Recommendation pending IR freeze |
 | ID-TARGET-01 | All concrete ABI/scalar values remain probe-gated. No target codegen or `-S`/`-c` from proposal values. | Existing accepted boundary |
 | ID-CHIP-01 | Do not add new chips until the Worker-vs-RestrictedChip template decision (A02 F01) is resolved; B1/B3 fixes may continue because they touch existing files. | Recommendation pending contract decision |
-| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = layout/init schema, `/47` = diagnostic taxonomy, `/48` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/45` hash `c4e84ccb…0bac8`. | Accepted by T01 integrator |
+| ID-VERSION-01 | **Accepted 2026-11-09:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = type/layout/init common base (frozen), `/47` = diagnostic taxonomy, `/48` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/46` hash `3416b176…972f`. | Accepted by T01 integrator |
 
 ### Stage B3 candidate queue (not dispatched)
 
@@ -199,7 +199,7 @@ defaults. The deferred restore package is `/48`.
 | B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/48` |
 | B2-00 OD-7 | Pins | Trace digest + Host envelope |
 | B2-00 OD-8 | `Task.id` | Encode and test divergence |
-| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` layout/init, `/47` diagnostics, `/48` deferred restore |
+| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics, `/48` deferred restore |
 | B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/48` |
 | B2-02 T-01 | Constant type field | `ConstRecord.ty` is a committed T06 `TypeId` |
 | B2-02 T-02 | Payload family | Closed `/42` tag `Integer` only; float/address append-only future tags |
@@ -306,6 +306,21 @@ defaults. The deferred restore package is `/48`.
 | Explicit deferrals | Float/address producers, T06 float/pointer type compatibility, layout/init records |
 | Non-claims | No target width, layout, codegen, probe, or torture result |
 
+## 3L. `/46` Freeze Record (2026-11-09)
+
+| Field | Value |
+|---|---|
+| Artifact | `t01-c01-c06/46` |
+| Hash | `3416b176c23f3802e2c57978db74f89bcc7719337c968c0c12c9d7b19aa6972f` |
+| Authority | ADR-0006 accepted by the T01 integrator; R1 auto-bump; `/45` preserved as history |
+| Contract text | [T01 §7.1 `/46` amendment](T01_COMPILER_CONTRACT.md); [ADR-0006](../architecture/ADR-0006-TYPE-LAYOUT-INIT-SCHEMA.md) |
+| New names | `pointer`/`array`/`aggregate`/`enum`; qualifier/array-bound/aggregate-member/enumerator tables; `G1DraftBody::Layout`/`Init` |
+| Shape impact | `TypeKind` append; layouts/inits become typed arenas; snapshot bodies replace reserved counts; no new task kind, chip, stage, or allowlist row |
+| Implementation | Type/layout/init canonical codecs and append handles; no producer |
+| Tests | `c52_type_schema` 3, `c53_layout_init_schema` 2; full compiler suite 720 tests / 59 suites |
+| Explicit deferrals | T06 type producers, T08 layout/init producers, target byte layouts, VF07/layout validation |
+| Non-claims | No target layout, codegen, probe, or torture result |
+
 ## 4. Dispatch Rules for This Batch
 
 1. A worker may write only its report path; reports are English markdown.
@@ -325,8 +340,7 @@ defaults. The deferred restore package is `/48`.
   verified. B2-01 is accepted, implemented, and verified as `/40`; B2-00 is
   accepted, implemented, and verified as `/41`; B2-02 is accepted, implemented,
   and verified as `/42`.
-- **Next freeze train:** `/46` for layout/init and `/47` for diagnostics;
-  `/48` remains the deferred
+- **Next freeze train:** `/47` for diagnostics; `/48` remains the deferred
   restore/quota>1/VF13/`StorePatch` package. Each needs an explicit integrator
   decision, implementation, dependent tests, and a recomputed hash.
 - **Next integration blockers:** B3-03c/W3 `#line`/`#pragma` (carrier or
