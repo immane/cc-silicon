@@ -10,6 +10,8 @@
 
 This document is a **proposal draft** for the deferred H04 rows (`-I`, multi-source compilation, quoting edge cases; see `H04_CANDIDATE_DRIVER.md` §5). Today the driver **refuses** `-I`/multi-source with an explicit error (exit 2), and `/25` resolves includes **only** over already-committed sources with quote/angle behaving **identically**. Nothing here overrides that. The `-I`/multi-source path stays fail-closed until H01+T01 accept a freeze and the T01 integrator lands it.
 
+**B3-03b note (2026-11-09).** A separate bounded subset — quoted `#include "..."` resolved only beside the including file, single-level, no `-I`/system roots/nesting/guards/`once` — is accepted and implemented in [B3_03B_LEAF_INCLUDE_POLICY.md](B3_03B_LEAF_INCLUDE_POLICY.md). It does not accept or narrow this draft's `-I`/multi-source policy; those remain open.
+
 ## 1. What this draft proposes (and does not decide)
 
 Four items, all OPEN:

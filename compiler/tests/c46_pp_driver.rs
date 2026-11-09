@@ -5,8 +5,9 @@
 // affect later text and conditionals, inactive post-conditional definitions
 // are dropped by PP19, active post-conditional macro mutation is rejected,
 // benign redefinition succeeds and non-benign redefinition fails, consumed
-// directive lines never reach the lexer, and include/error/continuation
-// cases stay fail-closed. This is not a full preprocessor claim.
+// directive lines never reach the lexer, and `#error`/continuation cases stay
+// fail-closed. Include behavior is covered by c47. This is not a full
+// preprocessor claim.
 // ============================================================================
 
 use std::path::{Path, PathBuf};
@@ -202,21 +203,8 @@ fn active_post_conditional_define_is_rejected() {
 }
 
 #[test]
-fn include_and_error_remain_fail_closed() {
+fn error_remains_fail_closed() {
     let dir = workdir("fail-closed");
-    let include = source(
-        &dir,
-        "include.c",
-        b"#include \"h.h\"\nint main(void){return 2+3;}\n",
-    );
-    let include_run = run(&[std::ffi::OsStr::new("--interpret-ir"), include.as_os_str()]);
-    assert_eq!(include_run.status.code(), Some(1));
-    assert!(
-        stderr(&include_run).contains("deferred to PP17/PP18"),
-        "{}",
-        stderr(&include_run)
-    );
-
     let error = source(
         &dir,
         "error.c",

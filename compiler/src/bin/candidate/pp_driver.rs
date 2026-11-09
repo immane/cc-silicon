@@ -210,6 +210,16 @@ pub fn is_undef(name: &[u8]) -> bool {
     name == b"undef"
 }
 
+/// True for `include`.
+pub fn is_include(name: &[u8]) -> bool {
+    name == b"include"
+}
+
+/// True for `include_next`.
+pub fn is_include_next(name: &[u8]) -> bool {
+    name == b"include_next"
+}
+
 /// Zero-based raw line index of a byte offset.
 fn line_index(bytes: &[u8], offset: u64) -> usize {
     let end = (offset as usize).min(bytes.len());

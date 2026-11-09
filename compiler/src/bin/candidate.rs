@@ -25,10 +25,10 @@ use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
     PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
-    PpEmitChip, PpInvokeChip, PpNormalizeChip, PpRedefineChip, PpScanChip, PpSpliceChip,
-    PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip, SeLitChip, SeRetChip, TyConvChip,
-    TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker,
-    WorkerRegistry,
+    PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
+    PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip,
+    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
+    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -36,10 +36,10 @@ use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP,
-    PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP,
-    SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP,
-    VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP, PP17_CHIP,
+    PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP,
+    SE_BIN_CHIP, SE_FUNC_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP,
+    TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -63,8 +63,15 @@ mod macro_flags;
 #[path = "candidate/pp_driver.rs"]
 mod pp_driver;
 
+/// B3-03b bounded quote-include host policy.
+#[path = "candidate/pp_include.rs"]
+mod pp_include;
+
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
+
+/// Bounded quote-include limit per translation unit.
+const MAX_INCLUDES: usize = 64;
 
 /// Parsed Part A invocation.
 struct Invocation {
@@ -238,6 +245,8 @@ fn install(bus: &mut CompilerBus) {
         &PpSubstituteChip,
         &PpDirectiveChip,
         &PpDiagnosticChip,
+        &PpIncludeResolveChip,
+        &PpIncludeEnterChip,
         &PpEmitChip,
         &LxInternChip,
         &LxClassifyChip,
@@ -274,6 +283,8 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, PP12_CHIP, 1),
         (TaskKind::PREPROCESS_DIRECTIVE, PP05_CHIP, 1),
         (TaskKind::PREPROCESS_DIAGNOSTIC, PP26_CHIP, 1),
+        (TaskKind::PREPROCESS_INCLUDE_RESOLVE, PP17_CHIP, 1),
+        (TaskKind::PREPROCESS_INCLUDE_ENTER, PP18_CHIP, 1),
         (TaskKind::PREPROCESS_EMIT, PP28_CHIP, 1),
         (TaskKind::LEX_INTERN, LX_INTERN_CHIP, 2),
         (TaskKind::LEX_CLASSIFY, LX_CLASSIFY_CHIP, 2),
@@ -432,6 +443,12 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpDiagnosticChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpIncludeResolveChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpIncludeEnterChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpEmitChip)
@@ -626,6 +643,266 @@ fn expand_text_run(
     )
 }
 
+/// A loaded header source plus its single PP01→PP04 scan.
+#[derive(Clone)]
+struct HeaderUnit {
+    source: cc_silicon_compiler::ids::SourceId,
+}
+
+/// Per-TU bounded include cache and occurrence counter.
+struct IncludeState {
+    by_path: std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, HeaderUnit)>,
+    occurrences: usize,
+}
+
+impl IncludeState {
+    fn new() -> Self {
+        Self {
+            by_path: std::collections::BTreeMap::new(),
+            occurrences: 0,
+        }
+    }
+}
+
+/// Process a header token stream under the bounded B3-03b policy.
+///
+/// Leading `#define`/`#undef` lines are applied with PP06/PP08; text runs are
+/// expanded with PP09. Nested includes, conditionals/guards, `#line`,
+/// `#pragma`, `#error`, and unknown directives are rejected.
+fn process_header_tokens(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    let stream = pp_driver::group_lines(bus, &refs)?;
+    let mut expanded_refs: Vec<RecordRef> = Vec::new();
+    let mut index = 0usize;
+    while index < stream.lines.len() {
+        let line = &stream.lines[index];
+        if !pp_driver::line_is_directive(bus, line) {
+            let start = index;
+            while index < stream.lines.len()
+                && !pp_driver::line_is_directive(bus, &stream.lines[index])
+            {
+                index += 1;
+            }
+            let mut run = Vec::new();
+            for text_line in &stream.lines[start..index] {
+                run.extend(text_line.refs());
+            }
+            let expanded = expand_text_run(bus, workers, trace, run)?;
+            expanded_refs.extend(expanded);
+            continue;
+        }
+        if pp_driver::line_has_continuation(bus, line) {
+            return Err(format!(
+                "unsupported include: header directive on raw line {} spans multiple physical lines",
+                line.line + 1
+            ));
+        }
+        match pp_driver::directive_name(bus, line).as_deref() {
+            Some(name) if pp_driver::is_define(name) => {
+                step(
+                    bus,
+                    workers,
+                    trace,
+                    TaskKind::PREPROCESS_MACRO_DEFINE,
+                    PP06_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_undef(name) => {
+                step(
+                    bus,
+                    workers,
+                    trace,
+                    TaskKind::PREPROCESS_MACRO_UNDEF,
+                    PP08_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_include(name) || pp_driver::is_include_next(name) => {
+                return Err(
+                    "unsupported include: nested includes are outside the B3-03b single-level policy"
+                        .to_string(),
+                );
+            }
+            Some(name) if pp_driver::is_conditional_name(name) => {
+                return Err(
+                    "unsupported include: header conditionals/include guards are outside the B3-03b policy"
+                        .to_string(),
+                );
+            }
+            Some(name)
+                if name == b"line"
+                    || name == b"pragma"
+                    || name == b"error"
+                    || name == b"warning" =>
+            {
+                return Err(format!(
+                    "unsupported include: header directive `{}` is outside the B3-03b policy",
+                    String::from_utf8_lossy(name)
+                ));
+            }
+            Some(name) => {
+                return Err(format!(
+                    "unsupported include: unknown header directive `{}`",
+                    String::from_utf8_lossy(name)
+                ));
+            }
+            None if line.tokens.len() == 1 => {
+                // Null directive: drop it.
+            }
+            None => {
+                return Err("unsupported include: malformed header directive line".to_string());
+            }
+        }
+        index += 1;
+    }
+    Ok(expanded_refs)
+}
+
+/// Load, resolve, and splice one quoted `#include "..."` line.
+fn expand_include_line(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    input: &str,
+    line: &pp_driver::PpLine,
+    eof: cc_silicon_compiler::ids::PpTokenId,
+    state: &mut IncludeState,
+) -> Result<Vec<RecordRef>, String> {
+    state.occurrences += 1;
+    if state.occurrences > MAX_INCLUDES {
+        return Err(format!(
+            "unsupported include: more than {MAX_INCLUDES} includes in one translation unit"
+        ));
+    }
+    let request = pp_include::parse_include_line(bus, &line.tokens)?;
+    let path =
+        pp_include::resolve_header_path(input, &request.name, bus.limits().max_source_bytes)?;
+    let unit = if let Some((known_name, unit)) = state.by_path.get(&path) {
+        if known_name != &request.name {
+            return Err(format!(
+                "unsupported include: `{}` was already loaded under a different spelling",
+                path.display()
+            ));
+        }
+        unit.clone()
+    } else {
+        let bytes = std::fs::read(&path)
+            .map_err(|error| format!("cannot read include `{}`: {error}", path.display()))?;
+        if bytes.len() as u64 > bus.limits().max_source_bytes {
+            return Err(format!(
+                "include `{}` exceeds the configured source-byte limit",
+                path.display()
+            ));
+        }
+        let name = bus
+            .intern_name(&request.name)
+            .map_err(|error| format!("name table exhausted: {error}"))?;
+        let source = bus
+            .alloc_source(name, bytes)
+            .map_err(|error| format!("include source rejected: {error}"))?;
+        let _ = scan_source(bus, workers, trace, source)?;
+        let unit = HeaderUnit { source };
+        state
+            .by_path
+            .insert(path.clone(), (request.name.clone(), unit.clone()));
+        unit
+    };
+    // PP17 must resolve the main-line header token to the loaded source.
+    match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_INCLUDE_RESOLVE,
+        PP17_CHIP,
+        Payload::from_refs(vec![RecordRef::PpToken(request.header)]),
+    )? {
+        ResultValue::Record(RecordRef::Source(id)) if id == unit.source => {}
+        other => {
+            return Err(format!(
+                "include resolution did not name the loaded header: {other:?}"
+            ));
+        }
+    }
+    // Per-line PP18 splice: include-line refs plus the outer EOF and the
+    // resolved header source. The header's own EOF is excluded by PP18.
+    let mut payload = line.refs();
+    payload.push(RecordRef::PpToken(eof));
+    payload.push(RecordRef::Source(unit.source));
+    let mut stitched = step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_INCLUDE_ENTER,
+        PP18_CHIP,
+        payload,
+    )?;
+    match stitched.last() {
+        Some(RecordRef::PpToken(id))
+            if bus
+                .arenas
+                .pp_tokens
+                .get(*id)
+                .is_ok_and(|body| body.kind == cc_silicon_compiler::bus::PpTokenKind::Eof) =>
+        {
+            stitched.pop();
+        }
+        _ => {
+            return Err("include splice did not preserve the outer EOF".to_string());
+        }
+    }
+    process_header_tokens(bus, workers, trace, stitched)
+}
+
+/// Run the frozen PP01→PP04 scan for one committed source.
+fn scan_source(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    source: cc_silicon_compiler::ids::SourceId,
+) -> Result<Vec<RecordRef>, String> {
+    let artifact = |value: ResultValue| match value {
+        ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
+        other => Err(format!("expected artifact ref, got {other:?}")),
+    };
+    let normalized = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_NORMALIZE,
+        PP01_CHIP,
+        Payload::from_refs(vec![RecordRef::Source(source)]),
+    )?)?;
+    let spliced = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_SPLICE,
+        PP_SPLICE_CHIP,
+        Payload::from_refs(vec![RecordRef::Artifact(normalized)]),
+    )?)?;
+    let comment_free = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_COMMENT,
+        PP_COMMENT_CHIP,
+        Payload::from_refs(vec![RecordRef::Artifact(spliced)]),
+    )?)?;
+    step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_SCAN,
+        PP_SCAN_CHIP,
+        vec![RecordRef::Artifact(comment_free)],
+    )
+}
+
 /// Shared preprocessing prefix: source bytes through PP01→PP04, then the
 /// bounded B3-03a line walk.
 ///
@@ -667,44 +944,10 @@ fn pp_prefix(
     // last-wins by MacroId).
     commit_macro_flags(&mut bus, seeds)?;
     // Preprocess from real source bytes (no seeded fixtures).
-    let artifact = |value: ResultValue| match value {
-        ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
-        other => Err(format!("expected artifact ref, got {other:?}")),
-    };
-    let normalized = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_NORMALIZE,
-        PP01_CHIP,
-        Payload::from_refs(vec![RecordRef::Source(source)]),
-    )?)?;
-    let spliced = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_SPLICE,
-        PP_SPLICE_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(normalized)]),
-    )?)?;
-    let comment_free = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_COMMENT,
-        PP_COMMENT_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(spliced)]),
-    )?)?;
-    let pp_tokens = step_records(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_SCAN,
-        PP_SCAN_CHIP,
-        vec![RecordRef::Artifact(comment_free)],
-    )?;
+    let pp_tokens = scan_source(&mut bus, &workers, &mut trace, source)?;
     let stream = pp_driver::group_lines(&bus, &pp_tokens)?;
     let mut final_refs: Vec<RecordRef> = Vec::new();
+    let mut include_state = IncludeState::new();
     let mut index = 0usize;
     let mut conditional_at: Option<usize> = None;
     while index < stream.lines.len() {
@@ -755,6 +998,26 @@ fn pp_prefix(
                     PP08_CHIP,
                     Payload::from_refs(line.directive_body_refs()),
                 )?;
+            }
+            Some(name) if pp_driver::is_include(name) => {
+                let eof = stream
+                    .eof
+                    .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+                let refs = expand_include_line(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    input,
+                    line,
+                    eof,
+                    &mut include_state,
+                )?;
+                final_refs.extend(refs);
+            }
+            Some(name) if pp_driver::is_include_next(name) => {
+                return Err(
+                    "unsupported include: `include_next` is outside the B3-03b policy".to_string(),
+                );
             }
             Some(_) => {
                 step(
@@ -836,6 +1099,12 @@ fn pp_prefix(
                         "internal preprocessing error: conditional directive survived PP19"
                             .to_string(),
                     );
+                }
+                Some(name) if pp_driver::is_include(name) || pp_driver::is_include_next(name) => {
+                    return Err(format!(
+                        "unsupported include: `#include` after the first conditional (raw line {}) is outside the B3-03b policy",
+                        line.line + 1
+                    ));
                 }
                 Some(_) => {
                     step(
