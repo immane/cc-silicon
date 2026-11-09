@@ -259,6 +259,54 @@ impl Vf05Chip {
             if !child_count_ok {
                 return vec![syntax_fail(input.task, "wrong child count for node kind")];
             }
+            if body.kind == NodeKind::Declaration {
+                let child_kinds: Vec<NodeKind> = body
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        input
+                            .tree
+                            .iter()
+                            .find(|(nid, _)| nid == child)
+                            .map(|(_, child_body)| child_body.kind)
+                    })
+                    .collect();
+                if child_kinds
+                    != [
+                        NodeKind::Specifiers,
+                        NodeKind::Declarator,
+                        NodeKind::IntLiteral,
+                    ]
+                {
+                    return vec![syntax_fail(
+                        input.task,
+                        "declaration child shape is not covered",
+                    )];
+                }
+            }
+            if body.kind == NodeKind::Compound {
+                let child_kinds: Vec<NodeKind> = body
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        input
+                            .tree
+                            .iter()
+                            .find(|(nid, _)| nid == child)
+                            .map(|(_, child_body)| child_body.kind)
+                    })
+                    .collect();
+                let ok = matches!(
+                    child_kinds.as_slice(),
+                    [NodeKind::Return] | [NodeKind::Declaration, NodeKind::Return]
+                );
+                if !ok {
+                    return vec![syntax_fail(
+                        input.task,
+                        "compound statement shape is not covered",
+                    )];
+                }
+            }
             if body.name.is_some() != needs_name {
                 return vec![syntax_fail(input.task, "bad declarator name presence")];
             }
