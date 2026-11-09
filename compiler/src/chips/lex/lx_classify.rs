@@ -26,6 +26,14 @@ use crate::task::{
 };
 use std::collections::BTreeMap;
 
+/// Same-file audited entry point for the integer-spelling predicate.
+///
+/// The chip lint requires calls from `compute` to resolve to a same-file
+/// helper; the lexical decoder remains the single owner of the spelling rule.
+fn is_supported_integer_spelling(spelling: &[u8]) -> bool {
+    integer_spelling_parts(spelling).is_some()
+}
+
 /// The frozen C11 keyword table (membership-tested, order-free).
 pub const C11_KEYWORDS: &[&[u8]] = &[
     b"auto",
@@ -238,7 +246,7 @@ impl LxClassifyChip {
                     }
                 }
                 PpTokenKind::PpNumber => {
-                    if integer_spelling_parts(&projected.spelling).is_some() {
+                    if is_supported_integer_spelling(&projected.spelling) {
                         TokenKind::Integer
                     } else {
                         return vec![fail(
