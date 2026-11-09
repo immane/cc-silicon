@@ -63,9 +63,10 @@ then widen. Do not declare all 331 interfaces ready before they are.
 `/41` closed the B2-00 determinism/limits/replay package (append wire
 bodies, stage-first scheduling, macro/store/result versions, pin-aware
 trace evidence), and `/42` closed B2-02 tagged, typed constants
-(`ConstRecord.ty`, integer payload, immediate-type checks). `/43` owns full
-snapshot restore, quota>1 order, VF13 projections, per-stage queues, and
-`StorePatch` materialization.
+(`ConstRecord.ty`, integer payload, immediate-type checks). Host-only
+B3-03a/B3-03b add source `#define`/`#undef` and bounded quoted includes.
+`/43` owns full snapshot restore, quota>1 order, VF13 projections, per-stage
+queues, and `StorePatch` materialization.
 
 ## After M1: the longer climb
 

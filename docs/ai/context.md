@@ -3,8 +3,8 @@
 > Living handoff note for AI agents continuing this work. Updated
 > 2026-11-09 after accepting and implementing B2-02 as `/42`, parking the
 > unregistered parse drafts (B-INT-00), implementing B3-03a source
-> `#define`/`#undef`, and running the full compiler suite green (694 tests /
-> 52 suites; clippy clean).
+> `#define`/`#undef` and B3-03b bounded quote include, and running the full
+> compiler suite green (706 tests / 53 suites; clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
@@ -39,9 +39,8 @@
   gated by H04/T03/T02); H05 isolated execution; the Linux ABI probe /
   Part B target codegen; full M1 acceptance. No target execution or GCC
   pass rate is claimed.
-- Branch: `wave4-development`. Commits through B3-03a are local
-  (`82ae0ac` at the time of this note); no push was performed (no
-  force-push).
+- Branch: `wave4-development`. Commits through B3-03b are local (the
+  B3-03b commit follows `9d38cdd`); no push was performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
   integrate + verify per slice, continue without stopping.
@@ -87,7 +86,8 @@
 | `/40` | M1 Part A A3 closure (SE29 wiring + VF06 four-kind + T09 consumption) | `bin/candidate.rs`, `verify/vf_invariant.rs`, `ir_lower/ir_function.rs` | `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18 |
 | `/41` | B2-00 determinism/limits/replay (append bodies, stage-first, versions, pin-aware trace) | `snapshot.rs`, `routing.rs`, `commit.rs`, `bus.rs` | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, full 723/50 |
 | `/42` | B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks) | `bus.rs`, `snapshot.rs`, `chips/constant_layout_init/fold.rs`, `chips/ir_lower/ir_function.rs`, `chips/verify/{vf_interpret,vf_evidence}.rs` | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, full 684/51 |
-| — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10, full 694/52 |
+| — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10 |
+| — | B3-03b bounded quote-include driver slice (host-only, no version bump) | `candidate/pp_include.rs`, candidate PP17/PP18 wiring | `c47_pp_include_driver` 12, full 706/53 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -183,12 +183,12 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: decide the H04 include policy and PP18 single-header seam for
-  B3-03b leaf `#include`; then B3-03c `#line`/`#pragma` (carrier or
-  explicit fail-closed); freeze `/43` (restore/quota>1/VF13/`StorePatch`)
-  after an explicit integrator decision; choose and allocate the canonical
-  PA15/parse IDs (B3-04). The `/42`, B-INT-00, and B3-03a work is green but
-  uncommitted. Continue the PP remainder in pipeline order — then T04 LX
+- NEXT UP: B3-03c `#line`/`#pragma` (carrier or explicit fail-closed);
+  wider H04 `-I`/angle/system/multi-source freeze; freeze `/43`
+  (restore/quota>1/VF13/`StorePatch`) after an explicit integrator decision;
+  choose and allocate the canonical PA15/parse IDs (B3-04). The `/42`,
+  B-INT-00, B3-03a, and B3-03b work is green but uncommitted. Continue the
+  PP remainder in pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells

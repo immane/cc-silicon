@@ -65,7 +65,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **694 tests across 52 suites passed** after B3-03a (adds the tagged-constant cases and the bounded PP driver tests) |
+| Compiler | **706 tests across 53 suites passed** after B3-03b (adds the tagged-constant cases and the bounded PP driver/include tests) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -73,10 +73,12 @@ are discovery/run observations, not a permanent promise; the source tree and
 ## Known limitations
 
 - No complete PP→LX→PA→TY→SE→CL→IR→target pipeline.
-- Integrated preprocessing/lexing is narrow: source `#define`/`#undef` are
-  orchestrated by B3-03a, but `#include`/`#line`/`#pragma` remain PP05
-  fail-closed, post-conditional source macro mutation is rejected, and the
-  integrated lexer is M1-integer-only.
+- Integrated preprocessing/lexing is narrow: source `#define`/`#undef` and
+  quoted single-level `#include "..."` beside the including file are
+  orchestrated by B3-03a/B3-03b, but `-I`, angle/system headers, nested
+  includes, guards/`once`, and `#line`/`#pragma` remain fail-closed;
+  post-conditional source macro mutation is rejected, and the integrated
+  lexer is M1-integer-only.
 - Many parse/type/semantic/IR/verification catalog rows are absent. Unregistered
   parse drafts are explicitly parked by B-INT-00; their candidate IDs are not
   frozen, and canonical PA15 selection remains future work.

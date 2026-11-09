@@ -6,7 +6,7 @@
 | Scope | B3-03a W1: source `#define` / `#undef` in the candidate driver |
 | Baseline | `t01-c01-c06/42` |
 | Authority | [B3-03 plan](../reviews/dispatch/B3_03_PP_ORCHESTRATION_PLAN.md) W1; [DISPATCH_LEDGER](DISPATCH_LEDGER.md) D-19/B3-03 |
-| Non-claims | No `#include`/`#line`/`#pragma` effects, no full preprocessor, no target/probe/torture/M1 acceptance |
+| Non-claims | No `#line`/`#pragma` effects, no full preprocessor, no target/probe/torture/M1 acceptance. Include is covered separately by [B3-03b](B3_03B_LEAF_INCLUDE_POLICY.md) |
 
 ## 1. Implemented behavior
 
@@ -38,7 +38,8 @@ host line walk over the committed PP-token stream:
 | Inactive post-conditional `#define` | Dropped by PP19 |
 | Active post-conditional `#define`/`#undef` | Explicit `Unsupported`; never silently reordered |
 | Directive continued with `\` | Explicit `Unsupported`; logical-line grouping is not frozen |
-| `#include` / `#line` / `#pragma` | Existing PP05 explicit `Unsupported` |
+| `#include "..."` | B3-03b bounded quote include; see [leaf-include policy](B3_03B_LEAF_INCLUDE_POLICY.md) |
+| `#line` / `#pragma` | Existing PP05 explicit `Unsupported` |
 | `#error` | Existing PP02/PP05 diagnostic path |
 | Null `#` line | Dropped |
 
@@ -59,7 +60,7 @@ changed.
 |---|---|
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test c46_pp_driver` | **PASS**, 10 tests |
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test h04_candidate` | **PASS**, 18 tests |
-| `cargo test --locked --manifest-path compiler/Cargo.toml` | **PASS**, 694 tests / 52 suites |
+| `cargo test --locked --manifest-path compiler/Cargo.toml` | **PASS**, 706 tests / 53 suites at the current tree (includes B3-03b `c47`) |
 | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings` | **PASS** |
 | `cargo fmt --manifest-path compiler/Cargo.toml -- --check` | **PASS** |
 
@@ -71,8 +72,9 @@ The `#define X 2+3` + `return X;` evidence path models `value=05`.
 
 ## 5. Explicit limitations
 
-- `#include`, `#line`, and `#pragma` effects remain unimplemented and fail
-  closed at PP05; no header I/O or `-I` policy was added.
+- B3-03b adds only quoted, single-level includes beside the including file;
+  `-I`, angle/system headers, nested includes, guards/`once`, and `#line`/
+  `#pragma` effects remain unimplemented and fail closed.
 - A post-conditional source macro mutation is rejected even if a fuller
   control loop could interleave it correctly; that is T02/T03 W4 work.
 - Raw physical-line grouping cannot represent a backslash-continued

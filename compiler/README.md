@@ -125,7 +125,7 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c46 + freeze + h04_candidate + Stage B regression tests
+  tests/           c01..c47 + freeze + h04_candidate + Stage B regression tests
 ```
 
 The test breakdown below is a dated 2026-10-04 record, not the current test
