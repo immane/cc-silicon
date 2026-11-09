@@ -44,7 +44,7 @@ by chip.
 | Piece | Where | State |
 |---|---|---|
 | Generic execution framework (bus, chips, motherboard, backend, clock, testbench) | `src/` | **Implemented**, with tests and a runnable counter example |
-| Compiler contract foundation (storage, IDs, task protocol, target model, manifest check, snapshots, dispatcher) | `compiler/` | **Implemented and frozen** as `t01-c01-c06/42`; includes partial PP/LX/PA/TY/SE/IR/VF slices, the M1 A3 closure (SE29/VF06/T09), the determinism/limits/replay closure, tagged typed constants, and a candidate Part A driver, but no complete compiler |
+| Compiler contract foundation (storage, IDs, task protocol, target model, manifest check, snapshots, dispatcher) | `compiler/` | **Implemented and frozen** as `t01-c01-c06/43`; includes partial PP/LX/PA/TY/SE/IR/VF slices, the M1 A3 closure (SE29/VF06/T09), the determinism/limits/replay closure, tagged typed constants, and a candidate Part A driver, but no complete compiler |
 | C language pipeline (preprocessing through target emission, ~331 planned chips) | `docs/tasks/T02`–`T13` | **Partial slices only** — many workers exist, but most planned handlers, target emission, and acceptance remain ahead |
 
 A common misunderstanding is worth clearing up early: the frozen

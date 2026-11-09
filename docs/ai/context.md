@@ -1,19 +1,19 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/42`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/43`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-09 after accepting and implementing B2-02 as `/42`, parking the
-> unregistered parse drafts (B-INT-00), implementing B3-03a source
-> `#define`/`#undef` and B3-03b bounded quote include, and running the full
-> compiler suite green (708 tests / 54 suites; clippy clean).
+> 2026-11-09 after accepting `/43` parser architecture/V1 AST, implementing
+> B2-02 `/42`, B-INT-00, B3-03a source `#define`/`#undef`, B3-03b bounded
+> quote include, and the target probe, with the full compiler suite green
+> (710 tests / 55 suites; clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/42` (tagged, typed constants; determinism/
-  limits/replay), hash
-  `a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5`.
+- Frozen artifact: `t01-c01-c06/43` (parser architecture/V1 AST, tagged typed
+  constants, determinism/limits/replay), hash
+  `637a0484a4e1870b8e66b04dfd5ad79921d0ad1736972ce7f6a90243bce8df30`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -35,7 +35,7 @@
   (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization for
-  `/43`; B3-03 PP driver orchestration implementation (design complete,
+  `/47`; B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); H05 isolated execution; official T00
   reference-baseline/CI-substrate freeze; Part B target codegen; full M1
   acceptance. One pinned containerized AArch64 probe report is now
@@ -90,7 +90,8 @@
 | `/42` | B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks) | `bus.rs`, `snapshot.rs`, `chips/constant_layout_init/fold.rs`, `chips/ir_lower/ir_function.rs`, `chips/verify/{vf_interpret,vf_evidence}.rs` | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, full 684/51 |
 | — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10 |
 | — | B3-03b bounded quote-include driver slice (host-only, no version bump) | `candidate/pp_include.rs`, candidate PP17/PP18 wiring | `c47_pp_include_driver` 12 |
-| — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2, full 708/54 |
+| `/43` | Parser architecture + V1 AST common base (single-task V1 parser decision, append-only NodeKind) | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c49_ast_schema` 2, full 710/55 |
+| — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -186,12 +187,12 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: B3-03c `#line`/`#pragma` (carrier or explicit fail-closed);
-  wider H04 `-I`/angle/system/multi-source freeze; freeze `/43`
-  (restore/quota>1/VF13/`StorePatch`) after an explicit integrator decision;
-  choose and allocate the canonical PA15/parse IDs (B3-04). The `/42`,
-  B-INT-00, B3-03a, and B3-03b work is green but uncommitted. Continue the
-  PP remainder in pipeline order — then T04 LX
+- NEXT UP: Batch B `/44` IR/CFG schema (successors + Branch/CondBranch,
+  memory/effects/call/object shapes); then Batch C `/45` layout/init/constant,
+  Batch D `/46` diagnostics, Batch E H05 runner, Batch F official target
+  baseline, and Batch G torture chain. B3-03c `#line`/`#pragma` and the wider
+  H04 include policy remain open. Continue the PP remainder in pipeline order —
+  then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells

@@ -9,11 +9,12 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/42`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/43`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
-| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/43` |
+| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/47` |
 | Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
+| Parser architecture + V1 AST (`/43`) | **Schema frozen; producer not implemented** | ADR-0003 single-task V1 parser decision; append-only `NodeKind` inventory; snapshot names/round-trip. V1 parser and VF05 V1 shape table remain future |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
 | AArch64 target values | **One attested probe report; official baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=unverified` and candidate codegen gate remain |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
@@ -24,13 +25,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/42`" means
+## What "frozen `/43`" means
 
-The frozen artifact is `t01-c01-c06/42`:
+The frozen artifact is `t01-c01-c06/43`:
 
 ```text
-version=t01-c01-c06/42
-hash=a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5
+version=t01-c01-c06/43
+hash=637a0484a4e1870b8e66b04dfd5ad79921d0ad1736972ce7f6a90243bce8df30
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -57,7 +58,7 @@ target_verification=unverified
 
 ## Observed test inventory
 
-The following counts were observed during the 2026-11-09 `/42` integration
+The following counts were observed during the 2026-11-09 `/43` integration
 run (and, for the non-compiler packages, the 2026-11-07 dispatch audit). They
 are discovery/run observations, not a permanent promise; the source tree and
 `compiler/tests/` are authoritative.
@@ -65,7 +66,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **708 tests across 54 suites passed** after the target-probe run (adds tagged constants, bounded PP driver/include tests, and target report attestation) |
+| Compiler | **710 tests across 55 suites passed** after `/43` (adds the AST schema tests on top of tagged constants, PP driver/include, and target attestation) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -91,7 +92,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 - H05 isolated execution is absent; no untrusted binary may be run at scale.
 - Replay is recorded-input re-execution over a canonical fingerprint, not bus
   restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
-  projections, and per-stage queues remain deferred to `/43`.
+  projections, and per-stage queues remain deferred to `/47`.
 - Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 
