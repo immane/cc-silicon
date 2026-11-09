@@ -15,9 +15,10 @@ pipeline and get exit code 5. M1 splits into two halves:
 - **Part B (target-dependent, probe-gated):** IR through AArch64
   assembly, external assemble/link, run, exit code 5.
 
-Part B stays disabled until the Linux probe attests real ABI values.
-Part A is where implementation starts. Both halves are acceptance
-documents today, not running code:
+Part B stays disabled until the official T00 reference
+baseline/substrate is accepted; one provisional containerized probe
+report is already classified/attested. Part A is where implementation
+starts. Both halves are acceptance documents today, not running code:
 
 - [tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md](../tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md)
 - [tasks/M1_TARGET_ACCEPTANCE.md](../tasks/M1_TARGET_ACCEPTANCE.md)

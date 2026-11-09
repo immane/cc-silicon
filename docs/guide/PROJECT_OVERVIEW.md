@@ -94,7 +94,8 @@ The nearer milestone is M1: compile `int main(void){return 2+3;}`
 through the candidate's own pipeline and get exit code 5. The candidate
 already produces deterministic Part A evidence for this fixture, but the
 complete M1 acceptance and all target execution remain ahead. Part B is
-blocked on the Linux probe and attestation.
+blocked on the official T00 reference baseline/substrate; one provisional
+containerized probe report is classified/attested.
 
 ## Sources
 

@@ -1,11 +1,14 @@
 # H01 reference-toolchain target probe
 
-> **Status: UNVERIFIED artifact.** No AArch64 Linux CI/VM run has produced a
-> probe report yet, so no probe artifact exists in this repository. H01 is **not
-> complete**, and the T01 C02 target model is **not verified**. Everything here
-> is the harness that must run on the real substrate before any target number
-> may be treated as frozen. The reference GCC, sysroot, binutils, and glibc
-> versions are still unestablished inputs.
+> **Status: ONE CONTAINERIZED PROBE RUN OBSERVED; OFFICIAL BASELINE STILL OPEN.**
+> On 2026-11-09 the harness ran in a pinned `linux/arm64` Debian 12 container
+> with Debian GCC 12.2.0, and the H07 classifier resolved the four previously
+> `unresolved` ABI fields from `abi-args.s`. The classified report is pinned by
+> `compiler/tests/c48_target_probe.rs`. This is not an official T00
+> reference-baseline freeze, not a bare-metal/CI-substrate attestation, and not
+> a candidate compiler result. The global contract artifact still records
+> `target_verification=unverified`; see
+> [the probe run record](../../../docs/reviews/target-probe/2026-11-09_DOCKER_AARCH64_PROBE.md).
 
 This directory is an H01 host-tool area. It is **not** part of the
 `cc-silicon` framework, is not built by the root or `tools/torture` Cargo
@@ -36,6 +39,12 @@ A reference-only target probe for the frozen target identity
   and capture completeness; it does **not** cover the behavioural `abi.*.ok`
   self-checks (see "Self-check results are not a gate").
 - `lib/guard.sh` — pure, testable fail-closed predicates.
+- `classify.py` — H07 ABI classifier: derives `abi.gp_arg_regs`,
+  `abi.fp_arg_regs`, `abi.stack_align`, and
+  `abi.variadic_register_save_area` from `abi-args.s`, adds the bare target
+  aliases, and writes a canonical `verified=true` report with a hash that
+  `TargetSpec::attest` can verify. It requires the measured self-check fields
+  and never invents a value.
 - `normalize/normalize.py` — deterministic normalizer (sorting, path/timestamp
   stripping, pure classifications, evidence hashing). It validates that every
   required capture exists before creating output, writes binary LF, and drops
@@ -215,27 +224,31 @@ explicitly `unresolved`:
 
 The emitted assembly (`gcc -S` of `abi-args.c`, hashed in
 `evidence.abi-args.s.sha256`) is the classification evidence for those fields.
-The harness deliberately does **not** guess numeric register counts; a later
-classifier/integration review (the H07 reference-oracle/target-capability
-classification) must interpret that evidence, and only the T01 integrator may
-mark the target verified (`Probed`) after incorporating a real report hash.
+The harness deliberately does **not** guess numeric register counts. The H07
+classifier `classify.py` derives the four fields from that assembly and writes
+a canonical `verified=true` report with a `report_hash`; the fixture
+`compiler/tests/fixtures/target-probe/aarch64-debian12-gcc12.2.0-attested.txt`
+and `compiler/tests/c48_target_probe.rs` pin one real classified run through
+`TargetSpec::attest`.
 
-## Unverified requirements (until an arm64 CI artifact exists)
+## Remaining unverified requirements
 
-1. The real runner image/toolchain digest — a required declared CI input,
-   **recorded as metadata only**. This harness cannot verify or enforce an
-   image digest and does not claim to; it remains unresolved. The `actions/*`
-   mutable-tag pins are likewise unresolved and are not fabricated.
-2. The exact reference GCC version and binary digest, sysroot, binutils, and
-   glibc versions — currently required inputs, not established here.
-3. The concrete scalar/ABI values — measured only when the harness runs on the
-   substrate.
-4. The AAPCS64 argument-register counts and variadic register-save-area
-   behaviour — evidence captured, not derived numerically. HVA
-   classification is not exercised at all (no short-vector fixture), so no
+1. The **official** runner image/toolchain digest — the 2026-11-09 run used a
+   pinned Debian 12 container image digest and records it in the probe-run
+   review, but this is not yet the accepted T00 CI baseline. The `actions/*`
+   mutable-tag pins remain unresolved.
+2. The **official** reference GCC version and binary digest, sysroot, binutils,
+   and glibc versions — the container run pins Debian GCC 12.2.0 and binutils
+   2.40 for evidence, but the final torture reference baseline is still open.
+3. The concrete scalar/ABI values are now measured and attested for that pinned
+   report. The global `CONTRACT_VERSION` still records
+   `target_verification=unverified` until the official baseline/substrate is
+   accepted as a contract state.
+4. HVA classification is not exercised at all (no short-vector fixture), so no
    HVA class may be claimed from the captured assembly.
-5. C02 is not verified. Only the T01 integrator may set
-   `VerificationState::Probed` after incorporating a real report hash.
+5. C02 remains globally unverified. The H07 classifier and `c48` prove that a
+   real classified report can pass `TargetSpec::attest`; they do not prove
+   physical provenance or the official baseline.
 
 ## Safety and provenance
 

@@ -88,7 +88,7 @@ freeze. This policy does not amend T01 and does not change the `/42` hash.
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test c47_pp_include_driver` | **PASS**, 12 tests |
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test c46_pp_driver` | **PASS**, 10 tests |
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test h04_candidate` | **PASS**, 18 tests |
-| Full compiler suite | **PASS**, 706 tests / 53 suites |
+| Full compiler suite | **PASS**, 708 tests / 54 suites |
 | `cargo clippy ... --all-targets -- -D warnings` | **PASS** |
 | `cargo fmt ... -- --check` | **PASS** |
 

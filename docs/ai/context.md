@@ -4,7 +4,7 @@
 > 2026-11-09 after accepting and implementing B2-02 as `/42`, parking the
 > unregistered parse drafts (B-INT-00), implementing B3-03a source
 > `#define`/`#undef` and B3-03b bounded quote include, and running the full
-> compiler suite green (706 tests / 53 suites; clippy clean).
+> compiler suite green (708 tests / 54 suites; clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
@@ -36,9 +36,11 @@
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization for
   `/43`; B3-03 PP driver orchestration implementation (design complete,
-  gated by H04/T03/T02); H05 isolated execution; the Linux ABI probe /
-  Part B target codegen; full M1 acceptance. No target execution or GCC
-  pass rate is claimed.
+  gated by H04/T03/T02); H05 isolated execution; official T00
+  reference-baseline/CI-substrate freeze; Part B target codegen; full M1
+  acceptance. One pinned containerized AArch64 probe report is now
+  H07-classified and attested by `c48_target_probe`; the global target state
+  remains unverified. No target execution or GCC pass rate is claimed.
 - Branch: `wave4-development`. Commits through B3-03b are local (the
   B3-03b commit follows `9d38cdd`); no push was performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
@@ -87,7 +89,8 @@
 | `/41` | B2-00 determinism/limits/replay (append bodies, stage-first, versions, pin-aware trace) | `snapshot.rs`, `routing.rs`, `commit.rs`, `bus.rs` | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, full 723/50 |
 | `/42` | B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks) | `bus.rs`, `snapshot.rs`, `chips/constant_layout_init/fold.rs`, `chips/ir_lower/ir_function.rs`, `chips/verify/{vf_interpret,vf_evidence}.rs` | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, full 684/51 |
 | — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10 |
-| — | B3-03b bounded quote-include driver slice (host-only, no version bump) | `candidate/pp_include.rs`, candidate PP17/PP18 wiring | `c47_pp_include_driver` 12, full 706/53 |
+| — | B3-03b bounded quote-include driver slice (host-only, no version bump) | `candidate/pp_include.rs`, candidate PP17/PP18 wiring | `c47_pp_include_driver` 12 |
+| — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2, full 708/54 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -201,7 +204,8 @@ pass when results look cached/stale.
   fixtures; VF01/VF05/VF06/VF12-M1 exist).
 - L1 carryover: multi-line-comment tail classifies non-directive (loud
   downstream failure, recorded in `/21` doc).
-- Quota>1 (unaccepted); probe substrate unprovisioned; no torture corpus.
+- Quota>1 (unaccepted); official probe substrate/baseline unprovisioned (one
+  containerized report/attestation exists); no torture corpus.
 - Known tech debt: `poll_await_joins` closure loop is O(waiters²),
   accepted for the small profile (PCR-13); PP predicate logic is
   copy-per-chip by precedent (drift-pinned by cross tests).

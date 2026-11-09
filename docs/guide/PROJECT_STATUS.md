@@ -15,8 +15,8 @@ re-verify. This page records observed state, not a new acceptance run.
 | Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/43` |
 | Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
-| AArch64 target values | **Unverified** | Identity frozen; probe never run; concrete values fail closed |
-| ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
+| AArch64 target values | **One attested probe report; official baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=unverified` and candidate codegen gate remain |
+| ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
 | Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 16 tests after Stage B; catches common violations only |
 | Test/CI coverage | Root, chip-lint, compiler, torture, chip scan | `.github/workflows/ci.yml`; real target probe remains manual-only |
@@ -65,7 +65,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **706 tests across 53 suites passed** after B3-03b (adds the tagged-constant cases and the bounded PP driver/include tests) |
+| Compiler | **708 tests across 54 suites passed** after the target-probe run (adds tagged constants, bounded PP driver/include tests, and target report attestation) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -84,8 +84,10 @@ are discovery/run observations, not a permanent promise; the source tree and
   frozen, and canonical PA15 selection remains future work.
 - `ConstRecord.ty`/`ir.op-immediate-type` are implemented at `/42`, but this is
   not full M1 acceptance or target execution.
-- The ABI/target probe has never run; no concrete target value may drive
-  codegen.
+- A pinned Debian-GCC-12.2.0 containerized probe has run and its report is
+  attested in `c48_target_probe`; the official T00 reference baseline/CI
+  substrate is still open, the global target state remains unverified, and no
+  concrete target value drives candidate codegen yet.
 - H05 isolated execution is absent; no untrusted binary may be run at scale.
 - Replay is recorded-input re-execution over a canonical fingerprint, not bus
   restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13

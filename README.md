@@ -340,8 +340,8 @@ implemented, tested pipeline.
 | Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/42`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization, plus partial PP/LX/PA/TY/SE/IR/VF worker slices, the M1 Part A A3 closure (SE29/VF06/T09), the B2-00 determinism/limits/replay closure (append wire bodies, stage-first scheduling, store/result versions, pin-aware trace evidence), the B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks), the B3-03a source `#define`/`#undef` driver slice, and the B3-03b bounded quote-include slice. Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
 | Initial constant-fold worker | **Implemented subset**: [`FoldChip`](compiler/src/chips/constant_layout_init/fold.rs) reads seeded committed literals, resolves the committed constant type (`/42`), and emits one typed constant append + completion; the fixture folds `2 + 3` to `5` through `drive_task` and commit. Evidence: [`compiler/tests/c08_gate1.rs`](compiler/tests/c08_gate1.rs), [`compiler/tests/c45_const_ty.rs`](compiler/tests/c45_const_ty.rs). No target-width semantics or executable generation |
 | Complete C language pipeline (T02–T13) | **Not implemented.** Partial language worker slices exist, but most planned kinds have no installed handler and there is no complete source-to-executable pipeline — see [`docs/tasks/README.md`](docs/tasks/README.md) |
-| AArch64 target values | **UNVERIFIED.** The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); codegen readiness fails closed until a probe attests concrete values |
-| ABI probe harness (`tools/torture/probe/`) | Harness and normalizer self-tests pass, but the probe has **never run**: no report, no attestation, no verified ABI facts |
+| AArch64 target values | **One pinned containerized probe report measured and attested**; the official T00 reference baseline/substrate and global `target_verification=unverified` remain open. The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); candidate codegen readiness still fails closed |
+| ABI probe harness (`tools/torture/probe/`) | Harness/normalizer self-tests pass; one containerized AArch64 Linux run (Debian GCC 12.2.0) produced a report. H07 `classify.py` resolves the four ABI fields and `c48_target_probe` attests/tamper-checks it. No official CI/bare-metal baseline or corpus |
 | GCC torture corpus lock (`tools/torture/`) | **Scaffold**: lock schema and verifier implemented and tested; no corpus fetched, no frozen lock, no pass rate |
 
 No end-to-end compiler capability, verified target ABI, or GCC pass rate is
@@ -518,7 +518,7 @@ docs/
 tools/
   chip-lint/        AST-based checks for chip source
   torture/          offline corpus-lock integrity and provenance verifier
-  torture/probe/    AArch64 ABI probe harness + normalizer (never run)
+  torture/probe/    AArch64 ABI probe harness + normalizer + H07 classifier (one containerized run)
 .github/workflows/ CI for root/chip-lint/compiler/torture; probe self-tests + manual probe
 ```
 

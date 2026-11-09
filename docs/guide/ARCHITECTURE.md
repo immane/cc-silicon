@@ -114,8 +114,10 @@ misunderstandings:
   program* is generated for (AArch64 Linux first).
 
 The framework backend is implemented. The AArch64 target's *identity*
-is frozen but its concrete ABI values are **unverified** until a Linux
-probe attests them, and code generation stays fail-closed until then.
+is frozen. One pinned containerized Linux probe report is now
+H07-classified and attested, but the official T00 reference
+baseline/substrate is still open, the global target state remains
+unverified, and candidate code generation stays fail-closed.
 
 ## Sources
 

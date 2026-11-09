@@ -1,10 +1,13 @@
 # T00 / H00 Implementation Status
 
 Status: **H00 tooling scaffold only — H00 is not complete.** The H01 probe
-harness under `tools/torture/probe/**` is a separate area that exists but has
-never run; no probe report or report hash exists (see
-[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4.1 and the
-[probe README](../../tools/torture/probe/README.md)).
+harness under `tools/torture/probe/**` has now produced one containerized
+AArch64 Linux report, and H07 classification/attestation pass for that report
+(see [the probe run record](../reviews/target-probe/2026-11-09_DOCKER_AARCH64_PROBE.md),
+[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4.1, and the
+[probe README](../../tools/torture/probe/README.md)). The official T00
+reference baseline/substrate and the corpus remain unfrozen; no GCC pass rate
+exists.
 Owner path: the verifier crate (`tools/torture/src/**`, `tools/torture/tests/**`,
 `tools/torture/Cargo.toml`, `tools/torture/Cargo.lock`) and
 `tools/torture/README.md` (plus this note). `tools/torture/probe/**` and

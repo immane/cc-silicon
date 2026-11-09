@@ -7,21 +7,21 @@
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
 | Contract baseline | `t01-c01-c06/42` — hash `a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5` |
-| Branch / HEAD | `wave4-development` / `dee1203` (code through B3-03b committed; this status-doc commit follows) |
-| Workspace note | `/42`, B-INT-00, B3-03a, and B3-03b are committed in code/fix commits; no push was performed |
+| Branch / HEAD | `wave4-development` / `5cef7f6` (code through the target probe committed; this status-doc commit follows) |
+| Workspace note | `/42`, B-INT-00, B3-03a, B3-03b, and the target probe are committed; no push was performed |
 
 ## 1. Baseline Checks
 
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **706 tests across 53 suites after B3-03b** | Observed in the B3-03b integration session (`/42` contract unchanged). Adds `c46_pp_driver` 10 and `c47_pp_include_driver` 12 tests on top of the `/42` suite. |
+| Compiler package tests | **PASS**, **708 tests across 54 suites after the target-probe run** | Observed in the B3-03b integration session (`/42` contract unchanged). Adds `c46_pp_driver` 10, `c47_pp_include_driver` 12, and `c48_target_probe` 2 tests on top of the `/42` suite. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
 | Root tests after B3-03a | **PASS**, 21 tests | `cargo test --workspace --locked` |
 | Torture package after B3-03a | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
 | Chip-lint after B3-03a | **PASS**, 16 tests | `cargo test --locked --manifest-path tools/chip-lint/Cargo.toml`; clippy clean |
 | Compiler clippy after B3-03a | **PASS** | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings`; D-04 closed by B-INT-00 |
-| Target probe | **NOT RUN / UNVERIFIED** | No ABI or execution claim |
+| Target probe | **ONE CONTAINERIZED RUN / H07 CLASSIFIED / ATTESTATION TEST PASSES** | Debian 12 aarch64 + GCC 12.2.0; `c48_target_probe` 2/2; official T00 baseline/CI substrate and global `target_verification=unverified` remain open |
 | GCC torture corpus | **NOT FROZEN / NOT RUN** | No pass-rate claim |
 
 The current `/42` + B3-03a baseline is green for the configured root, compiler,
@@ -80,7 +80,7 @@ not duplicate A1 files or edit any shared source.
 | D-04 | **P1** | Current clippy gate fails with 137 diagnostics from five declared parse drafts; four additional drafts are not compiled at all. `/40` changed files have zero diagnostics. | A13 §5-6; `/40` clippy run | **FIXED / VERIFIED by B-INT-00** — all nine unregistered drafts parked; clippy clean; see [disposition](B_INT_00_DRAFT_DISPOSITION.md) |
 | D-05 | **P1** | Duplicate candidate local 27 / `ChipId(58)` across several drafts; PA15 has two implementations (`pa_init.rs`, `pa_expr_ext.rs`). | A04 §7; A13 §5 | **DISPOSITIONED by B-INT-00** — no parked draft is compiled/registered; `pa_init.rs` is the future PA15 candidate, `pa_expr_ext.rs` is non-canonical; IDs stay unfrozen under B3-04 |
 | D-06 | **P1** | All 65 chips use local `Worker`/`handle(&CompilerBus)`, not `RestrictedChip`/`ChipAdapter`; contract has two competing chip boundaries. | A02 F01 | Contract freeze decision |
-| D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | Target track, blocked |
+| D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | **PARTIALLY FIXED 2026-11-09** — one pinned Debian-GCC-12.2.0 containerized probe ran; H07 `classify.py` resolved the four ABI fields; `c48_target_probe` attests/tamper-checks the report. Official T00 baseline/substrate and global target verification remain open |
 | D-08 | **P1** | H05 isolated execution is absent; no timeout/resource/cancellation/crash boundary. | A10; A24 H-01 | H05 work order after security review |
 | D-09 | **P1** | `ConstRecord` has no `ty`; documented immediate-type rule cannot be enforced. A14 proposes a tagged v2 record. | A05 G4; A14 §4.2 | **FIXED / VERIFIED by `/42`** — `ConstRecord { ty, value: ConstValue::Integer(..) }`; T09/VF12 enforce `ir.op-immediate-type`; `c45_const_ty` 8/8 |
 | D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | **FIXED / VERIFIED** by B1-03; dated audit retained with banner |
@@ -138,8 +138,10 @@ triaged the critical path as follows.
    D-20 (literal token kinds).
 4. **Then** choose the canonical PA15 implementation and allocate distinct parse/lex
    IDs; only after that wire V1 AST/type/semantic/IR producers.
-5. **Target track stays blocked** until H01 probe + H07 classification + T01
-   attestation. Do not implement ABI values or `-S`/`-c` from proposals.
+5. **Target track:** one containerized H01 probe + H07 classification + T01
+   attestation test now pass for a pinned Debian GCC 12.2.0 report. The official
+   T00 reference baseline/CI substrate remains open; do not implement `-S`/`-c`
+   or claim global target verification from the provisional report.
 6. **H05 stays blocked on an accepted isolation design** (A10/A24); no untrusted
    execution before then.
 
@@ -164,7 +166,7 @@ triaged the critical path as follows.
 | B3-05 | `ConstRecord.ty` / tagged constant v2 | **COMPLETE / INTEGRATOR VERIFIED** — B2-02 `/42` frozen; `c45_const_ty` 8/8; candidate `value=05` |
 | B3-06 | Diagnostic taxonomy migration | Separate diagnostic CCR |
 | B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | Accepted A24-SEC-01 design |
-| B3-08 | H07 probe-report classifier over synthetic assembly fixtures | H01 report schema frozen; no real probe claim |
+| B3-08 | H07 probe-report classifier over synthetic assembly fixtures | **IMPLEMENTED / REAL RUN VERIFIED** — `tools/torture/probe/classify.py` derives the four ABI fields from `abi-args.s`; `c48_target_probe` 2/2. Official T00 baseline/substrate still open |
 
 ## 3E. B2 Decision Record (B2-01 `/40`, B2-00 `/41`, B2-02 `/42` accepted)
 
@@ -282,8 +284,9 @@ defaults. The deferred restore package is `/43`.
 - **Next integration blockers:** B3-03c/W3 `#line`/`#pragma` (carrier or
   explicit fail-closed policy), wider H04 `-I`/angle/system/multi-source
   freeze, canonical PA15 allocation/wiring (B3-04), diagnostic taxonomy
-  migration, and the H01 → H07 probe/attestation track (Part B remains
-  fail-closed). B-INT-00 closed the draft/clippy blocker; B3-03a/B3-03b
-  implemented source macros and bounded quote include.
+  migration, the official T00 reference-baseline/CI-substrate freeze (the
+  provisional probe/attestation now passes), H05 isolated execution, and the
+  torture runner/corpus chain. B-INT-00 closed the draft/clippy blocker;
+  B3-03a/B3-03b implemented source macros and bounded quote include.
 - Start implementation only for packages whose readiness gates are satisfied, and run
   package-specific `fmt`, tests, and attributed clippy before any integration claim.

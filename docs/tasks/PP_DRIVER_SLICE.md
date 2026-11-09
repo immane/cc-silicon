@@ -60,7 +60,7 @@ changed.
 |---|---|
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test c46_pp_driver` | **PASS**, 10 tests |
 | `cargo test --locked --manifest-path compiler/Cargo.toml --test h04_candidate` | **PASS**, 18 tests |
-| `cargo test --locked --manifest-path compiler/Cargo.toml` | **PASS**, 706 tests / 53 suites at the current tree (includes B3-03b `c47`) |
+| `cargo test --locked --manifest-path compiler/Cargo.toml` | **PASS**, 708 tests / 54 suites at the current tree (includes B3-03b `c47` and the target-probe `c48`) |
 | `cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings` | **PASS** |
 | `cargo fmt --manifest-path compiler/Cargo.toml -- --check` | **PASS** |
 
