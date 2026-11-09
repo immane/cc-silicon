@@ -41,7 +41,8 @@ fn decoded(spelling: &[u8]) -> (u8, Vec<u8>) {
 
 fn expected_radix(spelling: &[u8]) -> u8 {
     match spelling {
-        b"0" | b"010" | b"077" => 8,
+        b"010" | b"077" => 8,
+        b"0" => 10,
         b"0x10" | b"0X1f" | b"0x100" => 16,
         _ => 10,
     }

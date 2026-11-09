@@ -6,8 +6,10 @@
 // (payload: exactly `[Token, PpToken]`), appends one `LiteralRecord` with
 // `token: Some(committed TokenId)`, and completes with its predicted
 // reference. Integer scope: decimal, leading-zero octal, and `0x` hexadecimal,
-// no suffix, `Int` candidate, unsigned. Anything else fails with explicit
-// `Unsupported`.
+// no suffix, `Int` candidate, unsigned. Unsuffixed zero-valued spellings keep
+// their original spelling but normalize to radix 10, so the decimal-only
+// commit/fold subset accepts them; nonzero octal/hex stays outside that subset.
+// Anything else fails with explicit `Unsupported`.
 // The decode input is the committed PP spelling/kind (DOC-10 resolution);
 // the C-token relation is the output-side publish-time back-link.
 // ============================================================================
@@ -174,6 +176,15 @@ impl LxDecodeLiteralChip {
             )];
         };
         let value = radix_magnitude(digits, radix);
+        // Accepted zero-literal contract: a zero magnitude is emitted as
+        // radix 10 regardless of its octal/hex spelling, while `spelling`
+        // preserves the source text. Nonzero octal/hex keeps its lexical
+        // radix and is rejected by the decimal-only T08 subset gate.
+        let radix = if value.len() == 1 && value[0] == 0 {
+            10
+        } else {
+            radix
+        };
         let predicted = LiteralId::from_index(input.literals_allocated);
         vec![
             Proposal::AppendRecords {
@@ -208,7 +219,8 @@ impl LxDecodeLiteralChip {
 /// Supported: decimal (`10`), leading-zero octal (`010`), and `0x`/`0X`
 /// hexadecimal (`0x10`). Suffixes, digit separators, floats, and malformed
 /// digit sequences are rejected. The empty digit slice is valid only for the
-/// octal spelling `0` and denotes magnitude zero.
+/// octal spelling `0` and denotes magnitude zero. The returned radix is
+/// lexical; `compute` normalizes zero-valued magnitudes to radix 10.
 pub fn integer_spelling_parts(spelling: &[u8]) -> Option<(u8, &[u8])> {
     if spelling.is_empty() {
         return None;

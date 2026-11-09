@@ -10,17 +10,33 @@
 //! and resource bounds are provided by the external `setsid`/`prlimit` tools
 //! when available; absent `prlimit` with requested limits is a setup error,
 //! never a silently unbounded run.
+//!
+//! Cleanup is bounded: a stopped child is reaped and reader threads are awaited
+//! against a fixed deadline. A descendant that escapes the supervised process
+//! group can still keep a pipe open; the runner then returns without its
+//! captured tail rather than blocking forever. `process_group` and
+//! `prlimit_applied` in [`RunReport`] disclose which containment mechanisms
+//! were actually selected.
 
 #![forbid(unsafe_code)]
 
 use std::ffi::OsString;
-use std::io::Read;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
+
+const STDOUT_EXCEEDED: u8 = 1 << 0;
+const STDERR_EXCEEDED: u8 = 1 << 1;
+const POLL_INTERVAL: Duration = Duration::from_millis(5);
+const TERM_GRACE: Duration = Duration::from_millis(30);
+const READER_DRAIN_AFTER_EXIT: Duration = Duration::from_millis(250);
+const CLEANUP_TIMEOUT: Duration = Duration::from_millis(1_000);
 
 /// Output stream name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,14 +179,30 @@ pub struct RunReport {
     pub stdout: Vec<u8>,
     /// Captured stderr bytes (capped).
     pub stderr: Vec<u8>,
-    /// Whether stdout was truncated.
+    /// Whether stdout was truncated because the cap was exceeded.
     pub stdout_truncated: bool,
-    /// Whether stderr was truncated.
+    /// Whether stderr was truncated because the cap was exceeded.
     pub stderr_truncated: bool,
-    /// Elapsed wall-clock milliseconds.
+    /// Elapsed wall-clock milliseconds, including cleanup and log persistence.
     pub elapsed_ms: u128,
     /// Instance directory.
     pub workdir: PathBuf,
+    /// Waitable child exit code, when the child exited normally.
+    pub child_exit: Option<i32>,
+    /// Terminating signal, when the child was signaled.
+    pub signal: Option<i32>,
+    /// Total stdout bytes read, including bytes discarded beyond the cap.
+    pub stdout_bytes: usize,
+    /// Total stderr bytes read, including bytes discarded beyond the cap.
+    pub stderr_bytes: usize,
+    /// Whether stdout exceeded its cap (distinct from merely reaching it).
+    pub stdout_exceeded: bool,
+    /// Whether stderr exceeded its cap (distinct from merely reaching it).
+    pub stderr_exceeded: bool,
+    /// Whether the command was placed in its own process group via `setsid`.
+    pub process_group: bool,
+    /// Whether requested resource limits were wrapped with `prlimit`.
+    pub prlimit_applied: bool,
 }
 
 /// Setup/runner failure (not a child outcome).
@@ -202,13 +234,70 @@ impl std::fmt::Display for SetupError {
 
 impl std::error::Error for SetupError {}
 
+#[derive(Default)]
+struct Capture {
+    stdout: Mutex<Vec<u8>>,
+    stderr: Mutex<Vec<u8>>,
+    stdout_bytes: AtomicUsize,
+    stderr_bytes: AtomicUsize,
+    exceeded: AtomicU8,
+    closed: AtomicBool,
+}
+
+impl Capture {
+    fn buffer(&self, stream: StreamName) -> &Mutex<Vec<u8>> {
+        match stream {
+            StreamName::Stdout => &self.stdout,
+            StreamName::Stderr => &self.stderr,
+        }
+    }
+
+    fn bytes(&self, stream: StreamName) -> &AtomicUsize {
+        match stream {
+            StreamName::Stdout => &self.stdout_bytes,
+            StreamName::Stderr => &self.stderr_bytes,
+        }
+    }
+
+    fn exceeded_mask(&self) -> u8 {
+        self.exceeded.load(Ordering::SeqCst)
+    }
+
+    fn mark_exceeded(&self, stream: StreamName) {
+        let bit = match stream {
+            StreamName::Stdout => STDOUT_EXCEEDED,
+            StreamName::Stderr => STDERR_EXCEEDED,
+        };
+        self.exceeded.fetch_or(bit, Ordering::SeqCst);
+    }
+
+    fn snapshot(&self, stream: StreamName) -> Vec<u8> {
+        lock_recover(self.buffer(stream)).clone()
+    }
+}
+
+fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Execute one command under the H05 supervisor.
 pub fn run(spec: &RunSpec) -> Result<RunReport, SetupError> {
+    let started = Instant::now();
     let workdir = prepare_workdir(&spec.workdir)?;
     let tmp = workdir.join("tmp");
+    reject_workdir_symlink(&tmp, "tmp")?;
     std::fs::create_dir_all(&tmp).map_err(|error| {
         SetupError::Workdir(format!("cannot create {}: {error}", tmp.display()))
     })?;
+
+    // Validate log targets before spawning so a symlink cannot redirect the
+    // child's side effects through a pre-existing runner log path.
+    let stdout_log = workdir.join("stdout.log");
+    let stderr_log = workdir.join("stderr.log");
+    reject_log_target(&stdout_log)?;
+    reject_log_target(&stderr_log)?;
 
     if Path::new(&spec.command.program).is_absolute() && !Path::new(&spec.command.program).exists()
     {
@@ -217,13 +306,14 @@ pub fn run(spec: &RunSpec) -> Result<RunReport, SetupError> {
             spec.command.program.to_string_lossy()
         )));
     }
-    let use_setsid = tool_available("setsid");
-    let use_prlimit = spec.limits.any();
-    if use_prlimit && !tool_available("prlimit") {
+    let process_group = tool_available("setsid");
+    let prlimit_requested = spec.limits.any();
+    if prlimit_requested && !tool_available("prlimit") {
         return Err(SetupError::MissingTool("prlimit"));
     }
 
-    let (mut command, group_kill) = build_command(spec, &workdir, use_setsid, use_prlimit);
+    let (mut command, process_group, prlimit_applied) =
+        build_command(spec, &workdir, process_group, prlimit_requested);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -236,63 +326,115 @@ pub fn run(spec: &RunSpec) -> Result<RunReport, SetupError> {
         ))
     })?;
     let pid = child.id();
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| SetupError::Spawn("stdout pipe missing".to_string()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| SetupError::Spawn("stderr pipe missing".to_string()))?;
+    let stdout = match child.stdout.take() {
+        Some(pipe) => pipe,
+        None => {
+            abort_spawned(&mut child, pid, process_group);
+            return Err(SetupError::Spawn("stdout pipe missing".to_string()));
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(pipe) => pipe,
+        None => {
+            abort_spawned(&mut child, pid, process_group);
+            return Err(SetupError::Spawn("stderr pipe missing".to_string()));
+        }
+    };
 
-    let exceeded = Arc::new(AtomicU8::new(0));
-    let stdout_buf = Arc::new(Mutex::new(Vec::new()));
-    let stderr_buf = Arc::new(Mutex::new(Vec::new()));
-    let stdout_thread = spawn_reader(
+    let capture = Arc::new(Capture::default());
+    let (stdout_thread, stdout_done) = spawn_reader(
         stdout,
         spec.stdout_limit,
         StreamName::Stdout,
-        Arc::clone(&stdout_buf),
-        Arc::clone(&exceeded),
+        Arc::clone(&capture),
     );
-    let stderr_thread = spawn_reader(
+    let (stderr_thread, stderr_done) = spawn_reader(
         stderr,
         spec.stderr_limit,
         StreamName::Stderr,
-        Arc::clone(&stderr_buf),
-        Arc::clone(&exceeded),
+        Arc::clone(&capture),
     );
 
-    let started = Instant::now();
-    let (status, stop) = wait_or_stop(&mut child, spec, &exceeded, pid, group_kill)?;
+    let mut wait_error = None;
+    let (status, mut stop) = match wait_or_stop(&mut child, spec, &capture, pid, process_group) {
+        Ok(result) => result,
+        Err(error) => {
+            abort_spawned(&mut child, pid, process_group);
+            wait_error = Some(error);
+            (None, StopReason::Completed)
+        }
+    };
+
+    // A fast writer can leave the cap flag unread when `try_wait` reports
+    // completion. Readers are drained first so that completion never masks an
+    // exceeded cap. The wait is bounded; a pipe held by an escaped descendant
+    // cannot hang the runner.
+    let readers = [stdout_done, stderr_done];
+    let cleanup_deadline = Instant::now() + CLEANUP_TIMEOUT;
+    let drain_deadline = (Instant::now() + READER_DRAIN_AFTER_EXIT).min(cleanup_deadline);
+    let mut readers_done = await_readers(&readers, drain_deadline);
+    if !readers_done {
+        if process_group {
+            signal_group(pid, "-TERM");
+            thread::sleep(TERM_GRACE);
+            signal_group(pid, "-KILL");
+        }
+        readers_done = await_readers(&readers, cleanup_deadline);
+    }
+
+    capture.closed.store(true, Ordering::SeqCst);
+    if readers_done {
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+    } else {
+        drop(stdout_thread);
+        drop(stderr_thread);
+    }
+
+    let stdout = capture.snapshot(StreamName::Stdout);
+    let stderr = capture.snapshot(StreamName::Stderr);
+    let stdout_bytes = capture.stdout_bytes.load(Ordering::SeqCst);
+    let stderr_bytes = capture.stderr_bytes.load(Ordering::SeqCst);
+    let exceeded = capture.exceeded_mask();
+    let stdout_exceeded = exceeded & STDOUT_EXCEEDED != 0;
+    let stderr_exceeded = exceeded & STDERR_EXCEEDED != 0;
+
+    if stop == StopReason::Completed && exceeded != 0 {
+        stop = StopReason::OutputLimit(stream_from_mask(exceeded));
+        // The direct child is already reaped; terminate any descendants that
+        // inherited the output pipes so the instance leaves no writers behind.
+        if process_group {
+            signal_group(pid, "-TERM");
+            thread::sleep(TERM_GRACE);
+            signal_group(pid, "-KILL");
+        }
+    }
+
+    if let Some(error) = wait_error {
+        return Err(error);
+    }
+
+    write_log(&stdout_log, &stdout)?;
+    write_log(&stderr_log, &stderr)?;
+
+    let (child_exit, signal) = status_parts(status);
     let elapsed_ms = started.elapsed().as_millis();
-    let _ = stdout_thread.join();
-    let _ = stderr_thread.join();
-
-    let stdout = stdout_buf
-        .lock()
-        .map_err(|_| SetupError::Wait("stdout buffer poisoned".to_string()))?
-        .clone();
-    let stderr = stderr_buf
-        .lock()
-        .map_err(|_| SetupError::Wait("stderr buffer poisoned".to_string()))?
-        .clone();
-    std::fs::write(workdir.join("stdout.log"), &stdout)
-        .map_err(|error| SetupError::Log(format!("stdout.log: {error}")))?;
-    std::fs::write(workdir.join("stderr.log"), &stderr)
-        .map_err(|error| SetupError::Log(format!("stderr.log: {error}")))?;
-
-    let stdout_truncated = spec.stdout_limit != 0 && stdout.len() >= spec.stdout_limit;
-    let stderr_truncated = spec.stderr_limit != 0 && stderr.len() >= spec.stderr_limit;
-    let outcome = classify(stop, status);
     Ok(RunReport {
-        outcome,
+        outcome: classify(stop, status),
         stdout,
         stderr,
-        stdout_truncated,
-        stderr_truncated,
+        stdout_truncated: stdout_exceeded,
+        stderr_truncated: stderr_exceeded,
         elapsed_ms,
         workdir,
+        child_exit,
+        signal,
+        stdout_bytes,
+        stderr_bytes,
+        stdout_exceeded,
+        stderr_exceeded,
+        process_group,
+        prlimit_applied,
     })
 }
 
@@ -310,40 +452,117 @@ fn prepare_workdir(path: &Path) -> Result<PathBuf, SetupError> {
         .map_err(|error| SetupError::Workdir(format!("cannot resolve {}: {error}", path.display())))
 }
 
+fn reject_workdir_symlink(path: &Path, label: &str) -> Result<(), SetupError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(SetupError::Workdir(format!(
+            "refusing symlink {label}: {}",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(SetupError::Workdir(format!(
+            "cannot inspect {}: {error}",
+            path.display()
+        ))),
+    }
+}
+
+fn reject_log_target(path: &Path) -> Result<(), SetupError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(SetupError::Log(format!(
+            "refusing to follow symlink {}",
+            path.display()
+        ))),
+        Ok(metadata) if !metadata.is_file() => Err(SetupError::Log(format!(
+            "{} is not a regular file",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(SetupError::Log(format!(
+            "cannot inspect {}: {error}",
+            path.display()
+        ))),
+    }
+}
+
+fn write_log(path: &Path, contents: &[u8]) -> Result<(), SetupError> {
+    reject_log_target(path)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| SetupError::Log(format!("{} has no parent directory", path.display())))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("log");
+    for attempt in 0..16u32 {
+        let temporary = parent.join(format!(".{name}.{}.{attempt}.tmp", std::process::id()));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(mut file) => {
+                let write_result = file.write_all(contents).and_then(|()| file.flush());
+                drop(file);
+                if let Err(error) = write_result {
+                    let _ = std::fs::remove_file(&temporary);
+                    return Err(SetupError::Log(format!("{}: {error}", path.display())));
+                }
+                if let Err(error) = std::fs::rename(&temporary, path) {
+                    let _ = std::fs::remove_file(&temporary);
+                    return Err(SetupError::Log(format!("{}: {error}", path.display())));
+                }
+                return Ok(());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(SetupError::Log(format!("{}: {error}", path.display())));
+            }
+        }
+    }
+    Err(SetupError::Log(format!(
+        "{}: could not create a temporary log file",
+        path.display()
+    )))
+}
+
 fn build_command(
     spec: &RunSpec,
     workdir: &Path,
     use_setsid: bool,
     use_prlimit: bool,
-) -> (Command, bool) {
-    let mut args: Vec<OsString> = Vec::new();
+) -> (Command, bool, bool) {
+    let mut inner: Vec<OsString> = Vec::new();
     if use_prlimit {
-        args.push("prlimit".into());
+        inner.push("prlimit".into());
         if let Some(value) = spec.limits.address_space {
-            args.push(format!("--as={value}").into());
+            inner.push(format!("--as={value}").into());
         }
         if let Some(value) = spec.limits.cpu_seconds {
-            args.push(format!("--cpu={value}").into());
+            inner.push(format!("--cpu={value}").into());
         }
         if let Some(value) = spec.limits.nofile {
-            args.push(format!("--nofile={value}").into());
+            inner.push(format!("--nofile={value}").into());
         }
         if let Some(value) = spec.limits.nproc {
-            args.push(format!("--nproc={value}").into());
+            inner.push(format!("--nproc={value}").into());
         }
-        args.push("--".into());
+        inner.push("--".into());
     }
-    args.push(spec.command.program.clone());
-    args.extend(spec.command.args.iter().cloned());
+    inner.push(spec.command.program.clone());
+    inner.extend(spec.command.args.iter().cloned());
 
+    // Process-group isolation and resource limits are independent wrappers:
+    // `setsid` is optional, `prlimit` is required whenever limits are requested.
     let mut command = if use_setsid {
         let mut command = Command::new("setsid");
         command.arg("--");
-        command.args(&args);
+        command.args(&inner);
         command
     } else {
-        let mut command = Command::new(&spec.command.program);
-        command.args(&spec.command.args);
+        let mut command = Command::new(&inner[0]);
+        command.args(&inner[1..]);
         command
     };
     command.env_clear();
@@ -355,7 +574,7 @@ fn build_command(
     command.env("LANG", "C");
     command.env("HOME", workdir);
     command.env("TMPDIR", workdir.join("tmp"));
-    (command, use_setsid)
+    (command, use_setsid, use_prlimit)
 }
 
 fn tool_available(name: &str) -> bool {
@@ -365,25 +584,29 @@ fn tool_available(name: &str) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .is_ok()
+        .is_ok_and(|status| status.success())
 }
 
 fn spawn_reader<R: Read + Send + 'static>(
     mut reader: R,
     limit: usize,
     stream: StreamName,
-    buffer: Arc<Mutex<Vec<u8>>>,
-    exceeded: Arc<AtomicU8>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
+    capture: Arc<Capture>,
+) -> (thread::JoinHandle<()>, Receiver<()>) {
+    let (done, finished) = mpsc::channel();
+    let handle = thread::spawn(move || {
         let mut chunk = [0u8; 8192];
         loop {
             match reader.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(read) => {
-                    let Ok(mut buffer) = buffer.lock() else {
+                    // Hold the buffer lock across the closed check and append so
+                    // a final snapshot cannot race a late reader write.
+                    let mut buffer = lock_recover(capture.buffer(stream));
+                    if capture.closed.load(Ordering::SeqCst) {
                         break;
-                    };
+                    }
+                    capture.bytes(stream).fetch_add(read, Ordering::SeqCst);
                     if limit == 0 {
                         buffer.extend_from_slice(&chunk[..read]);
                     } else {
@@ -391,11 +614,7 @@ fn spawn_reader<R: Read + Send + 'static>(
                         let take = room.min(read);
                         buffer.extend_from_slice(&chunk[..take]);
                         if take < read {
-                            let code = match stream {
-                                StreamName::Stdout => 1,
-                                StreamName::Stderr => 2,
-                            };
-                            exceeded.store(code, Ordering::SeqCst);
+                            capture.mark_exceeded(stream);
                         }
                     }
                 }
@@ -403,17 +622,33 @@ fn spawn_reader<R: Read + Send + 'static>(
                 Err(_) => break,
             }
         }
-    })
+        let _ = done.send(());
+    });
+    (handle, finished)
+}
+
+fn await_readers(readers: &[Receiver<()>], deadline: Instant) -> bool {
+    for reader in readers {
+        let now = Instant::now();
+        if now >= deadline {
+            return false;
+        }
+        match reader.recv_timeout(deadline - now) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => {}
+            Err(RecvTimeoutError::Timeout) => return false,
+        }
+    }
+    true
 }
 
 fn wait_or_stop(
     child: &mut Child,
     spec: &RunSpec,
-    exceeded: &AtomicU8,
+    capture: &Capture,
     pid: u32,
     group_kill: bool,
 ) -> Result<(Option<ExitStatus>, StopReason), SetupError> {
-    let started = Instant::now();
+    let wait_started = Instant::now();
     loop {
         if let Some(status) = child
             .try_wait()
@@ -423,53 +658,94 @@ fn wait_or_stop(
         }
         if let Some(path) = &spec.cancel_file {
             if path.exists() {
-                terminate(child, pid, group_kill);
-                let _ = child.wait();
-                return Ok((None, StopReason::Cancelled));
+                let status = stop_child(child, pid, group_kill)?;
+                return Ok((status, StopReason::Cancelled));
             }
         }
-        if started.elapsed() >= spec.timeout {
-            terminate(child, pid, group_kill);
-            let _ = child.wait();
-            return Ok((None, StopReason::Timeout));
+        let exceeded = capture.exceeded_mask();
+        if exceeded != 0 {
+            let status = stop_child(child, pid, group_kill)?;
+            return Ok((status, StopReason::OutputLimit(stream_from_mask(exceeded))));
         }
-        let code = exceeded.load(Ordering::SeqCst);
-        if code != 0 {
-            terminate(child, pid, group_kill);
-            let _ = child.wait();
-            let stream = if code == 1 {
-                StreamName::Stdout
-            } else {
-                StreamName::Stderr
-            };
-            return Ok((None, StopReason::OutputLimit(stream)));
+        if wait_started.elapsed() >= spec.timeout {
+            let status = stop_child(child, pid, group_kill)?;
+            return Ok((status, StopReason::Timeout));
         }
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(POLL_INTERVAL);
+    }
+}
+
+fn abort_spawned(child: &mut Child, pid: u32, group_kill: bool) {
+    let deadline = Instant::now() + CLEANUP_TIMEOUT;
+    terminate(child, pid, group_kill);
+    let _ = reap_bounded(child, deadline);
+}
+
+fn stop_child(
+    child: &mut Child,
+    pid: u32,
+    group_kill: bool,
+) -> Result<Option<ExitStatus>, SetupError> {
+    let deadline = Instant::now() + CLEANUP_TIMEOUT;
+    terminate(child, pid, group_kill);
+    reap_bounded(child, deadline)
+}
+
+fn reap_bounded(child: &mut Child, deadline: Instant) -> Result<Option<ExitStatus>, SetupError> {
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(Some(status)),
+            Ok(None) => {}
+            Err(error) => return Err(SetupError::Wait(format!("try_wait: {error}"))),
+        }
+        if Instant::now() >= deadline {
+            return Err(SetupError::Wait(
+                "child did not exit within the cleanup deadline".to_string(),
+            ));
+        }
+        thread::sleep(POLL_INTERVAL);
     }
 }
 
 #[cfg(unix)]
 fn terminate(child: &mut Child, pid: u32, group_kill: bool) {
     if group_kill {
-        let target = format!("-{pid}");
-        let _ = Command::new("/bin/kill")
-            .args(["-TERM", "--", &target])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        thread::sleep(Duration::from_millis(30));
-        let _ = Command::new("/bin/kill")
-            .args(["-KILL", "--", &target])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        signal_group(pid, "-TERM");
+        thread::sleep(TERM_GRACE);
+        signal_group(pid, "-KILL");
     }
+    // Also target the direct child in case session creation failed or the
+    // process group is no longer addressable.
     let _ = child.kill();
 }
 
 #[cfg(not(unix))]
 fn terminate(child: &mut Child, _pid: u32, _group_kill: bool) {
     let _ = child.kill();
+}
+
+#[cfg(unix)]
+fn signal_group(pid: u32, signal: &str) {
+    let target = format!("-{pid}");
+    for program in ["/bin/kill", "/usr/bin/kill", "kill"] {
+        let status = Command::new(program)
+            .args([signal, "--", target.as_str()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if status.is_ok_and(|status| status.success()) {
+            return;
+        }
+    }
+}
+
+fn stream_from_mask(mask: u8) -> StreamName {
+    if mask & STDOUT_EXCEEDED != 0 {
+        StreamName::Stdout
+    } else {
+        StreamName::Stderr
+    }
 }
 
 fn classify(stop: StopReason, status: Option<ExitStatus>) -> RunOutcome {
@@ -479,6 +755,20 @@ fn classify(stop: StopReason, status: Option<ExitStatus>) -> RunOutcome {
         StopReason::OutputLimit(stream) => RunOutcome::OutputLimit { stream },
         StopReason::Completed => classify_status(status),
     }
+}
+
+#[cfg(unix)]
+fn status_parts(status: Option<ExitStatus>) -> (Option<i32>, Option<i32>) {
+    use std::os::unix::process::ExitStatusExt;
+    match status {
+        Some(status) => (status.code(), status.signal()),
+        None => (None, None),
+    }
+}
+
+#[cfg(not(unix))]
+fn status_parts(status: Option<ExitStatus>) -> (Option<i32>, Option<i32>) {
+    (status.and_then(|status| status.code()), None)
 }
 
 #[cfg(unix)]

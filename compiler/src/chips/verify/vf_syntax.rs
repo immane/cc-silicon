@@ -23,6 +23,7 @@ use crate::limits::{
 };
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, VF05_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
+use std::collections::BTreeSet;
 
 /// Narrow projection for the syntax-invariant check.
 #[derive(Clone, Debug)]
@@ -92,7 +93,14 @@ pub fn project_vf05_input(
     // child links fail here; shape rules fail in `compute`.
     let mut tree = Vec::new();
     let mut stack = vec![tu];
+    let mut seen = BTreeSet::new();
     while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("vf05 reads a cyclic or shared AST node {}", id.index()),
+            ));
+        }
         let body = bus.arenas.nodes.get(id).map_err(|_| {
             DiagnosticDraft::error(
                 DiagnosticCode::new(DiagGroup::Task, 4),

@@ -1,7 +1,8 @@
 //! CLI for the H05 per-instance isolated runner.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -145,20 +146,62 @@ fn run_cli(args: Vec<OsString>) -> u8 {
     };
     match run(&spec) {
         Ok(report) => {
+            // Existing keys stay in their original order; H01 fields follow.
             println!("outcome={}", report.outcome.label());
             println!("exit_code={}", report.outcome.exit_code());
             println!("elapsed_ms={}", report.elapsed_ms);
-            println!("workdir={}", report.workdir.display());
-            println!("stdout={}", report.workdir.join("stdout.log").display());
-            println!("stderr={}", report.workdir.join("stderr.log").display());
+            println!("workdir={}", report_path(&report.workdir));
+            println!("stdout={}", report_path(&report.workdir.join("stdout.log")));
+            println!("stderr={}", report_path(&report.workdir.join("stderr.log")));
             println!("stdout_truncated={}", report.stdout_truncated);
             println!("stderr_truncated={}", report.stderr_truncated);
+            println!("child_exit={}", report_optional_i32(report.child_exit));
+            println!("signal={}", report_optional_i32(report.signal));
+            println!("stdout_bytes={}", report.stdout_bytes);
+            println!("stderr_bytes={}", report.stderr_bytes);
+            println!("stdout_exceeded={}", report.stdout_exceeded);
+            println!("stderr_exceeded={}", report.stderr_exceeded);
+            println!("process_group={}", report.process_group);
+            println!("prlimit_applied={}", report.prlimit_applied);
             report.outcome.exit_code()
         }
         Err(error) => {
-            eprintln!("cc-silicon-runner: {error}");
+            eprintln!(
+                "cc-silicon-runner: {}",
+                escape_report_value(&error.to_string())
+            );
             2
         }
+    }
+}
+
+/// Keep each report line self-contained; escapes are reversible for `\`, CR,
+/// LF, tab, and other control characters inherited from a path.
+fn escape_report_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            control if control.is_control() => {
+                let _ = write!(escaped, "\\u{{{:x}}}", u32::from(control));
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+fn report_path(path: &Path) -> String {
+    escape_report_value(path.to_string_lossy().as_ref())
+}
+
+fn report_optional_i32(value: Option<i32>) -> String {
+    match value {
+        Some(value) => value.to_string(),
+        None => "none".to_string(),
     }
 }
 

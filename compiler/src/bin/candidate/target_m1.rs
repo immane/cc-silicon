@@ -336,7 +336,9 @@ fn validate_parameters(
                 .intern
                 .get(symbol.name)
                 .map_err(|_| "target emit: unsafe name (missing interned name)".to_string())?;
-            validate_identifier(bytes)?;
+            // Parameter names are source spellings only; the emitter passes
+            // values positionally in w0..w7, so register-like parameter names
+            // are valid C and must not be rejected as assembler labels.
             if !parameter_names.insert(bytes.to_vec()) {
                 return Err(format!(
                     "target emit: duplicate parameter name in function {}",
@@ -1296,7 +1298,7 @@ fn validate_identifier(bytes: &[u8]) -> Result<&str, String> {
 
 fn is_reserved_register(name: &str) -> bool {
     if let Some(rest) = name.strip_prefix('x').or_else(|| name.strip_prefix('w')) {
-        if rest.parse::<u32>().is_ok_and(|index| index <= 30) {
+        if rest.parse::<u32>().is_ok_and(|index| index <= 31) {
             return true;
         }
     }
@@ -1362,12 +1364,18 @@ fn integer_value(bus: &CompilerBus, int: TypeId, id: ConstId) -> Result<i32, Str
     for byte in &integer.magnitude {
         magnitude = (magnitude << 8) | u128::from(*byte);
     }
-    let signed = if integer.negative {
-        -(magnitude as i128)
+    if integer.negative {
+        if magnitude > 0x8000_0000 {
+            return Err("target emit: constant does not fit i32".to_string());
+        }
+        if magnitude == 0x8000_0000 {
+            Ok(i32::MIN)
+        } else {
+            Ok(-(magnitude as i32))
+        }
     } else {
-        magnitude as i128
-    };
-    i32::try_from(signed).map_err(|_| format!("target emit: constant {signed} does not fit i32"))
+        i32::try_from(magnitude).map_err(|_| "target emit: constant does not fit i32".to_string())
+    }
 }
 
 fn emit_i32(assembly: &mut String, value: i32) {

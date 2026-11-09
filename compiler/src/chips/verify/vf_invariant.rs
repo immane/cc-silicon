@@ -147,7 +147,14 @@ pub fn project_vf06_input(
     // Pre-order walk over committed children (deterministic).
     let mut tree = Vec::new();
     let mut stack = vec![tu];
+    let mut seen = BTreeSet::new();
     while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("vf06 reads a cyclic or shared AST node {}", id.index()),
+            ));
+        }
         let body = bus.arenas.nodes.get(id).map_err(|_| {
             DiagnosticDraft::error(
                 DiagnosticCode::new(DiagGroup::Task, 4),
