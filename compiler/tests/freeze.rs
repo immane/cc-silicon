@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/49");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/50");
 }
 
 #[test]
@@ -111,8 +111,12 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "commit.token-materialized",
         "parse.tu-shape-gated-tree",
         "se.identifier-checked-nonlvalue",
+        "se.binary-identifier-operand",
         "ir.local-load-store-return",
+        "ir.local-add-return",
         "vf12.local-load-store-return",
+        "vf12.local-add-modeled-integer",
+        "result.integer-modeled",
         "symbol.declare-block-object",
         "parse.token-range-committed",
         "commit.node-materialized",
@@ -379,6 +383,7 @@ fn result_value_names_match_wire_tags() {
         ResultValue::Record(RecordRef::Source(SourceId::from_index(0))),
         ResultValue::Records(Vec::new()),
         ResultValue::Diagnostic(DiagnosticId::from_index(0)),
+        ResultValue::Integer(cc_silicon_compiler::bus::IntegerConst::new(vec![5], false)),
     ];
     assert_eq!(RESULT_VALUE_NAMES.len(), values.len());
     for (i, value) in values.iter().enumerate() {
@@ -386,7 +391,7 @@ fn result_value_names_match_wire_tags() {
     }
     assert_eq!(
         RESULT_VALUE_NAMES,
-        &["empty", "ack", "record", "records", "diagnostic"]
+        &["empty", "ack", "record", "records", "diagnostic", "integer"]
     );
 }
 

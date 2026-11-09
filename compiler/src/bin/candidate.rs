@@ -1364,16 +1364,6 @@ fn run(
             )?;
         }
     }
-    for node in nodes_of(&bus, NodeKind::BinaryAdd) {
-        step(
-            &mut bus,
-            &workers,
-            &mut trace,
-            TaskKind::SEMANTIC_BINARY_EXPR,
-            SE_BIN_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        )?;
-    }
     for node in nodes_of(&bus, NodeKind::Identifier) {
         step(
             &mut bus,
@@ -1381,6 +1371,16 @@ fn run(
             &mut trace,
             TaskKind::SEMANTIC_IDENTIFIER_EXPR,
             SE_ID_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(node)]),
+        )?;
+    }
+    for node in nodes_of(&bus, NodeKind::BinaryAdd) {
+        step(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::SEMANTIC_BINARY_EXPR,
+            SE_BIN_CHIP,
             Payload::from_refs(vec![RecordRef::Node(node)]),
         )?;
     }
@@ -1434,7 +1434,7 @@ fn run(
         ResultValue::Record(RecordRef::Function(id)) => id,
         other => return Err(format!("expected function ref, got {other:?}")),
     };
-    let modeled = match step(
+    let (modeled_value, modeled_negative) = match step(
         &mut bus,
         &workers,
         &mut trace,
@@ -1442,8 +1442,20 @@ fn run(
         VF12_CHIP,
         Payload::from_refs(vec![RecordRef::Function(function)]),
     )? {
-        ResultValue::Record(RecordRef::Const(id)) => id,
-        other => return Err(format!("expected const ref, got {other:?}")),
+        ResultValue::Record(RecordRef::Const(id)) => {
+            let body = bus
+                .arenas
+                .consts
+                .get(id)
+                .map_err(|_| "modeled const vanished".to_string())?;
+            let integer = body
+                .value
+                .as_integer()
+                .ok_or_else(|| "modeled const is not an integer".to_string())?;
+            (integer.magnitude.clone(), integer.negative)
+        }
+        ResultValue::Integer(integer) => (integer.magnitude, integer.negative),
+        other => return Err(format!("expected modeled integer, got {other:?}")),
     };
     step(
         &mut bus,
@@ -1459,20 +1471,11 @@ fn run(
             .map_err(|error| format!("cannot write assembly {path}: {error}"))?;
     }
     let snapshot = Snapshot::capture(&bus);
-    let modeled_body = bus
-        .arenas
-        .consts
-        .get(modeled)
-        .map_err(|_| "modeled const vanished".to_string())?;
-    let integer = modeled_body
-        .value
-        .as_integer()
-        .ok_or_else(|| "modeled const is not an integer".to_string())?;
     Ok(Evidence {
         snapshot,
         trace,
-        value: integer.magnitude.clone(),
-        negative: integer.negative,
+        value: modeled_value,
+        negative: modeled_negative,
         input: input.to_string(),
     })
 }

@@ -960,9 +960,9 @@ fn proposal_transitions_and_wire_tags_are_frozen() {
 }
 
 #[test]
-fn result_value_set_is_unchanged_five_variants() {
-    // Exhaustive match: adding a variant (e.g. DraftRecords) fails this test
-    // at compile time by design.
+fn result_value_set_is_six_variants() {
+    // Exhaustive match: adding a variant fails this test at compile time by
+    // design.
     fn tag(value: &ResultValue) -> u8 {
         match value {
             ResultValue::Empty => 0,
@@ -970,6 +970,7 @@ fn result_value_set_is_unchanged_five_variants() {
             ResultValue::Record(_) => 2,
             ResultValue::Records(_) => 3,
             ResultValue::Diagnostic(_) => 4,
+            ResultValue::Integer(_) => 5,
         }
     }
     assert_eq!(tag(&ResultValue::Empty), 0);
@@ -980,6 +981,12 @@ fn result_value_set_is_unchanged_five_variants() {
         2
     );
     assert_eq!(tag(&ResultValue::Records(vec![])), 3);
+    assert_eq!(
+        tag(&ResultValue::Integer(
+            cc_silicon_compiler::bus::IntegerConst::new(vec![5], false)
+        )),
+        5
+    );
 }
 
 #[test]

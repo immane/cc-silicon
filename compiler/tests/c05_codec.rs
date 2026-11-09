@@ -512,8 +512,8 @@ fn proposal_wire_tags_5_6_7_follow_declaration_order() {
         }),
         PROPOSAL_WIRE_TAG_APPEND_RECORDS
     );
-    // ResultValue stays five variants: no DraftRecords tag exists.
-    assert_eq!(RESULT_VALUE_VARIANT_COUNT, 5);
+    // `/50` appends `Integer` as tag 5; no DraftRecords tag exists.
+    assert_eq!(RESULT_VALUE_VARIANT_COUNT, 6);
     assert_eq!(result_value_tag(&ResultValue::Empty), 0);
     assert_eq!(result_value_tag(&ResultValue::Ack), 1);
     assert_eq!(
@@ -521,6 +521,12 @@ fn proposal_wire_tags_5_6_7_follow_declaration_order() {
             cc_silicon_compiler::ids::DiagnosticId::from_index(0)
         )),
         4
+    );
+    assert_eq!(
+        result_value_tag(&ResultValue::Integer(
+            cc_silicon_compiler::bus::IntegerConst::new(vec![5], false)
+        )),
+        5
     );
 }
 

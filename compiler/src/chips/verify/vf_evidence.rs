@@ -265,7 +265,9 @@ pub fn decode_result_value(value: &ResultValue) -> StageEvidence {
         ResultValue::Empty => StageEvidence::Missing,
         ResultValue::Ack => StageEvidence::Pass,
         ResultValue::Diagnostic(_) => StageEvidence::Fail,
-        ResultValue::Record(_) | ResultValue::Records(_) => StageEvidence::Undecodable,
+        ResultValue::Record(_) | ResultValue::Records(_) | ResultValue::Integer(_) => {
+            StageEvidence::Undecodable
+        }
     }
 }
 

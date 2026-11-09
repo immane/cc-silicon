@@ -243,14 +243,13 @@ fn push_task_state(w: &mut Writer, state: &TaskState) {
 
 /// Number of frozen `ResultValue` variants on the wire (tags 0-4).
 ///
-/// `DraftRecords` is explicitly *not* added: the wire set stays five variants.
-pub const RESULT_VALUE_VARIANT_COUNT: usize = 5;
+/// `/50` appends `Integer` as tag 5; no `DraftRecords` variant exists.
+pub const RESULT_VALUE_VARIANT_COUNT: usize = 6;
 
 /// Wire tag of a result value, in `ResultValue` declaration order.
 ///
 /// Frozen: `Empty` = 0, `Ack` = 1, `Record` = 2, `Records` = 3,
-/// `Diagnostic` = 4. There is no tag 5; `DraftRecords` was considered and
-/// rejected for this revision.
+/// `Diagnostic` = 4, `/50` `Integer` = 5.
 pub fn result_value_tag(value: &ResultValue) -> u8 {
     match value {
         ResultValue::Empty => 0,
@@ -258,6 +257,7 @@ pub fn result_value_tag(value: &ResultValue) -> u8 {
         ResultValue::Record(_) => 2,
         ResultValue::Records(_) => 3,
         ResultValue::Diagnostic(_) => 4,
+        ResultValue::Integer(_) => 5,
     }
 }
 
@@ -276,6 +276,10 @@ fn push_result_value(w: &mut Writer, value: &ResultValue) {
         }
         ResultValue::Diagnostic(diagnostic) => {
             w.u32(diagnostic.index());
+        }
+        ResultValue::Integer(integer) => {
+            w.bytes(&integer.magnitude);
+            w.bool(integer.negative);
         }
     }
 }

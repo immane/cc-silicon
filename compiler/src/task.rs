@@ -15,6 +15,7 @@
 // scheduler by the commit path (see `commit.rs`).
 // ============================================================================
 
+use crate::bus::IntegerConst;
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{
     ChipId, ContinuationId, DiagnosticId, HostRequestId, LiteralId, NodeId, RecordRef, ResultId,
@@ -1726,13 +1727,14 @@ pub struct WaitSet {
 }
 
 /// A result payload. Concrete variants are extended by each group; the
-/// foundation variants cover no-op, acknowledgement, record references, and
-/// committed diagnostics.
+/// foundation variants cover no-op, acknowledgement, record references,
+/// committed diagnostics, and a modeled integer value.
 ///
-/// Frozen: this set is unchanged (no `DraftRecords` variant). A legal
-/// constant result completes with `Record(RecordRef::Const)`; multi-record
-/// results use `Records`; non-legal constant outcomes fail through the chip
-/// diagnostic path instead of materializing a value; a parse cursor reuses
+/// `/50` appends `Integer` for verification results that compute a scalar but
+/// intentionally do not materialize a `ConstRecord`. A legal constant result
+/// still completes with `Record(RecordRef::Const)`; multi-record results use
+/// `Records`; non-legal constant outcomes fail through the chip diagnostic
+/// path instead of materializing a value; a parse cursor reuses
 /// `ContinuationDraft.cursor`, not a new result variant.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResultValue {
@@ -1746,6 +1748,8 @@ pub enum ResultValue {
     Records(Vec<RecordRef>),
     /// A committed diagnostic reference.
     Diagnostic(DiagnosticId),
+    /// A modeled integer value not backed by a committed `ConstRecord`.
+    Integer(IntegerConst),
 }
 
 /// A committed result record.

@@ -28,7 +28,8 @@ use crate::bus::{
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{
-    BlockId, ConstId, FunctionId, NodeId, RecordRef, SemId, SymbolId, TaskId, TypeId, ValueId,
+    BlockId, ConstId, FunctionId, LiteralId, NodeId, RecordRef, SemId, SymbolId, TaskId, TypeId,
+    ValueId,
 };
 use crate::manifest::{
     BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, IR_FUNCTION_CHIP,
@@ -67,6 +68,10 @@ pub struct IrFunctionInput {
     /// Automatic local for the `/49` locals shape; `None` for the canonical
     /// constant-return shape.
     pub local: Option<SymbolId>,
+    /// `/50` right-hand folded constant for `local + literal`.
+    pub local_rhs: Option<ConstId>,
+    /// `/50` supported local expression operator (`Add` only today).
+    pub local_op: Option<IrOp>,
     /// Arena counts at dispatch (positional prediction bases).
     pub functions_allocated: u32,
     /// Block prediction base.
@@ -205,9 +210,45 @@ pub fn project_ir_function_input(
         .nodes
         .get(operand)
         .map_err(|_| missing("node", operand.index()))?;
+    let mut return_identifier = None;
+    let mut local_rhs_node = None;
     match (local_shape, operand_body.kind) {
         (None, NodeKind::BinaryAdd) => {}
-        (Some(_), NodeKind::Identifier) => {}
+        (Some(_), NodeKind::Identifier) => {
+            return_identifier = Some(operand);
+        }
+        (Some(_), NodeKind::BinaryAdd) => {
+            if operand_body.children.len() != 2 {
+                return Err(DiagnosticDraft::unsupported(
+                    "lower of a malformed local binary return",
+                ));
+            }
+            for child in &operand_body.children {
+                let child_body = bus
+                    .arenas
+                    .nodes
+                    .get(*child)
+                    .map_err(|_| missing("node", child.index()))?;
+                match child_body.kind {
+                    NodeKind::Identifier if return_identifier.is_none() => {
+                        return_identifier = Some(*child);
+                    }
+                    NodeKind::IntLiteral if local_rhs_node.is_none() => {
+                        local_rhs_node = Some(*child);
+                    }
+                    _ => {
+                        return Err(DiagnosticDraft::unsupported(
+                            "lower of a non-covered local binary operand",
+                        ));
+                    }
+                }
+            }
+            if return_identifier.is_none() || local_rhs_node.is_none() {
+                return Err(DiagnosticDraft::unsupported(
+                    "lower of a local binary return without an identifier and literal",
+                ));
+            }
+        }
         _ => {
             return Err(DiagnosticDraft::unsupported(
                 "lower of a non-covered return operand",
@@ -371,6 +412,8 @@ pub fn project_ir_function_input(
         }
     }
     let mut local_symbol = None;
+    let mut local_rhs = None;
+    let mut local_op = None;
     let (constant, constant_record_ty) = if let Some((local_declarator, initializer)) = local_shape
     {
         // The declaration's declarator names the automatic object.
@@ -417,11 +460,54 @@ pub fn project_ir_function_input(
                 "lower of a non-automatic-int local",
             ));
         }
-        if operand_body.name != Some(local_name) {
+        let return_identifier = return_identifier.ok_or_else(|| {
+            DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads no identifier for the local return",
+            )
+        })?;
+        let return_body = bus
+            .arenas
+            .nodes
+            .get(return_identifier)
+            .map_err(|_| missing("node", return_identifier.index()))?;
+        if return_body.kind != NodeKind::Identifier || return_body.name != Some(local_name) {
             return Err(DiagnosticDraft::unsupported(
                 "lower of a return identifier that does not name the local",
             ));
         }
+        let matching_const = |literal: LiteralId, what: &str| {
+            let literal_body = bus
+                .arenas
+                .literals
+                .get(literal)
+                .map_err(|_| missing("literal", literal.index()))?;
+            let mut matches = Vec::new();
+            for (id, body) in bus.arenas.consts.iter() {
+                let ConstValue::Integer(integer) = &body.value else {
+                    continue;
+                };
+                if integer.magnitude == literal_body.value
+                    && integer.negative == literal_body.negative
+                {
+                    matches.push((id, body.ty));
+                }
+            }
+            if matches.len() != 1 {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!("lower reads missing or ambiguous folded {what}"),
+                ));
+            }
+            let (constant, ty) = matches[0];
+            if ty != int || bus.arenas.types.get(ty).is_err() {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!("lower reads {what} with a non-int or dangling type"),
+                ));
+            }
+            Ok(constant)
+        };
         // The initializer is one committed integer literal. Match its folded
         // constant by value; the match must be unique.
         let initializer_body = bus
@@ -440,36 +526,27 @@ pub fn project_ir_function_input(
                 "lower reads literal-less local initializer",
             ));
         };
-        let literal_body = bus
-            .arenas
-            .literals
-            .get(literal)
-            .map_err(|_| missing("literal", literal.index()))?;
-        let mut matches = Vec::new();
-        for (id, body) in bus.arenas.consts.iter() {
-            let ConstValue::Integer(integer) = &body.value else {
-                continue;
-            };
-            if integer.magnitude == literal_body.value && integer.negative == literal_body.negative
-            {
-                matches.push((id, body.ty));
+        let constant = matching_const(literal, "initializer")?;
+        let constant_record_ty = int;
+        if let Some(rhs_node) = local_rhs_node {
+            let rhs_body = bus
+                .arenas
+                .nodes
+                .get(rhs_node)
+                .map_err(|_| missing("node", rhs_node.index()))?;
+            if rhs_body.kind != NodeKind::IntLiteral {
+                return Err(DiagnosticDraft::unsupported(
+                    "lower of a non-literal local binary operand",
+                ));
             }
-        }
-        if matches.len() != 1 {
-            return Err(DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                "lower reads missing or ambiguous folded initializer",
-            ));
-        }
-        let (constant, constant_record_ty) = matches[0];
-        if bus.arenas.types.get(constant_record_ty).is_err() {
-            return Err(DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                format!(
-                    "lower reads constant with dangling type {}",
-                    constant_record_ty.index()
-                ),
-            ));
+            let Some(rhs_literal) = rhs_body.literal else {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    "lower reads literal-less local binary operand",
+                ));
+            };
+            local_rhs = Some(matching_const(rhs_literal, "right-hand operand")?);
+            local_op = Some(IrOp::Add);
         }
         local_symbol = Some(symbol_id);
         (constant, constant_record_ty)
@@ -518,6 +595,8 @@ pub fn project_ir_function_input(
         constant_record_ty,
         constant,
         local: local_symbol,
+        local_rhs,
+        local_op,
         functions_allocated: bus.arenas.functions.allocated(),
         blocks_allocated: bus.arenas.blocks.allocated(),
         values_allocated: bus.arenas.values.allocated(),
@@ -708,6 +787,17 @@ impl IrFunctionChip {
                 ),
             )];
         };
+        if input.local_rhs.is_some() || input.local_op.is_some() {
+            return match (input.local_rhs, input.local_op) {
+                (Some(rhs), Some(IrOp::Add)) => self.compute_local_add(input, local, rhs),
+                _ => vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported(
+                        "lower of an unsupported local expression operator",
+                    ),
+                )],
+            };
+        }
         let function = FunctionId::from_index(input.functions_allocated);
         let block = BlockId::from_index(input.blocks_allocated);
         let initial = ValueId::from_index(input.values_allocated);
@@ -806,6 +896,125 @@ impl IrFunctionChip {
                         }),
                     ],
                 },
+            },
+            Proposal::Complete {
+                task: input.task,
+                value: ResultValue::Record(RecordRef::Function(function)),
+            },
+        ]
+    }
+
+    /// `/50` `local + literal` lowering:
+    /// `Constant init`, `LocalStore`, `LocalLoad`, `Constant rhs`, `Add`,
+    /// `Return`.
+    fn compute_local_add(
+        &self,
+        input: &IrFunctionInput,
+        local: SymbolId,
+        rhs_const: ConstId,
+    ) -> Vec<Proposal> {
+        let function = FunctionId::from_index(input.functions_allocated);
+        let block = BlockId::from_index(input.blocks_allocated);
+        let initial = ValueId::from_index(input.values_allocated);
+        let loaded = ValueId::from_index(input.values_allocated + 1);
+        let rhs = ValueId::from_index(input.values_allocated + 2);
+        let sum = ValueId::from_index(input.values_allocated + 3);
+        let linkage = input.linkage;
+        let mut records = Vec::new();
+        for index in 0..12 {
+            let family = match index {
+                0 => crate::ids::RecordFamily::Function,
+                1 => crate::ids::RecordFamily::Block,
+                2..=5 => crate::ids::RecordFamily::Value,
+                _ => crate::ids::RecordFamily::Instruction,
+            };
+            records.push(RecordDraft {
+                family,
+                index: DraftRef(index),
+            });
+        }
+        let bodies = vec![
+            G1DraftBody::Function(crate::bus::FunctionRecord {
+                symbol: input.symbol,
+                signature: input.signature,
+                entry: block,
+                linkage,
+            }),
+            G1DraftBody::Block(crate::bus::BlockRecord {
+                function,
+                ordinal: 0,
+            }),
+            G1DraftBody::Value(crate::bus::ValueRecord {
+                ty: input.constant_ty,
+            }),
+            G1DraftBody::Value(crate::bus::ValueRecord {
+                ty: input.constant_ty,
+            }),
+            G1DraftBody::Value(crate::bus::ValueRecord {
+                ty: input.constant_ty,
+            }),
+            G1DraftBody::Value(crate::bus::ValueRecord {
+                ty: input.constant_ty,
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::Constant,
+                block,
+                operands: vec![],
+                immediate: Some(input.constant),
+                result: Some(initial),
+                local: None,
+                successors: vec![],
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::LocalStore,
+                block,
+                operands: vec![initial],
+                immediate: None,
+                result: None,
+                local: Some(local),
+                successors: vec![],
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::LocalLoad,
+                block,
+                operands: vec![],
+                immediate: None,
+                result: Some(loaded),
+                local: Some(local),
+                successors: vec![],
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::Constant,
+                block,
+                operands: vec![],
+                immediate: Some(rhs_const),
+                result: Some(rhs),
+                local: None,
+                successors: vec![],
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::Add,
+                block,
+                operands: vec![loaded, rhs],
+                immediate: None,
+                result: Some(sum),
+                local: None,
+                successors: vec![],
+            }),
+            G1DraftBody::Instruction(InstructionRecord {
+                op: IrOp::Return,
+                block,
+                operands: vec![sum],
+                immediate: None,
+                result: None,
+                local: None,
+                successors: vec![],
+            }),
+        ];
+        vec![
+            Proposal::AppendRecords {
+                task: input.task,
+                batch: AppendBatch { records, bodies },
             },
             Proposal::Complete {
                 task: input.task,

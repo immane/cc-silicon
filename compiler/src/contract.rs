@@ -46,16 +46,17 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// IR/CFG schema append (local load/store, arithmetic, branch successors),
 /// the `/45` constant v3 append (float/address payload tags), the `/46`
 /// T06 type-model/layout/init common base, the `/47` diagnostic taxonomy,
-/// the `/48` probe-attested target baseline, and the `/49` M1 source-locals
+/// the `/48` probe-attested target baseline, the `/49` M1 source-locals
 /// slice (shape-gated TU parser, block automatic object, identifier fact,
-/// local load/store IR, symbolic local model).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/49";
+/// local load/store IR, symbolic local model), and the `/50` modeled-integer
+/// result plus local-add source slice.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/50";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9";
+pub const CONTRACT_HASH: &str = "ff7177a944b5b5b7a65f4463e199ce5a90a8729700994162d4a82cafe310006c";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -190,12 +191,14 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "commit.type-symbol-scope-materialized",
     "se.literal-checked-nonlvalue",
     "se.identifier-checked-nonlvalue",
+    "se.binary-identifier-operand",
     "se.binary-forwards-identical-fold",
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
     "commit.sem-materialized",
     "ir.constant-no-refold",
     "ir.local-load-store-return",
+    "ir.local-add-return",
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
@@ -205,6 +208,8 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "commit.span-pptoken-materialized",
     "vf12.interpret-symbolic-m1",
     "vf12.local-load-store-return",
+    "vf12.local-add-modeled-integer",
+    "result.integer-modeled",
     "vf12.unsupported-never-pass",
     "vf05.syntax-ranges-ordered",
     "vf05.required-fields-complete",
@@ -304,7 +309,8 @@ pub const NORMATIVE_RULES: &[&str] = &[
 /// The `TaskState` variant names, in encoding order.
 pub const TASK_STATE_NAMES: &[&str] = &["ready", "running", "waiting", "completed", "failed"];
 /// The `ResultValue` variant names, in encoding order.
-pub const RESULT_VALUE_NAMES: &[&str] = &["empty", "ack", "record", "records", "diagnostic"];
+pub const RESULT_VALUE_NAMES: &[&str] =
+    &["empty", "ack", "record", "records", "diagnostic", "integer"];
 /// The `/6` M1 append seed version: inventories plus encode presence.
 ///
 /// Full metrics/report bodies stay deferred to Part B with a re-entry

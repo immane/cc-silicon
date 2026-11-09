@@ -366,7 +366,7 @@ impl Vf01Chip {
                 ResultValue::Empty | ResultValue::Ack => &[],
                 ResultValue::Record(reference) => std::slice::from_ref(reference),
                 ResultValue::Records(references) => references,
-                ResultValue::Diagnostic(_) => &[],
+                ResultValue::Diagnostic(_) | ResultValue::Integer(_) => &[],
             };
             for reference in refs {
                 if let Err(detail) = resolve(reference, &input.bounds) {

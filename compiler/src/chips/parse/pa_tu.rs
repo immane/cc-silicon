@@ -212,6 +212,29 @@ const M1_LOCALS_KINDS: &[TokenKind] = &[
     TokenKind::Eof,
 ];
 
+/// `/50` source-local-add shape token kinds:
+/// `int main ( void ) { int x = 2 ; return x + 3 ; } EOF`.
+const M1_LOCALS_ADD_KINDS: &[TokenKind] = &[
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Punctuator,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Integer,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Integer,
+    TokenKind::Punctuator,
+    TokenKind::Punctuator,
+    TokenKind::Eof,
+];
+
 /// `/49` keyword/identifier spellings at fixed positions.
 const M1_LOCALS_WORDS: &[(&[u8], usize)] = &[
     (b"int".as_slice(), 0),
@@ -230,6 +253,18 @@ const M1_LOCALS_PUNCTUATORS: &[(usize, &[u8])] = &[
     (10, b";"),
     (13, b";"),
     (14, b"}"),
+];
+
+/// `/50` punctuator spellings at fixed positions.
+const M1_LOCALS_ADD_PUNCTUATORS: &[(usize, &[u8])] = &[
+    (2, b"("),
+    (4, b")"),
+    (5, b"{"),
+    (8, b"="),
+    (10, b";"),
+    (13, b"+"),
+    (15, b";"),
+    (16, b"}"),
 ];
 
 /// One pre-order node row: kind, parent, children, token range, name, literal.
@@ -255,7 +290,9 @@ impl PaTuChip {
                 ),
             )];
         }
-        if input.tokens.len() == M1_LOCALS_KINDS.len() {
+        if input.tokens.len() == M1_LOCALS_KINDS.len()
+            || input.tokens.len() == M1_LOCALS_ADD_KINDS.len()
+        {
             return self.compute_locals(input);
         }
         if input.tokens.len() != M1_KINDS.len() {
@@ -421,16 +458,21 @@ impl PaTuChip {
         append_nodes(input, specs)
     }
 
-    /// `/49` source-locals shape. Validates the closed token sequence and
-    /// appends the 11-node pre-order tree; any deviation fails without an
-    /// append.
+    /// `/49`/`/50` source-locals shapes. Validates the closed token sequence
+    /// and appends the pre-order tree; any deviation fails without an append.
     fn compute_locals(&self, input: &PaTuInput) -> Vec<Proposal> {
-        if input.tokens.len() != M1_LOCALS_KINDS.len() {
+        let binary = input.tokens.len() == M1_LOCALS_ADD_KINDS.len();
+        if !binary && input.tokens.len() != M1_LOCALS_KINDS.len() {
             return vec![fail(
                 input.task,
                 DiagnosticDraft::unsupported("non-locals token sequence length"),
             )];
         }
+        let kinds = if binary {
+            M1_LOCALS_ADD_KINDS
+        } else {
+            M1_LOCALS_KINDS
+        };
         for (position, id) in input.tokens.iter().enumerate() {
             let Some(projected) = input.bodies.get(id) else {
                 return vec![fail(
@@ -441,7 +483,7 @@ impl PaTuChip {
                     ),
                 )];
             };
-            if projected.kind != M1_LOCALS_KINDS[position] {
+            if projected.kind != kinds[position] {
                 return vec![fail(
                     input.task,
                     DiagnosticDraft::unsupported("non-locals token shape at fixed position"),
@@ -456,7 +498,12 @@ impl PaTuChip {
                 )];
             }
         }
-        for (position, spelling) in M1_LOCALS_PUNCTUATORS {
+        let punctuators = if binary {
+            M1_LOCALS_ADD_PUNCTUATORS
+        } else {
+            M1_LOCALS_PUNCTUATORS
+        };
+        for (position, spelling) in punctuators {
             if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
                 return vec![fail(
                     input.task,
@@ -464,7 +511,8 @@ impl PaTuChip {
                 )];
             }
         }
-        let eof = &input.bodies[&input.tokens[15]];
+        let eof_index = if binary { 17 } else { 15 };
+        let eof = &input.bodies[&input.tokens[eof_index]];
         if !eof.pp_spelling.is_empty() || eof.name.is_some() {
             return vec![fail(
                 input.task,
@@ -491,29 +539,34 @@ impl PaTuChip {
                 ),
             )];
         }
-        let literal_token = input.tokens[9];
-        let Some(literal) = input.literals_by_token.get(&literal_token) else {
-            return vec![fail(
-                input.task,
-                DiagnosticDraft::error(
-                    DiagnosticCode::new(DiagGroup::Task, 4),
-                    format!(
-                        "parse reads missing literal for token {}",
-                        literal_token.index()
+        let mut leaves = Vec::new();
+        for position in if binary {
+            &[9usize, 14][..]
+        } else {
+            &[9usize][..]
+        } {
+            let token = input.tokens[*position];
+            let Some(literal) = input.literals_by_token.get(&token) else {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("parse reads missing literal for token {}", token.index()),
                     ),
-                ),
-            )];
-        };
+                )];
+            };
+            leaves.push(*literal);
+        }
         let main_name = input.bodies[&input.tokens[1]].name;
         let base = input.nodes_allocated;
         let node = |index: u32| crate::ids::NodeId::from_index(base.saturating_add(index));
-        let specs: Vec<NodeSpec> = vec![
+        let mut specs: Vec<NodeSpec> = vec![
             (
                 NodeKind::TranslationUnit,
                 None,
                 vec![node(1)],
                 0,
-                15,
+                if binary { 17 } else { 15 },
                 None,
                 None,
             ),
@@ -522,7 +575,7 @@ impl PaTuChip {
                 Some(node(0)),
                 vec![node(2), node(3), node(4)],
                 0,
-                14,
+                if binary { 16 } else { 14 },
                 None,
                 None,
             ),
@@ -549,7 +602,7 @@ impl PaTuChip {
                 Some(node(1)),
                 vec![node(5), node(9)],
                 5,
-                14,
+                if binary { 16 } else { 14 },
                 None,
                 None,
             ),
@@ -587,18 +640,50 @@ impl PaTuChip {
                 9,
                 9,
                 None,
-                Some(*literal),
+                Some(leaves[0]),
             ),
             (
                 NodeKind::Return,
                 Some(node(4)),
                 vec![node(10)],
                 11,
-                13,
+                if binary { 15 } else { 13 },
                 None,
                 None,
             ),
-            (
+        ];
+        if binary {
+            specs.extend([
+                (
+                    NodeKind::BinaryAdd,
+                    Some(node(9)),
+                    vec![node(11), node(12)],
+                    12,
+                    14,
+                    None,
+                    None,
+                ),
+                (
+                    NodeKind::Identifier,
+                    Some(node(10)),
+                    vec![],
+                    12,
+                    12,
+                    Some(use_name),
+                    None,
+                ),
+                (
+                    NodeKind::IntLiteral,
+                    Some(node(10)),
+                    vec![],
+                    14,
+                    14,
+                    None,
+                    Some(leaves[1]),
+                ),
+            ]);
+        } else {
+            specs.push((
                 NodeKind::Identifier,
                 Some(node(9)),
                 vec![],
@@ -606,8 +691,8 @@ impl PaTuChip {
                 12,
                 Some(use_name),
                 None,
-            ),
-        ];
+            ));
+        }
         append_nodes(input, specs)
     }
 }

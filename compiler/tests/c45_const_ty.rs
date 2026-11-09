@@ -230,6 +230,8 @@ fn immediate_type_mismatch_fails_t09() {
         constant_record_ty: TypeId::from_index(2),
         constant: ConstId::from_index(0),
         local: None,
+        local_rhs: None,
+        local_op: None,
         functions_allocated: 0,
         blocks_allocated: 0,
         values_allocated: 0,

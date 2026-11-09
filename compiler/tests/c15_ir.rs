@@ -1006,6 +1006,8 @@ fn ir_constant_result_type_must_match_return_fact() {
         constant_record_ty: TypeId::from_index(1),
         constant: ConstId::from_index(0),
         local: None,
+        local_rhs: None,
+        local_op: None,
         functions_allocated: 0,
         blocks_allocated: 0,
         values_allocated: 0,
