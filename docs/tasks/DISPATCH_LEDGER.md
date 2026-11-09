@@ -376,9 +376,10 @@ defaults. The deferred restore package is `/49`.
 - **Next freeze train:** `/49` remains the deferred
   restore/quota>1/VF13/`StorePatch` package. Each needs an explicit integrator
   decision, implementation, dependent tests, and a recomputed hash.
-- **Next integration blockers:** a source-to-IR producer for automatic locals
-  and arithmetic beyond the M1 constant-return path, general T11 codegen,
-  official T00 corpus/runner/aggregation, B3-03c
+- **Next integration blockers:** the proposed `/49` M1 source-locals slice
+  needs contract approval before implementation; then a source-to-IR producer
+  for automatic locals and arithmetic, general T11 codegen, official T00
+  corpus/runner/aggregation, B3-03c
   `#line`/`#pragma`, wider H04 `-I`/angle/system/multi-source freeze, canonical
   PA15 allocation/wiring (B3-04), and full legacy diagnostic migration. H05
   process supervision is implemented; namespace sandboxing and target

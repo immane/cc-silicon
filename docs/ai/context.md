@@ -197,10 +197,12 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: general target codegen beyond the M1 constant-return source path and
-  IR-shape integer emitter, starting with a real source-to-IR producer for
-  automatic locals and arithmetic; then the Batch G torture chain (official
-  corpus/runner still absent); H05 process
+- NEXT UP: the proposed `/49` M1 source-locals slice
+  (`docs/tasks/M1_SOURCE_LOCALS_SLICE.md`) — a real source-to-IR producer for
+  `int x = 2; return x + 3;`, including the parser, local symbol, identifier
+  fact, IR lowering, and symbolic interpreter changes. The contract change and
+  hash must be approved before implementation; then the Batch G torture chain
+  (official corpus/runner still absent); H05 process
   supervision is implemented (`tools/runner`). B3-03c `#line`/`#pragma` and the
   wider H04 include policy remain open. Continue the PP remainder in pipeline
   order — then T04 LX
