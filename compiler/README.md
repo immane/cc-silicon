@@ -33,6 +33,8 @@ continues on this foundation.
 | Constant v3 (`/45`) | Schema frozen: `ConstValue::Float`/`Address`; big-endian format-checked float bits; symbolic address base/addend; VF14 integer-only gates. Producers and T06 float/pointer compatibility remain future |
 | Type/layout/init (`/46`) | Schema frozen: pointer/array/aggregate/enum `TypeKind`; typed `LayoutRecord`/`InitRecord`; `G1DraftBody::Layout`/`Init`; symbolic-or-bit extents. Producers, target byte layout, and validation remain future |
 | Diagnostic taxonomy (`/47`) | Schema frozen: lex/parse/type/const/ir/codegen/host groups; named code registry and structured helpers. Full legacy `Task:4` migration remains future |
+| Probe-attested target baseline (`/48`) | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, pinned H07 report; `c48_target_probe` 3. Official CI/bare-metal baseline and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return AArch64 assembly; `c55_target_m1` verifies native Linux assemble/link/run (exit 5). Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
@@ -130,7 +132,7 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c49 + freeze + h04_candidate + Stage B regression tests
+  tests/           c01..c55 + freeze + h04_candidate + Stage B regression tests
 ```
 
 The test breakdown below is a dated 2026-10-04 record, not the current test

@@ -11,7 +11,7 @@ application being built on top of them.
 
 Today the repository contains the generic framework, the frozen compiler
 contract foundation (`t01-c01-c06/48`), with variadic + builtin macros working (PP01–04 + LX + PA + TY + SE + IR + verifiers, full PP scan, dispatch, conditionals, macros, expansion, include, variadic, builtins, line, pragma, expansion map, emit) plus float syntax/value checks (LX09 decimal/hex syntax, LX10 correctly-rounded binary32/binary64) plus char/string literal decode (LX11 escape validation, LX12 typed characters with multichar policy, LX13 NUL-terminated strings with wide encodings) plus PA decl productions (PA02 external dispatch, PA03 `int` specifiers, fused PA05/07/09 `main(void)` declarator, fused PA28/32 block/return — all Ack-only) plus PA expr productions (fused PA16/22 integer primary plus single-`+` binary fold, PA20 unary `+`/`-` — all Ack-only) plus PA recovery productions (PA14 `main(void);` declaration finish with POD registration, PA38 delimiter sync — both Ack-only) plus T08 const-branch productions (CL04 selected-branch `&&`/`||`/`?:` certification with short-circuit skipping, CL07 static-assert pass/fail/non-ICE — all Ack-only) plus VF14 evidence-classify (complete compile/link/run/check vector with total invalid→missing→undecodable→fail precedence — PASS completes `Ack`, every other verdict is one typed `Fail`) plus SE29 function-definition (M1 `(void)`-only signature check with K&R/mismatch `Unsupported` plus committed-record reuse — appends one `SemRecord`) plus the M1 Part A A3 closure (`/40`: candidate SE29 dispatch, VF06 four-kind typed-fact set, T09 committed function-fact consumption) plus the B2-00 determinism/limits/replay closure (`/41`: full append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence; replay is recorded-input re-execution, not restore) plus the B2-02 tagged, typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload, T09/VF12 immediate-type enforcement, canonical typed snapshot body) plus the `/43` parser architecture/V1 AST common base (single-task V1 parser decision, append-only `NodeKind` inventory) plus the `/44` IR/CFG common base (`local`/`successors`, local/arithmetic/branch op append) plus the `/45` constant v3 append (float/address tags) plus the `/46` type/layout/init common base (pointer/array/aggregate/enum, typed layout/init carriers) plus the `/47` diagnostic taxonomy (named group/code registry) plus B3-03a source `#define`/`#undef` driver orchestration (ordered text segments, conditional boundary, directive removal) plus B3-03b bounded quoted `#include "..."` beside the including file (canonical sandbox, single level, header defines/text; `-I`/angle/system/nesting/guards/`once`/line/pragma still fail closed)
-worker. **There is no source-to-executable C compiler yet.** The task catalog and
+worker. **There is no general source-to-executable C compiler yet.** A host-only M1 prototype (`candidate --emit-asm`) emits and runs the constant-return fixture, but the task catalog and
 acceptance plans describe work to be built, not completed language support.
 See [Project status](#project-status).
 
@@ -124,7 +124,7 @@ and the language pipeline. The nested `compiler/` package contains the T01
 C01–C06 foundation as amended through `t01-c01-c06/48`, plus partial
 PP/LX/PA/TY/SE/IR/VF worker slices, the Gate 1 constant-fold chain, and a
 candidate Part A evidence driver. The complete language stages below are **not
-implemented**; there is no source-to-executable pipeline. The routing shell has
+implemented**; there is no general source-to-executable pipeline. The routing shell has
 quota-bound dispatch and bounded recovery/reporting, but no integrated language
 pipeline; quota 1 remains the comparison baseline, and quota>1 acceptance is
 still pending.
@@ -141,7 +141,7 @@ flowchart TB
         IR -. "target-dependent; probe-gated" .-> TARGET["AArch64 target emission"]
     end
 
-    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas + partial PP/LX/PA/TY/SE/IR/VF slices · frozen /42<br/>candidate Part A evidence driver; no complete source-to-executable pipeline"]
+    FOUNDATION["compiler/ package<br/>C01–C06 + Gate 1 schemas + partial PP/LX/PA/TY/SE/IR/VF slices · frozen /48<br/>candidate Part A evidence driver; no complete source-to-executable pipeline"]
     PIPE -. "would use the compiler bus, IDs, tasks,<br/>commit protocol and snapshots" .-> FOUNDATION
 
     subgraph RUNTIME["Root cc-silicon framework — implemented mechanism"]
@@ -339,8 +339,9 @@ implemented, tested pipeline.
 | Framework crate (`src/`) | **Implemented**: `Bus`, `LogicChip`, `RestrictedChip` + `silicon_chip!`, `Motherboard`, `Backend`/`CpuBackend`, `Clock`, `simulate`/`Testbench`. Evidence: [`tests/paradigm.rs`](tests/paradigm.rs), doctests in [`src/chip.rs`](src/chip.rs), [`examples/counter.rs`](examples/counter.rs) |
 | Compiler contract foundation (`compiler/`) | **Implemented and frozen** as `t01-c01-c06/48`: arenas/IDs, task/result/proposal protocol, target model, manifests, canonical snapshots/traces, quota-bound routing shell, Gate 1 literal/constant schemas and typed append materialization, plus partial PP/LX/PA/TY/SE/IR/VF worker slices, the M1 Part A A3 closure (SE29/VF06/T09), the B2-00 determinism/limits/replay closure (append wire bodies, stage-first scheduling, store/result versions, pin-aware trace evidence), the B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks), the B3-03a source `#define`/`#undef` driver slice, the B3-03b bounded quote-include slice, the `/43` parser/AST common base, `/44` IR/CFG common base, `/45` float/address constant tags, `/46` type/layout/init common base, and `/47` diagnostic taxonomy (schemas/registry only; no new producers). Identity: [`compiler/contracts/CONTRACT_VERSION`](compiler/contracts/CONTRACT_VERSION); consistency tests: [`compiler/tests/freeze.rs`](compiler/tests/freeze.rs) |
 | Initial constant-fold worker | **Implemented subset**: [`FoldChip`](compiler/src/chips/constant_layout_init/fold.rs) reads seeded committed literals, resolves the committed constant type (`/42`), and emits one typed constant append + completion; the fixture folds `2 + 3` to `5` through `drive_task` and commit. Evidence: [`compiler/tests/c08_gate1.rs`](compiler/tests/c08_gate1.rs), [`compiler/tests/c45_const_ty.rs`](compiler/tests/c45_const_ty.rs). No target-width semantics or executable generation |
-| Complete C language pipeline (T02–T13) | **Not implemented.** Partial language worker slices exist, but most planned kinds have no installed handler and there is no complete source-to-executable pipeline — see [`docs/tasks/README.md`](docs/tasks/README.md) |
-| AArch64 target values | **Pinned containerized probe baseline attested** (`target_verification=probe-attested`); the official T00 CI/bare-metal reference baseline remains open. The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); candidate codegen readiness still fails closed |
+| Complete C language pipeline (T02–T13) | **Not implemented.** Partial language worker slices exist, but most planned kinds have no installed handler and there is no general source-to-executable pipeline — see [`docs/tasks/README.md`](docs/tasks/README.md) |
+| M1 target emission prototype | **Implemented subset**: `candidate --emit-asm` emits GNU AArch64 assembly for `int main(void){return <constant>;}`; `c55_target_m1` verifies emission and, on native AArch64 Linux, assemble/link/run with exit 5. Not a T11 chip family or general codegen |
+| AArch64 target values | **Pinned containerized probe baseline attested** (`target_verification=probe-attested`); the official T00 CI/bare-metal reference baseline remains open. The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); `--emit-asm` is limited to the M1 constant-return shape; general codegen and `-S`/`-c` still fail closed |
 | ABI probe harness (`tools/torture/probe/`) | Harness/normalizer self-tests pass; one containerized AArch64 Linux run (Debian GCC 12.2.0) produced a report. H07 `classify.py` resolves the four ABI fields and `c48_target_probe` attests/tamper-checks it. No official CI/bare-metal baseline or corpus |
 | H05 isolated runner (`tools/runner/`) | **Implemented and tested**: per-instance workdir, cleared environment, timeout, output caps, cancellation, Linux `prlimit`/process-group termination, stable outcome classification. No target compiler or corpus |
 | GCC torture corpus lock (`tools/torture/`) | **Scaffold**: lock schema and verifier implemented and tested; no corpus fetched, no frozen lock, no pass rate |
@@ -739,10 +740,12 @@ silent semantic drift is forbidden.
 | [docs/design/ARCHITECTURAL_BLUEPRINT.md](docs/design/ARCHITECTURAL_BLUEPRINT.md) | How to build a system on cc-silicon |
 | [docs/design/GETTING_STARTED.md](docs/design/GETTING_STARTED.md) | Step-by-step walkthrough |
 | [compiler/contracts/CONTRACT_VERSION](compiler/contracts/CONTRACT_VERSION) | Current frozen compiler artifact identity and hash scope |
-| [compiler/README.md](compiler/README.md) | Foundation rationale and protocol boundaries; status text is current through `/42` |
+| [compiler/README.md](compiler/README.md) | Foundation rationale and protocol boundaries; status text is current through `/48` |
+| [docs/tasks/H05_ISOLATED_RUNNER.md](docs/tasks/H05_ISOLATED_RUNNER.md) | H05 per-instance process supervisor (timeout/output/cancel/Linux prlimit) |
+| [docs/tasks/M1_TARGET_EMIT_SLICE.md](docs/tasks/M1_TARGET_EMIT_SLICE.md) | M1 AArch64 constant-return assembly prototype |
 | [compiler/contracts/COMPILER_SFL_MANIFEST.md](compiler/contracts/COMPILER_SFL_MANIFEST.md) | Manifest schema, read/write declarations, and commit-enforcement rules |
 | [docs/tasks/README.md](docs/tasks/README.md) | Compiler master plan and task packages T00–T13; plans are not implementation evidence |
-| [docs/tasks/GATE_1_M1_FIRST_SLICE.md](docs/tasks/GATE_1_M1_FIRST_SLICE.md) | Historical Gate 1 slice (`/7`), worker integration (`/8`), readiness fixes (`/9`), superseded by later amendments through `/42`; seeded fixtures are not full M1 acceptance |
+| [docs/tasks/GATE_1_M1_FIRST_SLICE.md](docs/tasks/GATE_1_M1_FIRST_SLICE.md) | Historical Gate 1 slice (`/7`), worker integration (`/8`), readiness fixes (`/9`), superseded by later amendments through `/48`; seeded fixtures are not full M1 acceptance |
 | [docs/reviews/](docs/reviews/) | Dated documentation and source audits (read-only records) |
 
 ---
