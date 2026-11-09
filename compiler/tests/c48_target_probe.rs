@@ -34,6 +34,17 @@ fn classified_probe_report_attests_the_target() {
 }
 
 #[test]
+fn global_probe_attested_baseline_matches_the_fixture_hash() {
+    let report = ProbeReport::parse(ATTESTED_REPORT).expect("probe report parses");
+    let report_hash = report.verify_verified().expect("fixture hash");
+    let target = TargetSpec::aarch64_unknown_linux_gnu_probe_attested();
+    assert!(target.verification().is_verified());
+    assert_eq!(target.verification().report_hash(), Some(report_hash));
+    assert_eq!(target.abi().gp_arg_regs, 8);
+    assert_eq!(target.abi().stack_align, 16);
+}
+
+#[test]
 fn attested_report_tampering_is_rejected() {
     let tampered = ATTESTED_REPORT.replace("sizeof.int = 4", "sizeof.int = 8");
     assert_ne!(tampered, ATTESTED_REPORT);

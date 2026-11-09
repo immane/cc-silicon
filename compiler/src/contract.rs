@@ -45,14 +45,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
 /// IR/CFG schema append (local load/store, arithmetic, branch successors),
 /// the `/45` constant v3 append (float/address payload tags), and the `/46`
-/// T06 type-model/layout/init common base, and the `/47` diagnostic taxonomy.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/47";
+/// T06 type-model/layout/init common base, the `/47` diagnostic taxonomy,
+/// and the `/48` probe-attested target baseline.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/48";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593";
+pub const CONTRACT_HASH: &str = "820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -716,7 +717,7 @@ pub const ARTIFACT_KIND_NAMES: &[&str] = &[
 pub struct FrozenSchema {
     /// Contract version.
     pub version: &'static str,
-    /// The complete target model, including unverified proposals.
+    /// The complete target model (probe-attested baseline).
     pub target: TargetSpec,
     /// Planned probe substrate.
     pub probe_substrate: ProbeSubstrate,
@@ -731,7 +732,7 @@ impl FrozenSchema {
     pub fn current() -> Self {
         Self {
             version: CONTRACT_VERSION,
-            target: TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+            target: TargetSpec::aarch64_unknown_linux_gnu_probe_attested(),
             probe_substrate: probe_substrate(),
             corpus_policy: CorpusPolicy::t01(),
             limits: Limits::fixture(),
@@ -1017,12 +1018,12 @@ fn push_str_list(w: &mut Writer, values: &[&str]) {
     }
 }
 
-/// The frozen probe substrate plan: Linux CI/VM, not yet available.
+/// The pinned probe substrate baseline: containerized Linux AArch64.
 pub const fn probe_substrate() -> ProbeSubstrate {
     ProbeSubstrate {
-        kind: "linux-ci-vm",
-        available: false,
-        notes: "Planned substrate for the AArch64 GNU/Linux target probe; not yet provisioned.",
+        kind: "docker-linux-arm64",
+        available: true,
+        notes: "2026-11-09 pinned Debian 12 arm64 probe (GCC 12.2.0, binutils 2.40); official T00 CI/bare-metal baseline remains open.",
     }
 }
 
@@ -1039,8 +1040,8 @@ pub fn contract_version_file() -> String {
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\
          target=aarch64-unknown-linux-gnu\n\
-         target_verification=unverified\n\
-         probe_substrate=linux-ci-vm (planned, not provisioned)\n\
+         target_verification=probe-attested\n\
+         probe_substrate=docker-linux-arm64 (pinned 2026-11-09; official T00 baseline open)\n\
          corpus_fetch=on-demand hash-locked\n\
          reference_baseline=authorized, not available, not candidate evidence\n\
          hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)\n\

@@ -630,6 +630,21 @@ impl TargetSpec {
         }
     }
 
+    /// The pinned 2026-11-09 H01/H07 probe-attested target baseline.
+    ///
+    /// The report hash is the H07-classified Debian 12 GCC 12.2.0 report
+    /// pinned by `compiler/tests/fixtures/target-probe/`. This is a
+    /// probe-baseline state, not a new target identity or a torture baseline.
+    pub const fn aarch64_unknown_linux_gnu_probe_attested() -> Self {
+        let mut target = Self::aarch64_unknown_linux_gnu_unverified();
+        target.verification = VerificationState::attested([
+            0x57, 0xea, 0xdb, 0x28, 0x15, 0x57, 0x56, 0xc2, 0xf9, 0x5b, 0xa4, 0x96, 0x06, 0x85,
+            0x1b, 0x64, 0x2f, 0x78, 0x25, 0xbd, 0xa0, 0x20, 0x69, 0x93, 0xff, 0xd7, 0xfb, 0x5a,
+            0x80, 0x0c, 0x4f, 0x90,
+        ]);
+        target
+    }
+
     /// The frozen target identity.
     pub const fn profile(&self) -> TargetProfile {
         self.profile

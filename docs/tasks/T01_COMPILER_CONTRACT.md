@@ -119,13 +119,14 @@ All workers: `phase=propagation`, `deterministic=true`. Language-independent/fro
 - Provide a reproducible target probe fixture, but compile chips do not dynamically read the host ABI.
 
 Frozen identity (2026-10-04): `aarch64-unknown-linux-gnu`, ELF, LP64,
-little-endian, AAPCS64. Only the identity is frozen; every concrete scalar,
-`long double`, and ABI value remains **UNVERIFIED** until an actual probe runs
-on the planned (not yet provisioned) Linux CI/VM substrate. The corpus is
-fetched on demand with a hash lock. A reference-only DejaGnu baseline is
-authorized as an oracle but is not available and is never candidate compiler
-evidence. The probe fixture and its unverified status are recorded in
-`compiler/contracts/target/aarch64-linux-probe.txt`.
+little-endian, AAPCS64. The concrete scalar/`long double`/ABI values are now
+**probe-attested for the pinned 2026-11-09 containerized Debian 12 arm64
+baseline** (`target_verification=probe-attested`); the official T00
+CI/bare-metal reference baseline is still open. The corpus is fetched on demand
+with a hash lock. A reference-only DejaGnu baseline is authorized as an oracle
+but is not available and is never candidate compiler evidence. The probe
+fixture and the H07-classified report are pinned by
+`compiler/tests/fixtures/target-probe/`.
 
 ## 7. Work Items and Acceptance
 
@@ -1068,10 +1069,25 @@ New artifact `t01-c01-c06/47` (`3c3d722d…f593`); acceptance
 60 suites. No full `Task:4` migration, new panic path, target codegen, or
 torture result is claimed.
 
+`/48` amendment — probe-attested target baseline (2026-11-09; T01 integrator
+acceptance; R1 auto-bump; `/47` preserved as history): the pinned
+2026-11-09 containerized Debian 12 arm64 probe (GCC 12.2.0, binutils 2.40,
+image digest `sha256:268fb24c…3ff8`) is H07-classified by
+`tools/torture/probe/classify.py`, and its attested report is pinned by
+`compiler/tests/fixtures/target-probe/aarch64-debian12-gcc12.2.0-attested.txt`.
+`FrozenSchema` uses `TargetSpec::aarch64_unknown_linux_gnu_probe_attested()`
+with report hash `57eadb28…c4f90`; `target_verification=probe-attested` and
+`probe_substrate=docker-linux-arm64` are recorded. This is a **probe baseline**
+for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
+not a target codegen implementation, and not a torture result. New artifact
+`t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
+the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
+moves to `/49`.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
-| C02 | Frozen target identity; dialect/options/limits config (structurally immutable after init); unverified AArch64/Linux proposal; machine-readable probe fixture; private verified-state representation; attestation validates required fields (including `wchar_t.encoding`), identity, and report hash; macOS values rejected by test | The actual Linux probe has not run (no CI/VM substrate); all concrete values remain UNVERIFIED; `ensure_codegen_ready` fails closed. `attest` validates caller-supplied report data, not authenticity or physical provenance (TOCTOU). The H01 harness (not owned here) emits `wchar_t.encoding` as `utf32` only with positive ISO/IEC 10646/non-BMP evidence, otherwise `unresolved`, and leaves the four AAPCS64 fields `unresolved`; `attest` requires resolved numeric values, so H07 classification plus the T01 integrator's attest step must fill them first (T00 §4.1). Attestation performs no plausibility/consistency cross-checks beyond field presence, identity, and hash (for example, zero or oversized ABI register counts, or `align > size`, would be accepted); `c02_target::signed_report` recomputes the hash over a caller-built report and `attested_report_produces_a_verified_target` attests it, demonstrating the data-not-provenance boundary. The probe harness exists but has **never run** (no report), and the report→`attest` handoff — H07-owned classification of the report's `unresolved` ABI fields, then the T01-integrator-owned `attest`/`Probed` step — has not occurred |
+| C02 | Frozen target identity; dialect/options/limits config (structurally immutable after init); **probe-attested** AArch64/Linux baseline; machine-readable probe fixture; private verified-state representation; attestation validates required fields (including `wchar_t.encoding`), identity, and report hash; macOS values rejected by test | The pinned 2026-11-09 Debian-GCC-12.2.0 container probe ran; H07 `classify.py` resolved the four ABI fields, and `c48_target_probe` attests/tamper-checks the report. The global contract target state is `probe-attested`; the **official T00 CI/bare-metal reference baseline** and corpus freeze remain open. `ensure_codegen_ready` is not exercised by a target codegen path because no codegen exists. `attest` validates caller-supplied report data, not authenticity or physical provenance (TOCTOU), and does not add plausibility checks beyond field presence/identity/hash. HVA is not exercised; no HVA or mixed-linking claim is made. |
 | C03 | Task/TaskState/Result/Proposal/StorePatch envelope; next-tick enqueue; deterministic commit order; inner task IDs bound to the enclosing task; exactly one `Complete`/`Fail`/`AwaitHost` transition per task per batch; Enqueue parents resolved against existing or earlier predicted siblings; Enqueue destinations must be registered and accept the kind (bootstrap is integration-only); exactly-once completion and result consumption with an accurate `ResultAlreadyConsumed` error; lossless `usize` proposal-budget comparison; structured error protocol; unique kind registry with reserved local-code ranges | Per-group concrete task/result payload variants are not frozen (group owners add them; the envelope carries typed `RecordRef` payloads); patch `RecordRef`s are not existence-checked by the mechanical commit; the §4 reserved-ID/local-reference relocation protocol is absent (see C01); the frozen protocol enums are pinned by variant name only, not by numeric discriminant/wire tag (see C05) |
 | C04 | Manifest schema extension, foundation store schema, validator, fixture tests, validated registry (schema + kind checks on registration); commit-time per-chip field-scoped write manifests, owner/task-kind attribution, read-only `config` rejected both at registration and commit | The extension is a lint, not a parser; group store fields must be declared as each group freezes them. The `/6` hash-scope reconciliation between `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields` token is still open (see C05) |
 | C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs`. `/41` closes the `AppendRecords` handle/body payload gap and narrows replay to recorded-input re-execution over a canonical state fingerprint; `/42` adds the typed constant body (`ty` + integer tag) and its hashed tables; full restore remains `/43` |

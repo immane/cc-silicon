@@ -28,14 +28,14 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/47");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/48");
 }
 
 #[test]
 fn target_and_probe_policy_are_recorded() {
     assert_eq!(field("target"), "aarch64-unknown-linux-gnu");
-    assert_eq!(field("target_verification"), "unverified");
-    assert!(field("probe_substrate").contains("not provisioned"));
+    assert_eq!(field("target_verification"), "probe-attested");
+    assert!(field("probe_substrate").contains("docker-linux-arm64"));
     assert!(field("corpus_fetch").contains("hash-locked"));
     let baseline = field("reference_baseline");
     assert!(baseline.contains("authorized"));
