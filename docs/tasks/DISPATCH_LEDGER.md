@@ -26,6 +26,23 @@ reserved for CALL-F0 orchestration and integration.
 | CALL-V1 verification/modeling | `ses_e3e03d807ffeoyf4X401wxaaxd` | `../cc-silicon-call-v1` | `call-v1` | RUNNING |
 | CALL-A1 AArch64 emitter | `ses_e3e03d807ffdDpwNi27WLTXgZQ` | `../cc-silicon-call-a1` | `call-a1` | RUNNING |
 
+### CALL Auxiliary Lanes (2026-11-10; RUNNING)
+
+Five auxiliary tasks run without touching CALL production files or shared
+schema. They raise the logical concurrency to 10 while the production writer
+count remains five and the native target queue remains one.
+
+| Lane | Session | Scope | State |
+|---|---|---|---|
+| CALL-T1 acceptance | `ses_e3dfe3639ffe0dzTWZWy2D7mrn` | `../cc-silicon-call-t1`; new `call_source`/`call_abi` tests only | RUNNING |
+| CFG design | `ses_e3dfe362fffeRQovU6x4PY2CBd` | read-only next-slice contract | RUNNING |
+| MEMORY design | `ses_e3dfe360effeCdqNzO22uvt4S6` | read-only next-slice contract | RUNNING |
+| HOST-RUN audit | `ses_e3dfe360cffeadGRXY4GpvwZoF` | read-only H05 readiness audit | RUNNING |
+| LEX integer design | `ses_e3dfe3608ffeH2Rl499fGs1qY9` | read-only zero/octal/radix plan | RUNNING |
+
+No auxiliary lane may edit production code. T1 may commit tests that are
+integration-pending; a failing test is not a passing delivery.
+
 No lane may edit shared schema, `candidate.rs`, Cargo, `mod.rs` (except S1's
 module registration for its new worker), contract markers, or another lane's
 files. Each lane returns a branch commit; CALL-F0 cherry-picks in dependency
