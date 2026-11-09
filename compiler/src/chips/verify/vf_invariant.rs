@@ -17,12 +17,13 @@
 // any gap fails loudly. Runs after committed `SemRecord`s, before T09.
 // ============================================================================
 
-use crate::bus::{EffectMask, NodeKind, TypeKind, ValueCategory};
+use crate::bus::{EffectMask, NodeKind, TypeKind, ValueCategory, EFFECT_WRITES_LOCAL};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NodeId, RecordRef, TaskId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, VF06_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
+use std::collections::BTreeSet;
 
 /// Narrow projection for the typed-invariant check.
 #[derive(Clone, Debug)]
@@ -244,7 +245,16 @@ impl Vf06Chip {
                 DiagnosticDraft::unsupported("multiple function definitions outside M1"),
             )];
         }
+        let assignment_lhs: BTreeSet<crate::ids::NodeId> = input
+            .tree
+            .iter()
+            .filter(|(_, node)| node.kind == NodeKind::Assignment)
+            .filter_map(|(_, node)| node.children.first().copied())
+            .collect();
         for (id, node) in &input.tree {
+            if node.kind == NodeKind::Identifier && assignment_lhs.contains(id) {
+                continue;
+            }
             let Some(expected) = expected_type(input, node.kind) else {
                 continue;
             };
@@ -290,12 +300,22 @@ impl Vf06Chip {
                     ),
                 )];
             }
-            if sem.effects != EffectMask(0) {
+            let expected_effects = if node.kind == NodeKind::Assignment {
+                EffectMask(EFFECT_WRITES_LOCAL)
+            } else {
+                EffectMask(0)
+            };
+            if sem.effects != expected_effects {
+                let detail = if node.kind == NodeKind::Assignment {
+                    "wrong effect mask"
+                } else {
+                    "nonzero effect mask"
+                };
                 return vec![fail(
                     input.task,
                     DiagnosticDraft::error(
                         DiagnosticCode::new(DiagGroup::Task, 4),
-                        format!("vf06: nonzero effect mask for node {}", id.index()),
+                        format!("vf06: {detail} for node {}", id.index()),
                     ),
                 )];
             }
@@ -323,7 +343,8 @@ fn expected_type(input: &Vf06Input, kind: NodeKind) -> Option<crate::ids::TypeId
         | NodeKind::BinaryDiv
         | NodeKind::BinaryRem
         | NodeKind::UnaryPlus
-        | NodeKind::UnaryMinus => Some(input.int),
+        | NodeKind::UnaryMinus
+        | NodeKind::Assignment => Some(input.int),
         NodeKind::FunctionDefinition => Some(input.signature),
         _ => None,
     }

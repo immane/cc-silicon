@@ -26,9 +26,10 @@ use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
     PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
     PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
-    PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip,
-    SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip, TyConvChip, TyScopeChip, TySymbolChip,
-    TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeAssignmentChip,
+    SeBinChip, SeFuncChip, SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip, TyConvChip,
+    TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker,
+    WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -38,9 +39,9 @@ use cc_silicon_compiler::manifest::{
     StoreSchema, G1_FOLD_CHIP, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
     PA_TU_CHIP, PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP,
     PP17_CHIP, PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP,
-    PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP, SE_RET_CHIP, SE_UNARY_CHIP,
-    TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP,
-    VF12_CHIP,
+    PP_SPLICE_CHIP, SE_ASSIGN_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP,
+    SE_RET_CHIP, SE_UNARY_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP,
+    VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -277,6 +278,7 @@ fn install(bus: &mut CompilerBus) {
         &SeFuncChip,
         &SeIdentifierChip,
         &SeUnaryChip,
+        &SeAssignmentChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -322,6 +324,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4),
         (TaskKind::SEMANTIC_IDENTIFIER_EXPR, SE_ID_CHIP, 4),
         (TaskKind::SEMANTIC_UNARY_EXPR, SE_UNARY_CHIP, 4),
+        (TaskKind::SEMANTIC_ASSIGNMENT_EXPR, SE_ASSIGN_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -466,6 +469,63 @@ fn run_literal(
     Ok(())
 }
 
+fn run_expression_node(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    node: NodeId,
+) -> Result<(), String> {
+    let kind = bus
+        .arenas
+        .nodes
+        .get(node)
+        .map_err(|_| "expression node vanished".to_string())?
+        .kind;
+    match kind {
+        NodeKind::IntLiteral => run_literal(bus, workers, trace, node, true),
+        NodeKind::Identifier => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_IDENTIFIER_EXPR,
+                SE_ID_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::BinaryAdd
+        | NodeKind::BinarySub
+        | NodeKind::BinaryMul
+        | NodeKind::BinaryDiv
+        | NodeKind::BinaryRem => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_BINARY_EXPR,
+                SE_BIN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::UnaryPlus | NodeKind::UnaryMinus => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_UNARY_EXPR,
+                SE_UNARY_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        _ => Err(format!(
+            "unsupported expression node kind {kind:?} in locals shape"
+        )),
+    }
+}
+
 /// Find nodes of one kind in ascending-ID order.
 fn nodes_of(bus: &CompilerBus, kind: NodeKind) -> Vec<NodeId> {
     let mut ids: Vec<NodeId> = bus
@@ -567,6 +627,9 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeUnaryChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeAssignmentChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -1425,59 +1488,46 @@ fn run(
             .first()
             .copied()
             .ok_or_else(|| "return statement has no expression".to_string())?;
+        let compounds = nodes_of(&bus, NodeKind::Compound);
+        if compounds.len() != 1 {
+            return Err("expected exactly one function body".to_string());
+        }
+        let assignments: Vec<NodeId> = bus
+            .arenas
+            .nodes
+            .get(compounds[0])
+            .map_err(|_| "function body vanished".to_string())?
+            .children[1..]
+            .split_last()
+            .map(|(_, rest)| rest.to_vec())
+            .unwrap_or_default();
+        for statement in assignments {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(statement)
+                .map_err(|_| "assignment statement vanished".to_string())?;
+            if statement_body.kind != NodeKind::Assignment || statement_body.children.len() != 2 {
+                return Err("unsupported statement in locals shape".to_string());
+            }
+            let mut order = Vec::new();
+            expression_postorder(&bus, statement_body.children[1], &mut order)?;
+            for node in order {
+                run_expression_node(&mut bus, &workers, &mut trace, node)?;
+            }
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
+                SE_ASSIGN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(statement)]),
+            )?;
+        }
         let mut order = Vec::new();
         expression_postorder(&bus, root, &mut order)?;
         for node in order {
-            let kind = bus
-                .arenas
-                .nodes
-                .get(node)
-                .map_err(|_| "expression node vanished".to_string())?
-                .kind;
-            match kind {
-                NodeKind::IntLiteral => {
-                    run_literal(&mut bus, &workers, &mut trace, node, true)?;
-                }
-                NodeKind::Identifier => {
-                    step(
-                        &mut bus,
-                        &workers,
-                        &mut trace,
-                        TaskKind::SEMANTIC_IDENTIFIER_EXPR,
-                        SE_ID_CHIP,
-                        Payload::from_refs(vec![RecordRef::Node(node)]),
-                    )?;
-                }
-                NodeKind::BinaryAdd
-                | NodeKind::BinarySub
-                | NodeKind::BinaryMul
-                | NodeKind::BinaryDiv
-                | NodeKind::BinaryRem => {
-                    step(
-                        &mut bus,
-                        &workers,
-                        &mut trace,
-                        TaskKind::SEMANTIC_BINARY_EXPR,
-                        SE_BIN_CHIP,
-                        Payload::from_refs(vec![RecordRef::Node(node)]),
-                    )?;
-                }
-                NodeKind::UnaryPlus | NodeKind::UnaryMinus => {
-                    step(
-                        &mut bus,
-                        &workers,
-                        &mut trace,
-                        TaskKind::SEMANTIC_UNARY_EXPR,
-                        SE_UNARY_CHIP,
-                        Payload::from_refs(vec![RecordRef::Node(node)]),
-                    )?;
-                }
-                _ => {
-                    return Err(format!(
-                        "unsupported expression node kind {kind:?} in locals shape"
-                    ));
-                }
-            }
+            run_expression_node(&mut bus, &workers, &mut trace, node)?;
         }
         step(
             &mut bus,

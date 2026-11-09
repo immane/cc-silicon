@@ -191,8 +191,8 @@ const M1_PUNCTUATORS: &[(usize, &[u8])] = &[
     (11, b"}"),
 ];
 
-/// `/52` source-locals prefix token kinds:
-/// `int main ( void ) { int x = <int> ; return <expr> ; } EOF`.
+/// `/52`/`/53` source-locals prefix token kinds:
+/// `int main ( void ) { int x = <int> ; <statements> } EOF`.
 const M1_LOCALS_PREFIX_KINDS: &[TokenKind] = &[
     TokenKind::Keyword,
     TokenKind::Identifier,
@@ -205,16 +205,14 @@ const M1_LOCALS_PREFIX_KINDS: &[TokenKind] = &[
     TokenKind::Punctuator,
     TokenKind::Integer,
     TokenKind::Punctuator,
-    TokenKind::Keyword,
 ];
 
-/// `/52` keyword/identifier spellings at fixed prefix positions.
+/// `/52`/`/53` keyword/identifier spellings at fixed prefix positions.
 const M1_LOCALS_PREFIX_WORDS: &[(&[u8], usize)] = &[
     (b"int".as_slice(), 0),
     (b"main".as_slice(), 1),
     (b"void".as_slice(), 3),
     (b"int".as_slice(), 6),
-    (b"return".as_slice(), 11),
 ];
 
 /// `/52` punctuator spellings at fixed prefix positions.
@@ -420,10 +418,10 @@ impl PaTuChip {
         append_nodes(input, specs)
     }
 
-    /// `/52` source-locals shape. The fixed prefix is
-    /// `int main(void){int x=<int>;return`, followed by a closed expression
-    /// tree and `; } EOF`. Parsing happens before any append; failures leave
-    /// the bus untouched.
+    /// `/52`/`/53` source-locals shape. The fixed prefix is
+    /// `int main(void){int x=<int>;`, followed by zero or more assignments
+    /// `x=<expr>;`, then `return <expr>; } EOF`. Parsing happens before any
+    /// append; failures leave the bus untouched.
     fn compute_locals(&self, input: &PaTuInput) -> Vec<Proposal> {
         if input.tokens.len() < 16 {
             return vec![fail(
@@ -487,19 +485,151 @@ impl PaTuChip {
         let main_name = input.bodies[&input.tokens[1]].name;
         let mut parser = ExprParser {
             input,
-            pos: 12,
-            local_name: decl_name,
+            pos: 11,
+            local_name: Some(decl_name),
         };
-        let (expression, semicolon, brace, eof) = match parser.parse_tail() {
-            Ok(tail) => tail,
-            Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+        let mut assignments = Vec::new();
+        let (return_index, return_expression, semicolon, brace, eof) = loop {
+            let is_return = {
+                let body = match parser.body(parser.pos) {
+                    Ok(body) => body,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                body.kind == TokenKind::Keyword && body.spelling == b"return"
+            };
+            if is_return {
+                let return_index = parser.pos;
+                parser.pos += 1;
+                let expression = match parser.parse_expression() {
+                    Ok(expression) => expression,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                let semicolon = match parser.expect_punct(b";") {
+                    Ok(index) => index,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                let brace = match parser.expect_punct(b"}") {
+                    Ok(index) => index,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                let eof = parser.pos;
+                let eof_body = match parser.body(eof) {
+                    Ok(body) => body,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                if eof_body.kind != TokenKind::Eof
+                    || !eof_body.pp_spelling.is_empty()
+                    || eof_body.name.is_some()
+                {
+                    return vec![fail(
+                        input.task,
+                        DiagnosticDraft::unsupported("missing trailing EOF"),
+                    )];
+                }
+                parser.pos += 1;
+                if parser.pos != input.tokens.len() {
+                    return vec![fail(
+                        input.task,
+                        DiagnosticDraft::unsupported("tokens after the function body"),
+                    )];
+                }
+                break (return_index, expression, semicolon, brace, eof);
+            }
+            let lhs_name = {
+                let body = match parser.body(parser.pos) {
+                    Ok(body) => body,
+                    Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+                };
+                if body.kind != TokenKind::Identifier {
+                    return vec![fail(
+                        input.task,
+                        DiagnosticDraft::unsupported(
+                            "locals statement is neither assignment nor return",
+                        ),
+                    )];
+                }
+                body.name
+            };
+            if lhs_name != Some(decl_name) {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported(
+                        "locals assignment names an identifier other than the local",
+                    ),
+                )];
+            }
+            let lhs_index = parser.pos;
+            parser.pos += 1;
+            if let Err(diagnostic) = parser.expect_punct(b"=") {
+                return vec![fail(input.task, diagnostic)];
+            }
+            let rhs = match parser.parse_expression() {
+                Ok(expression) => expression,
+                Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+            };
+            if let Err(diagnostic) = parser.expect_punct(b";") {
+                return vec![fail(input.task, diagnostic)];
+            }
+            assignments.push((lhs_index, rhs));
         };
         let base = input.nodes_allocated;
         let node = |index: u32| crate::ids::NodeId::from_index(base.saturating_add(index));
-        let mut next = 10u32;
-        let mut expression_nodes = std::collections::BTreeMap::new();
-        let expression_root =
-            assign_expression(expression, &mut next, node(9), base, &mut expression_nodes);
+        let mut next = 9u32;
+        let mut dynamic = std::collections::BTreeMap::new();
+        let mut assignment_ids = Vec::new();
+        for (lhs_index, rhs) in assignments {
+            let assignment_offset = next;
+            next += 1;
+            let assignment = node(assignment_offset);
+            let lhs = node(next);
+            dynamic.insert(
+                next,
+                (
+                    NodeKind::Identifier,
+                    Some(assignment),
+                    vec![],
+                    lhs_index,
+                    lhs_index,
+                    Some(decl_name),
+                    None,
+                ),
+            );
+            next += 1;
+            let rhs_last = rhs.last;
+            let rhs_root = assign_expression(rhs, &mut next, assignment, base, &mut dynamic);
+            dynamic.insert(
+                assignment_offset,
+                (
+                    NodeKind::Assignment,
+                    Some(node(4)),
+                    vec![lhs, rhs_root],
+                    lhs_index,
+                    rhs_last,
+                    None,
+                    None,
+                ),
+            );
+            assignment_ids.push(assignment);
+        }
+        let return_offset = next;
+        next += 1;
+        let ret = node(return_offset);
+        let return_root = assign_expression(return_expression, &mut next, ret, base, &mut dynamic);
+        dynamic.insert(
+            return_offset,
+            (
+                NodeKind::Return,
+                Some(node(4)),
+                vec![return_root],
+                return_index,
+                semicolon,
+                None,
+                None,
+            ),
+        );
+        let mut compound_children = vec![node(5)];
+        compound_children.extend(assignment_ids);
+        compound_children.push(ret);
         let mut specs: Vec<NodeSpec> = vec![
             (
                 NodeKind::TranslationUnit,
@@ -540,7 +670,7 @@ impl PaTuChip {
             (
                 NodeKind::Compound,
                 Some(node(1)),
-                vec![node(5), node(9)],
+                compound_children,
                 5,
                 brace,
                 None,
@@ -582,23 +712,14 @@ impl PaTuChip {
                 None,
                 Some(*initializer),
             ),
-            (
-                NodeKind::Return,
-                Some(node(4)),
-                vec![expression_root],
-                11,
-                semicolon,
-                None,
-                None,
-            ),
         ];
-        for offset in 10..next {
-            let Some(spec) = expression_nodes.remove(&offset) else {
+        for offset in 9..next {
+            let Some(spec) = dynamic.remove(&offset) else {
                 return vec![fail(
                     input.task,
                     DiagnosticDraft::error(
                         DiagnosticCode::new(DiagGroup::Task, 4),
-                        "missing parsed expression node",
+                        "missing parsed locals node",
                     ),
                 )];
             };
@@ -611,7 +732,7 @@ impl PaTuChip {
 struct ExprParser<'a> {
     input: &'a PaTuInput,
     pos: usize,
-    local_name: NameId,
+    local_name: Option<NameId>,
 }
 
 impl<'a> ExprParser<'a> {
@@ -647,22 +768,8 @@ impl<'a> ExprParser<'a> {
         Err(DiagnosticDraft::unsupported("missing expected punctuator"))
     }
 
-    fn parse_tail(&mut self) -> Result<(ExprNode, usize, usize, usize), DiagnosticDraft> {
-        let expression = self.parse_binary(0)?;
-        let semicolon = self.expect_punct(b";")?;
-        let brace = self.expect_punct(b"}")?;
-        let eof = self.pos;
-        let body = self.body(eof)?;
-        if body.kind != TokenKind::Eof || !body.pp_spelling.is_empty() || body.name.is_some() {
-            return Err(DiagnosticDraft::unsupported("missing trailing EOF"));
-        }
-        self.pos += 1;
-        if self.pos != self.input.tokens.len() {
-            return Err(DiagnosticDraft::unsupported(
-                "tokens after the function body",
-            ));
-        }
-        Ok((expression, semicolon, brace, eof))
+    fn parse_expression(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        self.parse_binary(0)
     }
 
     fn parse_binary(&mut self, min_bp: u8) -> Result<ExprNode, DiagnosticDraft> {
@@ -746,7 +853,7 @@ impl<'a> ExprParser<'a> {
                         "local expression identifier has no name",
                     ));
                 };
-                if name != self.local_name {
+                if self.local_name != Some(name) {
                     return Err(DiagnosticDraft::unsupported(
                         "local expression uses an identifier other than the local",
                     ));

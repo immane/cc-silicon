@@ -107,6 +107,8 @@ pub struct IrFunctionInput {
     pub local: Option<SymbolId>,
     /// `/52` checked local expression tree; `None` for non-local shapes.
     pub local_expr: Option<LocalExpr>,
+    /// `/53` assignment RHS expressions in source order.
+    pub local_assignments: Vec<LocalExpr>,
     /// Arena counts at dispatch (positional prediction bases).
     pub functions_allocated: u32,
     /// Block prediction base.
@@ -206,22 +208,30 @@ pub fn project_ir_function_input(
     // by one return. Anything else stays unsupported.
     let (ret, local_shape) = match compound_body.children.as_slice() {
         [ret] => (*ret, None),
-        [declaration, ret] => {
+        children
+            if children.len() >= 2
+                && children.last().is_some()
+                && bus
+                    .arenas
+                    .nodes
+                    .get(children[0])
+                    .map(|body| body.kind == NodeKind::Declaration)
+                    .unwrap_or(false) =>
+        {
             let declaration_body = bus
                 .arenas
                 .nodes
-                .get(*declaration)
-                .map_err(|_| missing("node", declaration.index()))?;
-            if declaration_body.kind != NodeKind::Declaration
-                || declaration_body.children.len() != 3
-            {
+                .get(children[0])
+                .map_err(|_| missing("node", children[0].index()))?;
+            if declaration_body.children.len() != 3 {
                 return Err(DiagnosticDraft::unsupported(
                     "lower of a non-covered declaration",
                 ));
             }
             let declarator = declaration_body.children[1];
             let initializer = declaration_body.children[2];
-            (*ret, Some((declarator, initializer)))
+            let ret = *children.last().expect("checked above");
+            (ret, Some((declarator, initializer)))
         }
         _ => {
             return Err(DiagnosticDraft::unsupported(
@@ -426,6 +436,7 @@ pub fn project_ir_function_input(
     }
     let mut local_symbol = None;
     let mut local_expr = None;
+    let mut local_assignments = Vec::new();
     let (constant, constant_record_ty) = if let Some((local_declarator, initializer)) = local_shape
     {
         // The declaration's declarator names the automatic object.
@@ -490,7 +501,30 @@ pub fn project_ir_function_input(
                 "lower reads literal-less local initializer",
             ));
         };
+        let compound_body = bus
+            .arenas
+            .nodes
+            .get(compound)
+            .map_err(|_| missing("node", compound.index()))?;
+        let assignment_roots: Vec<NodeId> = compound_body.children[1..]
+            .split_last()
+            .map(|(_, rest)| {
+                rest.iter()
+                    .filter_map(|statement| {
+                        bus.arenas
+                            .nodes
+                            .get(*statement)
+                            .ok()
+                            .and_then(|body| (body.kind == NodeKind::Assignment).then_some(body))
+                            .and_then(|body| body.children.get(1).copied())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut literal_order = vec![literal];
+        for rhs in &assignment_roots {
+            collect_expression_literals(bus, *rhs, &mut literal_order)?;
+        }
         collect_expression_literals(bus, operand, &mut literal_order)?;
         let consts: Vec<(ConstId, &crate::bus::ConstRecord)> = bus.arenas.consts.iter().collect();
         if consts.len() != literal_order.len() {
@@ -543,6 +577,15 @@ pub fn project_ir_function_input(
             )
         })?;
         let constant_record_ty = int;
+        for rhs in assignment_roots {
+            local_assignments.push(build_local_expr(
+                bus,
+                rhs,
+                local_name,
+                int,
+                &literal_consts,
+            )?);
+        }
         local_expr = Some(build_local_expr(
             bus,
             operand,
@@ -598,6 +641,7 @@ pub fn project_ir_function_input(
         constant,
         local: local_symbol,
         local_expr,
+        local_assignments,
         functions_allocated: bus.arenas.functions.allocated(),
         blocks_allocated: bus.arenas.blocks.allocated(),
         values_allocated: bus.arenas.values.allocated(),
@@ -1072,6 +1116,25 @@ impl IrFunctionChip {
             local: Some(local),
             successors: vec![],
         });
+        for assignment in &input.local_assignments {
+            let value = lower_local_expression(
+                assignment,
+                local,
+                block,
+                input.values_allocated,
+                &mut next_value,
+                &mut instructions,
+            );
+            instructions.push(InstructionRecord {
+                op: IrOp::LocalStore,
+                block,
+                operands: vec![value],
+                immediate: None,
+                result: None,
+                local: Some(local),
+                successors: vec![],
+            });
+        }
         let returned = lower_local_expression(
             expression,
             local,

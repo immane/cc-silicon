@@ -216,12 +216,17 @@ pub fn project_se_function_input(
         .nodes
         .get(compound)
         .map_err(|_| missing("node", compound.index()))?;
-    if compound_body.kind != NodeKind::Compound || !matches!(compound_body.children.len(), 1 | 2) {
+    if compound_body.kind != NodeKind::Compound || compound_body.children.is_empty() {
         return Err(DiagnosticDraft::unsupported(
             "se-function of a non-M1 block body",
         ));
     }
-    let ret = if compound_body.children.len() == 2 {
+    let Some(ret) = compound_body.children.last().copied() else {
+        return Err(DiagnosticDraft::unsupported(
+            "se-function of an empty block body",
+        ));
+    };
+    if compound_body.children.len() > 1 {
         let declaration = compound_body.children[0];
         let declaration_body = bus
             .arenas
@@ -233,10 +238,19 @@ pub fn project_se_function_input(
                 "se-function of a non-covered declaration",
             ));
         }
-        compound_body.children[1]
-    } else {
-        compound_body.children[0]
-    };
+        for statement in &compound_body.children[1..compound_body.children.len() - 1] {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| missing("node", statement.index()))?;
+            if statement_body.kind != NodeKind::Assignment {
+                return Err(DiagnosticDraft::unsupported(
+                    "se-function of a non-assignment statement",
+                ));
+            }
+        }
+    }
     let ret_body = bus
         .arenas
         .nodes

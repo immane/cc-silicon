@@ -486,10 +486,11 @@ fn se_func_kind_stage_registry_manifest_frozen() {
         TaskKind::VERIFICATION_EVIDENCE_CLASSIFY
     ));
     // The function registry extends the `/38` head linearly (68 → 69);
-    // `/49` adds the identifier kind (69 → 70), `/52` the unary kind (70 → 71).
+    // `/49` adds the identifier kind (69 → 70), `/52` the unary kind (70 → 71),
+    // `/53` the assignment kind (71 → 72).
     assert_eq!(TaskKindRegistry::vf_evidence_slice().len(), 68);
     let registry = TaskKindRegistry::se_function_slice();
-    assert_eq!(registry.len(), 71);
+    assert_eq!(registry.len(), 72);
     assert_eq!(
         registry
             .lookup(TaskKind::SEMANTIC_FUNCTION_DEF)
@@ -499,8 +500,9 @@ fn se_func_kind_stage_registry_manifest_frozen() {
     );
     assert_eq!(stage_of(TaskKind::SEMANTIC_IDENTIFIER_EXPR), Some(4));
     assert_eq!(stage_of(TaskKind::SEMANTIC_UNARY_EXPR), Some(4));
+    assert_eq!(stage_of(TaskKind::SEMANTIC_ASSIGNMENT_EXPR), Some(4));
     assert_eq!(
-        stage_of(TaskKind::new(TaskGroup::SEMANTIC, 24).unwrap()),
+        stage_of(TaskKind::new(TaskGroup::SEMANTIC, 25).unwrap()),
         None
     );
     // The chip appends exactly one `sem.records` row for its kind.
@@ -511,7 +513,7 @@ fn se_func_kind_stage_registry_manifest_frozen() {
         "records",
         TaskKind::SEMANTIC_FUNCTION_DEF,
     )));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 35);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 36);
     let manifest = SeFuncChip.manifest();
     assert_eq!(
         manifest.writes,

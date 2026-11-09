@@ -106,10 +106,11 @@ pub use self::preprocess::{
     PP23_TASK_KIND, PP25_TASK_KIND, PP27_TASK_KIND, PP28_TASK_KIND, PP_LINE_MAX,
 };
 pub use self::semantic::{
-    project_se_binary_input, project_se_function_input, project_se_identifier_input,
-    project_se_literal_input, project_se_return_input, project_se_unary_input, SeBinChip,
-    SeBinaryInput, SeFuncChip, SeFunctionInput, SeIdentifierChip, SeIdentifierInput, SeLitChip,
-    SeLiteralInput, SeRetChip, SeReturnInput, SeUnaryChip, SeUnaryInput, SE_FUNC_TASK_KIND,
+    project_se_assignment_input, project_se_binary_input, project_se_function_input,
+    project_se_identifier_input, project_se_literal_input, project_se_return_input,
+    project_se_unary_input, SeAssignmentChip, SeAssignmentInput, SeBinChip, SeBinaryInput,
+    SeFuncChip, SeFunctionInput, SeIdentifierChip, SeIdentifierInput, SeLitChip, SeLiteralInput,
+    SeRetChip, SeReturnInput, SeUnaryChip, SeUnaryInput, SE_FUNC_TASK_KIND,
 };
 pub use self::symbols::{
     in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input,

@@ -50,14 +50,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// slice (shape-gated TU parser, block automatic object, identifier fact,
 /// local load/store IR, symbolic local model), the `/50` modeled-integer
 /// result plus local-add source slice, the `/51` local binary-operator
-/// source slice, and the `/52` local expression-tree slice.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/52";
+/// source slice, the `/52` local expression-tree slice, and the `/53` local
+/// assignment/statement slice.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/53";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23";
+pub const CONTRACT_HASH: &str = "b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -195,6 +196,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "se.binary-identifier-operand",
     "se.local-binary-operators",
     "se.unary-checked-nonlvalue",
+    "se.assignment-writes-local",
     "se.binary-forwards-identical-fold",
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
@@ -204,6 +206,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "ir.local-add-return",
     "ir.local-binary-operators",
     "ir.local-expression-tree",
+    "ir.local-assignment-order",
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
@@ -216,9 +219,11 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf12.local-add-modeled-integer",
     "vf12.local-binary-operators",
     "vf12.local-expression-program",
+    "vf12.local-assignment-model",
     "result.integer-modeled",
     "parse.tu-local-binary-operators",
     "parse.tu-local-expression-tree",
+    "parse.tu-local-assignment",
     "vf12.unsupported-never-pass",
     "vf05.syntax-ranges-ordered",
     "vf05.required-fields-complete",

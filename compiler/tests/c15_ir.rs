@@ -1007,6 +1007,7 @@ fn ir_constant_result_type_must_match_return_fact() {
         constant: ConstId::from_index(0),
         local: None,
         local_expr: None,
+        local_assignments: vec![],
         functions_allocated: 0,
         blocks_allocated: 0,
         values_allocated: 0,

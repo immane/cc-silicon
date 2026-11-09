@@ -234,6 +234,7 @@ impl Vf05Chip {
                 | NodeKind::BinaryDiv
                 | NodeKind::BinaryRem => (2, false, false),
                 NodeKind::UnaryPlus | NodeKind::UnaryMinus => (1, false, false),
+                NodeKind::Assignment => (2, false, false),
                 NodeKind::IntLiteral => (0, false, true),
                 // `/49` source-locals shape.
                 NodeKind::Declaration => (3, false, false),
@@ -241,7 +242,7 @@ impl Vf05Chip {
                 // `/43` freezes the V1 AST inventory but VF05's V1 shape
                 // table is not part of this schema slice. Fail closed rather
                 // than silently validating an unknown shape.
-                NodeKind::ExpressionStatement | NodeKind::Assignment => {
+                NodeKind::ExpressionStatement => {
                     return vec![syntax_fail(
                         input.task,
                         "V1 AST kind is not covered by the M1 VF05 shape table",
@@ -249,8 +250,9 @@ impl Vf05Chip {
                 }
             };
             let child_count_ok = if body.kind == NodeKind::Compound {
-                // Canonical `return 2+3;` or one local declaration plus return.
-                matches!(body.children.len(), 1 | 2)
+                // Canonical return, or one declaration, zero or more
+                // assignments, and one return.
+                body.children.len() >= 2 || body.children.len() == 1
             } else {
                 body.children.len() == children
             };
@@ -282,6 +284,40 @@ impl Vf05Chip {
                     )];
                 }
             }
+            if body.kind == NodeKind::Assignment {
+                let child_kinds: Vec<NodeKind> = body
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        input
+                            .tree
+                            .iter()
+                            .find(|(nid, _)| nid == child)
+                            .map(|(_, child_body)| child_body.kind)
+                    })
+                    .collect();
+                if child_kinds.first() != Some(&NodeKind::Identifier)
+                    || !matches!(
+                        child_kinds.get(1),
+                        Some(
+                            NodeKind::IntLiteral
+                                | NodeKind::Identifier
+                                | NodeKind::BinaryAdd
+                                | NodeKind::BinarySub
+                                | NodeKind::BinaryMul
+                                | NodeKind::BinaryDiv
+                                | NodeKind::BinaryRem
+                                | NodeKind::UnaryPlus
+                                | NodeKind::UnaryMinus
+                        )
+                    )
+                {
+                    return vec![syntax_fail(
+                        input.task,
+                        "assignment child shape is not covered",
+                    )];
+                }
+            }
             if body.kind == NodeKind::Compound {
                 let child_kinds: Vec<NodeKind> = body
                     .children
@@ -294,10 +330,17 @@ impl Vf05Chip {
                             .map(|(_, child_body)| child_body.kind)
                     })
                     .collect();
-                let ok = matches!(
-                    child_kinds.as_slice(),
-                    [NodeKind::Return] | [NodeKind::Declaration, NodeKind::Return]
-                );
+                let ok = match child_kinds.as_slice() {
+                    [NodeKind::Return] => true,
+                    [NodeKind::Declaration, rest @ ..] => {
+                        !rest.is_empty()
+                            && rest.last() == Some(&NodeKind::Return)
+                            && rest[..rest.len() - 1]
+                                .iter()
+                                .all(|kind| *kind == NodeKind::Assignment)
+                    }
+                    _ => false,
+                };
                 if !ok {
                     return vec![syntax_fail(
                         input.task,

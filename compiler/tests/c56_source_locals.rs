@@ -147,6 +147,42 @@ fn local_expression_tree_lowers_and_models() {
 }
 
 #[test]
+fn local_assignment_updates_the_local() {
+    let dir = workdir("assign-emit");
+    let asm = dir.join("main.s");
+    let output = run_candidate("int main(void){int x=2;x=x+3;return x;}\n", Some(&asm));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("interpret: value=05"), "{stdout}");
+    let assembly = String::from_utf8(std::fs::read(&asm).expect("assembly file")).unwrap();
+    assert!(assembly.contains("add w0, w0, w1"), "{assembly}");
+    assert!(assembly.contains("str w0, [sp, #0]"), "{assembly}");
+}
+
+#[test]
+fn local_assignment_replays_the_statement_order() {
+    let dir = workdir("assign-order");
+    let asm = dir.join("main.s");
+    let output = run_candidate(
+        "int main(void){int x=2;x=x+3;x=x*2;return x;}\n",
+        Some(&asm),
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("interpret: value=0a"), "{stdout}");
+}
+
+#[test]
 fn canonical_constant_return_still_models_five() {
     let dir = workdir("canonical");
     let asm = dir.join("main.s");
@@ -213,6 +249,7 @@ fn identifier_chip_manifest_is_write_scoped() {
 fn locals_shape_rejects_mismatched_names_and_extra_statements() {
     for source in [
         "int main(void){int x=2;return y;}\n",
+        "int main(void){int x=2;y=x+3;return x;}\n",
         "int main(void){int x=2;return x^3;}\n",
         "int main(void){int x=2;return (x+3;}\n",
         "int main(void){int x;return x;}\n",
@@ -326,6 +363,41 @@ fn emitted_local_expression_tree_runs_on_aarch64() {
         );
         let run = Command::new(&exe).output().expect("program runs");
         assert_eq!(run.status.code(), Some(expected), "expression {expression}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn emitted_local_assignments_run_on_aarch64() {
+    let machine = Command::new("gcc")
+        .arg("-dumpmachine")
+        .output()
+        .expect("gcc available");
+    if !String::from_utf8_lossy(&machine.stdout).contains("aarch64") {
+        return;
+    }
+    for (source, expected) in [
+        ("int main(void){int x=2;x=x+3;return x;}\n", 5),
+        ("int main(void){int x=2;x=x+3;x=x*2;return x;}\n", 10),
+    ] {
+        let dir = workdir("run-assign");
+        let asm = dir.join("main.s");
+        let exe = dir.join("main");
+        let output = run_candidate(source, Some(&asm));
+        assert_eq!(output.status.code(), Some(0));
+        let build = Command::new("gcc")
+            .arg("-o")
+            .arg(&exe)
+            .arg(&asm)
+            .output()
+            .expect("gcc runs");
+        assert!(
+            build.status.success(),
+            "gcc failed: {}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let run = Command::new(&exe).output().expect("program runs");
+        assert_eq!(run.status.code(), Some(expected), "source {source}");
     }
 }
 
