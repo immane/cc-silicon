@@ -7,7 +7,7 @@
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
 | Contract baseline | `t01-c01-c06/48` — hash `820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e` |
-| Branch / HEAD | `wave4-development` / `5c8c56d` (code through the M1 target prototype committed; this status-doc commit follows) |
+| Branch / HEAD | `wave4-development` / `6506af7` (code through the M1 integer-IR emitter committed; this status-doc commit follows) |
 | Workspace note | `/42`–`/48`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; no push was performed |
 
 ## 1. Baseline Checks
@@ -15,7 +15,7 @@
 | Check | Result | Notes |
 |---|---|---|
 | Root package tests | **PASS**, 21 tests across 3 suites | Observed in the `/40` integration session |
-| Compiler package tests | **PASS**, **725 tests across 61 suites (726 on native AArch64 Linux) after `/48`** | Observed in the `/48` target-baseline session. Adds the third `c48_target_probe` assertion on top of `/47`. |
+| Compiler package tests | **PASS**, **728 tests across 61 suites (729 on native AArch64 Linux) after the M1 integer-IR slice** | Observed in the M1 locals/arithmetic session. Adds two candidate-bin target-emitter tests on top of the M1 constant-return prototype. |
 | Root/compiler/torture/chip-lint formatting | **PASS** | `cargo fmt --all -- --check` plus all three manifest-path checks on 2026-11-09 |
 | Root tests after B3-03a | **PASS**, 21 tests | `cargo test --workspace --locked` |
 | Torture package after B3-03a | **PASS**, 73 tests | `cargo test --locked --manifest-path tools/torture/Cargo.toml` |
@@ -171,6 +171,7 @@ triaged the critical path as follows.
 | B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | **COMPLETE / VERIFIED** — `tools/runner`; `cargo test --manifest-path tools/runner/Cargo.toml` 8 macOS / 10 Linux; see [H05](H05_ISOLATED_RUNNER.md) |
 | B3-08 | H07 probe-report classifier over synthetic assembly fixtures | **IMPLEMENTED / REAL RUN VERIFIED** — `tools/torture/probe/classify.py` derives the four ABI fields from `abi-args.s`; `c48_target_probe` 3/3. Official T00 baseline/substrate still open |
 | B3-09 | M1 AArch64 assembly prototype (`candidate --emit-asm`) | **COMPLETE / VERIFIED** — constant-return IR emits GNU assembly; native AArch64 Linux assemble/link/run exits 5; `c55_target_m1` 1 macOS / 2 Linux. Not general T11 codegen; `-S`/`-c` still refused |
+| B3-10 | M1 automatic-local/integer-arithmetic IR emitter (host-only) | **IMPLEMENTED / VERIFIED at IR level** — `target_m1` accepts automatic `int` locals, `LocalLoad`/`LocalStore`, `Add`/`Sub`/`Mul`/`Div`/`Rem`/`Neg`, and one `Return`; 12 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` executes the add and all-operator fixtures. No source-to-IR producer yet |
 
 ## 3E. B2 Decision Record (B2-01 `/40`, B2-00 `/41`, B2-02 `/42` accepted)
 
@@ -375,8 +376,9 @@ defaults. The deferred restore package is `/49`.
 - **Next freeze train:** `/49` remains the deferred
   restore/quota>1/VF13/`StorePatch` package. Each needs an explicit integrator
   decision, implementation, dependent tests, and a recomputed hash.
-- **Next integration blockers:** general T11 codegen beyond the M1
-  constant-return prototype, official T00 corpus/runner/aggregation, B3-03c
+- **Next integration blockers:** a source-to-IR producer for automatic locals
+  and arithmetic beyond the M1 constant-return path, general T11 codegen,
+  official T00 corpus/runner/aggregation, B3-03c
   `#line`/`#pragma`, wider H04 `-I`/angle/system/multi-source freeze, canonical
   PA15 allocation/wiring (B3-04), and full legacy diagnostic migration. H05
   process supervision is implemented; namespace sandboxing and target

@@ -19,7 +19,7 @@ re-verify. This page records observed state, not a new acceptance run.
 | Constant v3 (`/45`) | **Schema frozen; producers not implemented** | ADR-0005 float/address tags, format-checked raw bits, symbolic addend; VF14 integer-only gate. T06 float/pointer compatibility remains future |
 | Type/layout/init (`/46`) | **Schema frozen; producers/verifier not implemented** | ADR-0006 pointer/array/aggregate/enum types; typed layout/init arenas and append handles; symbolic-or-bit extents. Target byte layout and VF07 remain future |
 | Diagnostic taxonomy (`/47`) | **Registry frozen; migration pending** | ADR-0007 groups/codes/helpers; legacy `Task:4` call sites remain until owner migration |
-| C source → executable | **M1 constant-return prototype only** | `candidate --emit-asm` + native AArch64 assembler/linker/run returns 5 for `int main(void){return 2+3;}`; no general codegen, `-S`/`-c`, locals, calls, or memory |
+| C source → executable | **M1 constant-return source path only** | `candidate --emit-asm` + native AArch64 assembler/linker/run returns 5 for `int main(void){return 2+3;}`. The emitter also lowers manually constructed automatic-local/integer-arithmetic IR with native execution tests, but no source frontend producer for that shape exists; no general codegen, `-S`/`-c`, calls, or memory |
 | AArch64 target values | **Probe-attested baseline; official CI/bare-metal baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=probe-attested`; candidate codegen gate remains |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
@@ -70,7 +70,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **725 tests across 61 suites (726 on native AArch64 Linux) passed** after `/47` (adds AST, IR/CFG, constant-v3, type/layout/init, and diagnostic-taxonomy schema tests on top of tagged constants, PP driver/include, and target attestation) |
+| Compiler | **728 tests across 61 suites (729 on native AArch64 Linux) passed** after the M1 integer-IR slice (adds two target-emitter unit tests on top of the constant-return prototype and the `/47` schema suite) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; one containerized real probe report + H07 classification |
@@ -92,7 +92,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 - A pinned Debian-GCC-12.2.0 containerized probe has run and its report is
   attested in `c48_target_probe`; the global target state is
   `probe-attested`. The official T00 reference baseline/CI substrate is still
-  open, and target codegen is only the M1 constant-return prototype.
+  open, and target codegen is only the M1 constant-return source path plus an IR-shape locals/arithmetic emitter.
 - H05 process supervision is implemented in `tools/runner` (timeout/output
   caps/cancellation/Linux process-group+prlimit). It is not a kernel namespace
   sandbox, and H02/H03 target orchestration remains absent.

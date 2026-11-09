@@ -1,21 +1,21 @@
-# M1 Target Emission Prototype — AArch64 Constant Return
+# M1 Target Emission Prototype — AArch64 Constant Return and Integer IR
 
 | Field | Value |
 |---|---|
-| Status | **IMPLEMENTED / VERIFIED (2026-11-09)** — host-only T11 bootstrap; no full target chip family |
-| Input | Committed M1 IR: one function, one block, `Constant` + `Return` |
-| Output | GNU AArch64 assembly for `int main(void){return <constant>;}` |
-| Command | `candidate --emit-asm <path> <source.c>` |
-| Non-claims | No general codegen, ABI calls, locals, memory, control flow, object emission, or torture rate |
+| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** — host-only T11 bootstrap; no full target chip family |
+| Input | Committed single-block `int(void)` IR: `Constant` + `Return`, or automatic-local load/store plus integer arithmetic and one `Return` |
+| Output | GNU AArch64 assembly for `int main(void)` |
+| Command | `candidate --emit-asm <path> <source.c>` (constant-return source path) |
+| Non-claims | No general codegen, calls, memory, control flow, frontend producer for locals, object emission, or torture rate |
 
 ## 1. Scope
 
 This slice unlocks the first source-to-executable path for the canonical M1
-fixture without pretending T11 is complete. The candidate consumes the already
-committed IR and writes GNU assembly; an external assembler/linker produces the
-ELF executable.
+fixture without pretending T11 is complete. The candidate consumes committed IR
+and writes GNU assembly; an external assembler/linker produces the ELF
+executable.
 
-Supported shape:
+Two IR shapes are accepted:
 
 ```text
 FunctionRecord int(void)
@@ -24,11 +24,27 @@ FunctionRecord int(void)
     InstructionRecord Return   { operands: [Value] }
 ```
 
-The constant must fit `i32`; every other IR shape fails closed.
+and the stack-machine shape:
+
+```text
+FunctionRecord int(void)
+  BlockRecord entry
+    Constant / LocalLoad / LocalStore / Add / Sub / Mul / Div / Rem / Neg
+    Return { operands: [Value] }
+```
+
+Locals must be automatic objects with the canonical signed-`int` type. Every
+produced value must carry that same type. Constants must fit `i32`; operands
+must be produced before use; `Return` must be last. Any other IR shape fails
+closed.
+
+The host candidate frontend still produces only the `Constant` + `Return`
+shape. The local/arithmetic emitter is currently exercised by unit-test IR
+fixtures, not by a source-level frontend producer.
 
 ## 2. Emission
 
-For value `5`:
+For value `5`, the constant-return path emits a leaf function with no frame:
 
 ```asm
 # cc-silicon M1 AArch64 prototype
@@ -43,35 +59,67 @@ main:
 .section .note.GNU-stack,"",%progbits
 ```
 
-`movz`/`movk` covers any 32-bit value. AArch64 `main` returns its `int` result in
-`w0`; no prologue/epilogue is needed for a leaf function with no locals.
+The stack-machine path reserves 16-byte-aligned slots for locals and values,
+then lowers each instruction to `ldr`/`str` and integer ALU instructions. For
+example, `int x = 2; return x + 3;` becomes:
+
+```asm
+main:
+    sub sp, sp, #32
+    movz w0, #2
+    str w0, [sp, #4]
+    ldr w0, [sp, #4]
+    str w0, [sp, #0]
+    ldr w0, [sp, #0]
+    str w0, [sp, #8]
+    movz w0, #3
+    str w0, [sp, #12]
+    ldr w0, [sp, #8]
+    ldr w1, [sp, #12]
+    add w0, w0, w1
+    str w0, [sp, #16]
+    ldr w0, [sp, #16]
+    add sp, sp, #32
+    ret
+```
+
+`movz`/`movk` covers any 32-bit constant. Division and remainder use `sdiv`
+and a following `msub`; negation uses `neg`. AArch64 `main` returns its `int`
+result in `w0`.
 
 ## 3. Verification
 
-macOS host (assembly emission test only):
+macOS host (assembly emission plus IR-shape unit tests; Linux execution tests
+are cfg-skipped):
 
 ```sh
+cargo test --locked --manifest-path compiler/Cargo.toml --bin candidate
+# 12 passed
 cargo test --locked --manifest-path compiler/Cargo.toml --test c55_target_m1
-# 1 passed (Linux execution test cfg-skipped)
+# 1 passed
 ```
 
-Native Linux AArch64 (assembly + assemble/link/run):
+Native Linux AArch64 (same unit tests plus assemble/link/run):
 
 ```sh
 docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   -e CARGO_TARGET_DIR=/tmp/target rust:1.85-bookworm \
   /usr/local/cargo/bin/cargo test --locked \
-  --manifest-path compiler/Cargo.toml --test c55_target_m1
-# 2 passed; compiled executable exits 5 for int main(void){return 2+3;}
+  --manifest-path compiler/Cargo.toml --bin candidate
+# 12 passed; the local/add fixture exits 5 and the all-operator fixture exits 252 (-4)
 ```
 
-The Linux test skips when the host GCC is not an AArch64 target.
+The `c55_target_m1` integration test separately assembles, links, and runs the
+constant-return CLI output with native AArch64 GCC (exit 5). Execution tests
+skip when the host GCC is not an AArch64 target.
 
 ## 4. Explicit limitations
 
 - Host-only prototype, not a T11 chip or manifest entry.
-- No target records, register allocation, stack frames, calls, locals, memory,
-  branches, ABI argument classification, relocations, or object emission.
+- No target records, register allocation, calls, memory operands, branches,
+  ABI argument classification, relocations, or object emission.
+- The stack-machine IR path has no source-level producer yet; only the
+  constant-return path is reachable through `--emit-asm`.
 - `-S`/`-c` remain refused; `--emit-asm` is an explicit bootstrap flag.
 - External assembler/linker/sysroot/runtime are host inputs, not frozen here.
 - No GCC torture corpus or pass rate is involved.

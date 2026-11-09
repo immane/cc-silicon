@@ -4,7 +4,7 @@
 > 2026-11-09 after accepting `/43` parser architecture/V1 AST, implementing
 > B2-02 `/42`, B-INT-00, B3-03a source `#define`/`#undef`, B3-03b bounded
 > quote include, and the target probe, with the full compiler suite green
-> (725 tests / 61 suites (726 on native AArch64 Linux); clippy clean).
+> (728 tests / 61 suites (729 on native AArch64 Linux); clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
@@ -38,7 +38,10 @@
   `/47`; B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
   Part B general target codegen; full M1 acceptance. A host-only M1
-  `--emit-asm` prototype now emits/runs the constant-return fixture. One pinned containerized AArch64
+  `--emit-asm` prototype now emits/runs the constant-return fixture and
+  lowers manually constructed automatic-local/integer-arithmetic IR with
+  native-execution unit tests; the host frontend still has no producer for
+  that shape. One pinned containerized AArch64
   probe report is H07-classified and attested by `c48_target_probe`; the global
   target state is `probe-attested`, while the official T00 CI/bare-metal
   baseline remains open. No target execution or GCC pass rate is claimed.
@@ -97,6 +100,7 @@
 | `/46` | Type/layout/init common base | `bus.rs`, `snapshot.rs`, `records.rs`, `commit.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c52_type_schema` 3, `c53_layout_init_schema` 2 |
 | `/47` | Diagnostic taxonomy | `diagnostic.rs`, `contract.rs`, `snapshot.rs`, `contracts/CONTRACT_VERSION` | `c54_diag_taxonomy` 3, full 725/61 |
 | — | M1 AArch64 constant-return assembly prototype (`candidate --emit-asm`) | `compiler/src/bin/candidate/target_m1.rs`, `compiler/tests/c55_target_m1.rs` | `c55_target_m1` 1 macOS / 2 native AArch64 Linux |
+| — | M1 automatic-local/integer-arithmetic IR slice (host-only, no source producer) | `candidate/target_m1.rs` | 12 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` execution of add/div/rem/mul/sub/neg fixtures |
 | — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
@@ -193,8 +197,10 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: general target codegen beyond the M1 constant-return prototype, then
-  the Batch G torture chain (official corpus/runner still absent); H05 process
+- NEXT UP: general target codegen beyond the M1 constant-return source path and
+  IR-shape integer emitter, starting with a real source-to-IR producer for
+  automatic locals and arithmetic; then the Batch G torture chain (official
+  corpus/runner still absent); H05 process
   supervision is implemented (`tools/runner`). B3-03c `#line`/`#pragma` and the
   wider H04 include policy remain open. Continue the PP remainder in pipeline
   order — then T04 LX

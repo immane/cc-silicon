@@ -34,7 +34,7 @@ continues on this foundation.
 | Type/layout/init (`/46`) | Schema frozen: pointer/array/aggregate/enum `TypeKind`; typed `LayoutRecord`/`InitRecord`; `G1DraftBody::Layout`/`Init`; symbolic-or-bit extents. Producers, target byte layout, and validation remain future |
 | Diagnostic taxonomy (`/47`) | Schema frozen: lex/parse/type/const/ir/codegen/host groups; named code registry and structured helpers. Full legacy `Task:4` migration remains future |
 | Probe-attested target baseline (`/48`) | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, pinned H07 report; `c48_target_probe` 3. Official CI/bare-metal baseline and general codegen remain future |
-| M1 target prototype | `candidate --emit-asm` emits constant-return AArch64 assembly; `c55_target_m1` verifies native Linux assemble/link/run (exit 5). Not a T11 chip family or `-S`/`-c` |
+| M1 target prototype | `candidate --emit-asm` emits constant-return AArch64 assembly; `c55_target_m1` verifies native Linux assemble/link/run (exit 5). The emitter also lowers automatic-local/integer-arithmetic IR fixtures, with no source producer yet. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
