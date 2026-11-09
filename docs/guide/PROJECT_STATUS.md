@@ -24,7 +24,7 @@ re-verify. This page records observed state, not a new acceptance run.
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
 | Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 16 tests after Stage B; catches common violations only |
-| Test/CI coverage | Root, chip-lint, compiler, torture, chip scan | `.github/workflows/ci.yml`; real target probe remains manual-only |
+| Test/CI coverage | Root, chip-lint, compiler, torture, H05 runner, chip scan | `.github/workflows/ci.yml`; real target probe remains manual-only |
 
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
@@ -93,7 +93,9 @@ are discovery/run observations, not a permanent promise; the source tree and
   attested in `c48_target_probe`; the official T00 reference baseline/CI
   substrate is still open, the global target state remains unverified, and no
   concrete target value drives candidate codegen yet.
-- H05 isolated execution is absent; no untrusted binary may be run at scale.
+- H05 process supervision is implemented in `tools/runner` (timeout/output
+  caps/cancellation/Linux process-group+prlimit). It is not a kernel namespace
+  sandbox, and H02/H03 target orchestration remains absent.
 - Replay is recorded-input re-execution over a canonical fingerprint, not bus
   restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, and per-stage queues remain deferred to `/47`.

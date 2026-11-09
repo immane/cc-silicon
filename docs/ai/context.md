@@ -36,9 +36,8 @@
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization for
   `/47`; B3-03 PP driver orchestration implementation (design complete,
-  gated by H04/T03/T02); H05 isolated execution; official T00
-  reference-baseline/CI-substrate freeze; Part B target codegen; full M1
-  acceptance. One pinned containerized AArch64 probe report is now
+  gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
+  Part B target codegen; full M1 acceptance. One pinned containerized AArch64 probe report is now
   H07-classified and attested by `c48_target_probe`; the global target state
   remains unverified. No target execution or GCC pass rate is claimed.
 - Branch: `wave4-development`. Commits through B3-03b are local (the
@@ -191,9 +190,11 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: Batch E H05 isolated runner; then Batch F official target baseline
-  and Batch G torture chain. B3-03c `#line`/`#pragma` and the wider H04 include
-  policy remain open. Continue the PP remainder in pipeline order — then T04 LX
+- NEXT UP: Batch F official target baseline; then Batch G torture chain. H05
+  process supervision is implemented (`tools/runner`), but namespace sandboxing
+  and target orchestration remain future work. B3-03c `#line`/`#pragma` and the
+  wider H04 include policy remain open. Continue the PP remainder in pipeline
+  order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells

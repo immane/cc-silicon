@@ -65,7 +65,7 @@ tasks, not C-language chips, and none is complete today: H00 is scaffold only
 plus host-only `-E`/`-D`/`-U` (M1 evidence commands work; `-I`, multi-source,
 `-S`/`-c`, and the torture flag path are deferred/refused — see
 [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md));
-H02–H03 and H05–H10 are planned only. The probe→attestation handoff is T01-integrator-owned, with
+H02–H03 and H06–H10 are planned only; H05 process supervision is implemented in `tools/runner`. The probe→attestation handoff is T01-integrator-owned, with
 H07 owning the classification of the report's `unresolved` ABI fields. No
 torture rate, probe result, or M1 acceptance may be claimed from this state.
 

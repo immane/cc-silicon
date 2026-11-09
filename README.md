@@ -342,6 +342,7 @@ implemented, tested pipeline.
 | Complete C language pipeline (T02–T13) | **Not implemented.** Partial language worker slices exist, but most planned kinds have no installed handler and there is no complete source-to-executable pipeline — see [`docs/tasks/README.md`](docs/tasks/README.md) |
 | AArch64 target values | **One pinned containerized probe report measured and attested**; the official T00 reference baseline/substrate and global `target_verification=unverified` remain open. The identity is frozen (`aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64); candidate codegen readiness still fails closed |
 | ABI probe harness (`tools/torture/probe/`) | Harness/normalizer self-tests pass; one containerized AArch64 Linux run (Debian GCC 12.2.0) produced a report. H07 `classify.py` resolves the four ABI fields and `c48_target_probe` attests/tamper-checks it. No official CI/bare-metal baseline or corpus |
+| H05 isolated runner (`tools/runner/`) | **Implemented and tested**: per-instance workdir, cleared environment, timeout, output caps, cancellation, Linux `prlimit`/process-group termination, stable outcome classification. No target compiler or corpus |
 | GCC torture corpus lock (`tools/torture/`) | **Scaffold**: lock schema and verifier implemented and tested; no corpus fetched, no frozen lock, no pass rate |
 
 No end-to-end compiler capability, verified target ABI, or GCC pass rate is
@@ -517,9 +518,10 @@ docs/
   reviews/          dated documentation/source audits (read-only records)
 tools/
   chip-lint/        AST-based checks for chip source
+  runner/           H05 isolated per-instance process runner
   torture/          offline corpus-lock integrity and provenance verifier
   torture/probe/    AArch64 ABI probe harness + normalizer + H07 classifier (one containerized run)
-.github/workflows/ CI for root/chip-lint/compiler/torture; probe self-tests + manual probe
+.github/workflows/ CI for root/chip-lint/compiler/torture/runner; probe self-tests + manual probe
 ```
 
 ---
@@ -660,6 +662,11 @@ cargo test   --locked --manifest-path compiler/Cargo.toml
 cargo fmt    --manifest-path tools/torture/Cargo.toml -- --check
 cargo clippy --locked --manifest-path tools/torture/Cargo.toml --all-targets -- -D warnings
 cargo test   --locked --manifest-path tools/torture/Cargo.toml
+
+# H05 isolated runner
+cargo fmt    --manifest-path tools/runner/Cargo.toml -- --check
+cargo clippy --locked --manifest-path tools/runner/Cargo.toml --all-targets -- -D warnings
+cargo test   --locked --manifest-path tools/runner/Cargo.toml
 ```
 
 The AArch64 probe job in

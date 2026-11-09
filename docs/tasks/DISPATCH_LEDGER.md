@@ -7,7 +7,7 @@
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
 | Contract baseline | `t01-c01-c06/47` — hash `3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593` |
-| Branch / HEAD | `wave4-development` / `344a3ab` (code through `/47` committed; this status-doc commit follows) |
+| Branch / HEAD | `wave4-development` / `6fe12b3` (code through H05 committed; this status-doc commit follows) |
 | Workspace note | `/42`–`/47`, B-INT-00, B3-03a/B, and the target probe are committed; no push was performed |
 
 ## 1. Baseline Checks
@@ -81,7 +81,7 @@ not duplicate A1 files or edit any shared source.
 | D-05 | **P1** | Duplicate candidate local 27 / `ChipId(58)` across several drafts; PA15 has two implementations (`pa_init.rs`, `pa_expr_ext.rs`). | A04 §7; A13 §5 | **DISPOSITIONED by B-INT-00** — no parked draft is compiled/registered; `pa_init.rs` is the future PA15 candidate, `pa_expr_ext.rs` is non-canonical; IDs stay unfrozen under B3-04 |
 | D-06 | **P1** | All 65 chips use local `Worker`/`handle(&CompilerBus)`, not `RestrictedChip`/`ChipAdapter`; contract has two competing chip boundaries. | A02 F01 | Contract freeze decision |
 | D-07 | **P1** | H01 probe never ran; H07 classification and attestation handoff absent; four ABI fields unresolved. | A05 §2.3; A09 | **PARTIALLY FIXED 2026-11-09** — one pinned Debian-GCC-12.2.0 containerized probe ran; H07 `classify.py` resolved the four ABI fields; `c48_target_probe` attests/tamper-checks the report. Official T00 baseline/substrate and global target verification remain open |
-| D-08 | **P1** | H05 isolated execution is absent; no timeout/resource/cancellation/crash boundary. | A10; A24 H-01 | H05 work order after security review |
+| D-08 | **P1** | H05 isolated execution is absent; no timeout/resource/cancellation/crash boundary. | A10; A24 H-01 | **IMPLEMENTED / VERIFIED (host tooling)** — `tools/runner` provides per-instance dirs, cleared env, timeout, output caps, cancellation, Linux `prlimit`/process-group termination, and outcome classification. `docs/tasks/H05_ISOLATED_RUNNER.md`; 10 Linux tests / 8 macOS tests |
 | D-09 | **P1** | `ConstRecord` has no `ty`; documented immediate-type rule cannot be enforced. A14 proposes a tagged v2 record. | A05 G4; A14 §4.2 | **FIXED / VERIFIED by `/42`** — `ConstRecord { ty, value: ConstValue::Integer(..) }`; T09/VF12 enforce `ir.op-immediate-type`; `c45_const_ty` 8/8 |
 | D-10 | **P2** | Status docs still claim `/6`, `/7`, `/9`, `/16`, "no chips", "torture not in CI", and stale H04/VF06 status. | A01 §3.3; A13 §8 | **FIXED / VERIFIED** by B1-03; dated audit retained with banner |
 | D-11 | **P2** | `-std`/`-O` are validated but not propagated; exit code 2 conflates usage/unsupported/Part B refusal; output writes are non-atomic. | A10 §1.3 F-02..F-04, F-12 | B2 candidate hardening |
@@ -144,8 +144,9 @@ triaged the critical path as follows.
    attestation test now pass for a pinned Debian GCC 12.2.0 report. The official
    T00 reference baseline/CI substrate remains open; do not implement `-S`/`-c`
    or claim global target verification from the provisional report.
-6. **H05 stays blocked on an accepted isolation design** (A10/A24); no untrusted
-   execution before then.
+6. **H05 process supervision is implemented**; it is not a kernel/namespace
+   sandbox and still requires H02/H03 orchestration plus the target runner.
+   No untrusted target execution is claimed.
 
 ### Provisional Integrator Decisions (not frozen)
 
@@ -167,7 +168,7 @@ triaged the critical path as follows.
 | B3-04 | Canonical PA15 selection; allocate distinct parse IDs; park duplicate | **PARTIALLY DISPOSITIONED by B-INT-00** — both PA15 drafts are parked; `pa_init.rs` is the future candidate, `pa_expr_ext.rs` non-canonical. Wiring still requires the ID/task-kind freeze |
 | B3-05 | `ConstRecord.ty` / tagged constant v2 | **COMPLETE / INTEGRATOR VERIFIED** — B2-02 `/42` frozen; `c45_const_ty` 8/8; candidate `value=05` |
 | B3-06 | Diagnostic taxonomy migration | Separate diagnostic CCR |
-| B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | Accepted A24-SEC-01 design |
+| B3-07 | H05 safe runner (per-instance dirs, timeout, output/resource limits, cancellation, crash class) | **COMPLETE / VERIFIED** — `tools/runner`; `cargo test --manifest-path tools/runner/Cargo.toml` 8 macOS / 10 Linux; see [H05](H05_ISOLATED_RUNNER.md) |
 | B3-08 | H07 probe-report classifier over synthetic assembly fixtures | **IMPLEMENTED / REAL RUN VERIFIED** — `tools/torture/probe/classify.py` derives the four ABI fields from `abi-args.s`; `c48_target_probe` 2/2. Official T00 baseline/substrate still open |
 
 ## 3E. B2 Decision Record (B2-01 `/40`, B2-00 `/41`, B2-02 `/42` accepted)
@@ -362,8 +363,9 @@ defaults. The deferred restore package is `/48`.
   explicit fail-closed policy), wider H04 `-I`/angle/system/multi-source
   freeze, canonical PA15 allocation/wiring (B3-04), diagnostic taxonomy
   migration, the official T00 reference-baseline/CI-substrate freeze (the
-  provisional probe/attestation now passes), H05 isolated execution, and the
-  torture runner/corpus chain. B-INT-00 closed the draft/clippy blocker;
+  provisional probe/attestation now passes), and the torture runner/corpus
+  chain. H05 process supervision is implemented; namespace sandboxing and
+  target orchestration remain future work. B-INT-00 closed the draft/clippy blocker;
   B3-03a/B3-03b implemented source macros and bounded quote include.
 - Start implementation only for packages whose readiness gates are satisfied, and run
   package-specific `fmt`, tests, and attributed clippy before any integration claim.
