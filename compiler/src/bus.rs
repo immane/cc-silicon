@@ -432,10 +432,15 @@ pub enum ValueCategory {
     Void,
 }
 
-/// Effect mask (`/14`; M1 allows only `0` — a nonzero mask is a typed chip
-/// failure, never a pass).
+/// Effect mask (`/14`; M1 producers still emit only `0` — a nonzero mask is a
+/// typed M1 chip failure, never a pass). `/44` defines the V1
+/// [`EFFECT_WRITES_LOCAL`] bit; the V1 semantic producer/rule migration remains
+/// future work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectMask(pub u32);
+
+/// `/44` V1 effect bit: the node writes an automatic local.
+pub const EFFECT_WRITES_LOCAL: u32 = 1 << 0;
 
 /// IR opcode (`/15` M1-closed: constant materialization + function return).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -444,6 +449,29 @@ pub enum IrOp {
     Constant,
     /// Return a value (the unique terminator in M1).
     Return,
+    // `/44` V1/V2 IR append (local/arithmetic/control-flow common base).
+    /// Load an automatic object named by `InstructionRecord.local`.
+    LocalLoad,
+    /// Store one operand into the automatic object named by
+    /// `InstructionRecord.local`.
+    LocalStore,
+    /// Addition.
+    Add,
+    /// Subtraction.
+    Sub,
+    /// Multiplication.
+    Mul,
+    /// Division.
+    Div,
+    /// Remainder.
+    Rem,
+    /// Unary negation.
+    Neg,
+    /// Unconditional branch; successors are the target block(s).
+    Branch,
+    /// Conditional branch; operand 0 is the condition, successors are the
+    /// true/false targets in order.
+    CondBranch,
 }
 
 /// A T09-owned IR function (`/15` slice freeze; one per M1 `main`).
@@ -489,8 +517,14 @@ pub struct InstructionRecord {
     pub operands: Vec<crate::ids::ValueId>,
     /// Folded constant (`Some` only for `Constant`).
     pub immediate: Option<crate::ids::ConstId>,
-    /// Result value (`None` for `Return`).
+    /// Result value (`None` for `Return`/`LocalStore`/branch instructions).
     pub result: Option<crate::ids::ValueId>,
+    /// Automatic local referenced by `LocalLoad`/`LocalStore`; `None`
+    /// otherwise (`/44` append).
+    pub local: Option<crate::ids::SymbolId>,
+    /// CFG successors for `Branch`/`CondBranch`; empty for non-terminators
+    /// (`/44` append). The ordered successor list is authoritative.
+    pub successors: Vec<crate::ids::BlockId>,
 }
 
 /// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per

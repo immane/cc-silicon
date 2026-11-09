@@ -994,6 +994,25 @@ acceptance `c49_ast_schema` (2 tests) plus the full compiler suite at 710 tests
 across 55 suites. No V1 parser producer, full C AST, target codegen, probe
 result, or torture rate is claimed.
 
+`/44` amendment — IR/CFG common-base schema (2026-11-09;
+[ADR-0004](../architecture/ADR-0004-IR-CFG-SCHEMA.md) accepted by the T01
+integrator; R1 auto-bump; `/43` preserved as history): `InstructionRecord`
+appends `local: Option<SymbolId>` and `successors: Vec<BlockId>`. `local` is
+used only by `LocalLoad`/`LocalStore`; `successors` is the ordered authoritative
+branch target list for `Branch`/`CondBranch`, with no separate `CfgEdgeRecord`
+family. `IrOp` keeps `constant`/`return` and appends `local_load`,
+`local_store`, `add`, `sub`, `mul`, `div`, `rem`, `neg`, `branch`,
+`cond_branch`; the V1/V2 op table is closed for this freeze. `EFFECT_WRITES_LOCAL`
+(`1 << 0`) is added for V1 local writes. New hashed rules `ir.op-table-v1`,
+`ir.local-symbol-link`, `ir.cfg-successors-ordered`; new hashed field list
+`INSTRUCTION_RECORD_FIELDS = [op, block, operands, immediate, result, local,
+successors]`. VF07/VF08 CFG/local verification and all new producers remain
+future; M1 instructions use `local: None, successors: vec![]`. No new task kind,
+chip, stage, allowlist, arena, store, or record family is introduced. New
+artifact `t01-c01-c06/44` (`73131cdf…ae0f7`); acceptance `c50_ir_schema`
+(2 tests) plus the full compiler suite at 712 tests across 56 suites. No target
+codegen or torture result is claimed.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |

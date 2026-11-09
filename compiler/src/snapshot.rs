@@ -2695,6 +2695,16 @@ pub fn ir_op_name(op: IrOp) -> &'static str {
     match op {
         IrOp::Constant => "constant",
         IrOp::Return => "return",
+        IrOp::LocalLoad => "local_load",
+        IrOp::LocalStore => "local_store",
+        IrOp::Add => "add",
+        IrOp::Sub => "sub",
+        IrOp::Mul => "mul",
+        IrOp::Div => "div",
+        IrOp::Rem => "rem",
+        IrOp::Neg => "neg",
+        IrOp::Branch => "branch",
+        IrOp::CondBranch => "cond_branch",
     }
 }
 
@@ -2702,6 +2712,16 @@ fn parse_ir_op(name: &str) -> Option<IrOp> {
     match name {
         "constant" => Some(IrOp::Constant),
         "return" => Some(IrOp::Return),
+        "local_load" => Some(IrOp::LocalLoad),
+        "local_store" => Some(IrOp::LocalStore),
+        "add" => Some(IrOp::Add),
+        "sub" => Some(IrOp::Sub),
+        "mul" => Some(IrOp::Mul),
+        "div" => Some(IrOp::Div),
+        "rem" => Some(IrOp::Rem),
+        "neg" => Some(IrOp::Neg),
+        "branch" => Some(IrOp::Branch),
+        "cond_branch" => Some(IrOp::CondBranch),
         _ => None,
     }
 }
@@ -2802,6 +2822,17 @@ pub fn encode_instruction(record: &InstructionRecord) -> Vec<u8> {
         }
         None => w.u8(0),
     }
+    match record.local {
+        Some(local) => {
+            w.u8(1);
+            w.u32(local.index());
+        }
+        None => w.u8(0),
+    }
+    w.u64(record.successors.len() as u64);
+    for successor in &record.successors {
+        w.u32(successor.index());
+    }
     w.finish()
 }
 
@@ -2827,6 +2858,16 @@ pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError>
         1 => Some(ValueId::from_index(r.u32()?)),
         tag => return Err(CodecError::InvalidTag(tag)),
     };
+    let local = match r.u8()? {
+        0 => None,
+        1 => Some(crate::ids::SymbolId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let successor_count = r.u64()? as usize;
+    let mut successors = Vec::with_capacity(successor_count);
+    for _ in 0..successor_count {
+        successors.push(BlockId::from_index(r.u32()?));
+    }
     r.finish()?;
     Ok(InstructionRecord {
         op,
@@ -2834,6 +2875,8 @@ pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError>
         operands,
         immediate,
         result,
+        local,
+        successors,
     })
 }
 

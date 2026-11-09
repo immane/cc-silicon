@@ -528,6 +528,8 @@ impl IrFunctionChip {
                             operands: vec![],
                             immediate: Some(input.constant),
                             result: Some(value),
+                            local: None,
+                            successors: vec![],
                         }),
                         G1DraftBody::Instruction(InstructionRecord {
                             op: IrOp::Return,
@@ -535,6 +537,8 @@ impl IrFunctionChip {
                             operands: vec![value],
                             immediate: None,
                             result: None,
+                            local: None,
+                            successors: vec![],
                         }),
                     ],
                 },

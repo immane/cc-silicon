@@ -835,6 +835,8 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
             operands: vec![],
             immediate: Some(ConstId::from_index(0)),
             result: Some(ValueId::from_index(0)),
+            local: None,
+            successors: vec![],
         }),
         G1DraftBody::Span(SpanRecord {
             source: SourceId::from_index(0),

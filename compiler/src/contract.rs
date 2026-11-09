@@ -42,14 +42,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// result versions, pin-aware trace evidence), and the B2-02 tagged,
 /// typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload,
 /// immediate-type enforcement), and the `/43` parser/AST common-base append
-/// (single-task V1 parser decision, V1 `NodeKind` inventory).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/43";
+/// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
+/// IR/CFG schema append (local load/store, arithmetic, branch successors).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/44";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "637a0484a4e1870b8e66b04dfd5ad79921d0ad1736972ce7f6a90243bce8df30";
+pub const CONTRACT_HASH: &str = "73131cdfd251802c33756a7434d1b89aa2ae71f8a62c0fe8098ecdd57acae0f7";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -272,6 +273,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.zero-canonical",
     "ir.op-immediate-type",
     "snapshot.const-record-typed-body",
+    // `/44` IR/CFG schema.
+    "ir.op-table-v1",
+    "ir.local-symbol-link",
+    "ir.cfg-successors-ordered",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -481,7 +486,20 @@ pub const VALUE_CATEGORY_NAMES: &[&str] = &["lvalue", "non_lvalue", "function_de
 pub const SEM_RECORD_FIELDS: &[&str] = &["node", "ty", "category", "effects"];
 
 /// Frozen `/15` `IrOp` names, in declaration order.
-pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
+pub const IR_OP_NAMES: &[&str] = &[
+    "constant",
+    "return",
+    "local_load",
+    "local_store",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "rem",
+    "neg",
+    "branch",
+    "cond_branch",
+];
 
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
 pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
@@ -505,7 +523,15 @@ pub const VALUE_RECORD_FIELDS: &[&str] = &["ty"];
 pub const SPAN_RECORD_FIELDS: &[&str] = &["source", "start", "end", "expansion"];
 
 /// Frozen `/15` `InstructionRecord` fields, in declaration order.
-pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &["op", "block", "operands", "immediate", "result"];
+pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &[
+    "op",
+    "block",
+    "operands",
+    "immediate",
+    "result",
+    "local",
+    "successors",
+];
 
 /// Frozen `/12` `NodeRecord` fields, in declaration order.
 pub const NODE_RECORD_FIELDS: &[&str] = &[
