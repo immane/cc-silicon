@@ -606,6 +606,12 @@ impl Vf12Chip {
                         "constant immediate type differs from value type",
                     )];
                 }
+                if !prepared.consts.contains_key(&const_id) {
+                    return vec![shape_fail(
+                        input.task,
+                        "canonical constant is not committed",
+                    )];
+                }
                 return vec![Proposal::Complete {
                     task: input.task,
                     value: ResultValue::Record(RecordRef::Const(const_id)),
@@ -822,6 +828,20 @@ fn prepare(input: &Vf12Input) -> Result<Prepared, String> {
             }
             validate_instruction(instruction)
                 .map_err(|detail| format!("instruction {}: {detail}", instruction_id.index()))?;
+            if let Some(local) = instruction.local {
+                let symbol = symbols
+                    .get(&local)
+                    .ok_or_else(|| format!("local symbol {} is not committed", local.index()))?;
+                if symbol.kind != SymbolKind::Object
+                    || symbol.storage != StorageDuration::Automatic
+                    || symbol.ty != Some(input.int)
+                {
+                    return Err(format!(
+                        "local symbol {} is not an automatic int object",
+                        local.index()
+                    ));
+                }
+            }
         }
         let returns = function_instructions
             .iter()
