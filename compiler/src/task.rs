@@ -277,6 +277,11 @@ impl TaskKind {
     /// active block scope, appends one `SemRecord`, completes `Record`).
     pub const SEMANTIC_IDENTIFIER_EXPR: Self =
         Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// `/52` local-expression kind: unary-expression check (payload: exactly
+    /// one `UnaryPlus`/`UnaryMinus` node; requires one checked `int` operand,
+    /// appends one `SemRecord`, completes `Record`).
+    pub const SEMANTIC_UNARY_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 23);
     /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
@@ -726,8 +731,8 @@ impl TaskKindRegistry {
     }
 
     /// The Wave 3 (`/39`) SE-function-slice registry plus the `/49`
-    /// identifier-expression kind (all `Frozen`; `SEMANTIC` owners start new
-    /// codes at local 23).
+    /// identifier-expression and `/52` unary-expression kinds (all `Frozen`;
+    /// `SEMANTIC` owners start new codes at local 24).
     pub fn se_function_slice() -> Self {
         let mut registry = Self::vf_evidence_slice();
         let slice: &[(TaskKind, &str)] = &[
@@ -736,6 +741,7 @@ impl TaskKindRegistry {
                 TaskKind::SEMANTIC_IDENTIFIER_EXPR,
                 "semantic.identifier_expr",
             ),
+            (TaskKind::SEMANTIC_UNARY_EXPR, "semantic.unary_expr"),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

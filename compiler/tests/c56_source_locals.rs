@@ -115,6 +115,38 @@ fn local_operators_lower_to_the_matching_ir() {
 }
 
 #[test]
+fn local_expression_tree_lowers_and_models() {
+    let cases = [
+        ("x+3*2", "value=08", "mul w0, w0, w1"),
+        ("(x+3)*2", "value=0a", "add w0, w0, w1"),
+        ("10/x", "value=05", "sdiv w0, w0, w1"),
+        ("-x", "value=02 negative=true", "neg w0, w0"),
+        ("+(x+1)", "value=03", "add w0, w0, w1"),
+    ];
+    for (expression, expected, instruction) in cases {
+        let source = format!("int main(void){{int x=2;return {expression};}}\n");
+        let dir = workdir(&format!(
+            "expr-{}",
+            expression
+                .bytes()
+                .fold(0u8, |acc, byte| acc.wrapping_add(byte))
+        ));
+        let asm = dir.join("main.s");
+        let output = run_candidate(&source, Some(&asm));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{expression}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(expected), "{expression}: {stdout}");
+        let assembly = String::from_utf8(std::fs::read(&asm).expect("assembly file")).unwrap();
+        assert!(assembly.contains(instruction), "{expression}: {assembly}");
+    }
+}
+
+#[test]
 fn canonical_constant_return_still_models_five() {
     let dir = workdir("canonical");
     let asm = dir.join("main.s");
@@ -182,6 +214,7 @@ fn locals_shape_rejects_mismatched_names_and_extra_statements() {
     for source in [
         "int main(void){int x=2;return y;}\n",
         "int main(void){int x=2;return x^3;}\n",
+        "int main(void){int x=2;return (x+3;}\n",
         "int main(void){int x;return x;}\n",
         "int main(void){return x;}\n",
     ] {
@@ -256,6 +289,44 @@ fn emitted_local_add_runs_on_aarch64() {
     );
     let run = Command::new(&exe).output().expect("program runs");
     assert_eq!(run.status.code(), Some(5));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn emitted_local_expression_tree_runs_on_aarch64() {
+    let machine = Command::new("gcc")
+        .arg("-dumpmachine")
+        .output()
+        .expect("gcc available");
+    if !String::from_utf8_lossy(&machine.stdout).contains("aarch64") {
+        return;
+    }
+    for (expression, expected) in [("(x+3)*2", 10), ("8-x*3", 2), ("-x", 254), ("10/x", 5)] {
+        let dir = workdir(&format!(
+            "run-expr-{}",
+            expression
+                .bytes()
+                .fold(0u8, |acc, byte| acc.wrapping_add(byte))
+        ));
+        let asm = dir.join("main.s");
+        let exe = dir.join("main");
+        let source = format!("int main(void){{int x=2;return {expression};}}\n");
+        let output = run_candidate(&source, Some(&asm));
+        assert_eq!(output.status.code(), Some(0));
+        let build = Command::new("gcc")
+            .arg("-o")
+            .arg(&exe)
+            .arg(&asm)
+            .output()
+            .expect("gcc runs");
+        assert!(
+            build.status.success(),
+            "gcc failed: {}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let run = Command::new(&exe).output().expect("program runs");
+        assert_eq!(run.status.code(), Some(expected), "expression {expression}");
+    }
 }
 
 #[cfg(target_os = "linux")]

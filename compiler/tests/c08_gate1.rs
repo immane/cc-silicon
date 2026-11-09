@@ -718,7 +718,7 @@ fn append_enforces_per_arena_capacity() {
 #[test]
 fn stage_assignment_covers_foundation_and_slice() {
     use cc_silicon_compiler::manifest::check_stage_layer_agreement;
-    assert_eq!(STAGE_ASSIGNMENT.len(), 70);
+    assert_eq!(STAGE_ASSIGNMENT.len(), 71);
     for (kind, stage) in STAGE_ASSIGNMENT {
         assert_eq!(stage_of(*kind), Some(*stage));
         assert!((*stage as usize) < Limits::fixture().stage_queue_bound.len());
@@ -810,7 +810,7 @@ fn allowlist_authorizes_fold_chip_only() {
     // decl (`/34`), PA expr (`/35`), PA recovery (`/36`), T08
     // const-branch (`/37`), and VF14 evidence (`/38`) slices add no rows;
     // the SE29 function row (`/39`) and the `/49` identifier row land here).
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 34);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 35);
     assert!(!STORE_OWNER_ALLOWLIST
         .iter()
         .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready"));
@@ -949,7 +949,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/51");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/52");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -1009,7 +1009,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/51",
+        "t01-c01-c06/52",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",

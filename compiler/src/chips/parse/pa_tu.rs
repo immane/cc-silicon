@@ -191,9 +191,9 @@ const M1_PUNCTUATORS: &[(usize, &[u8])] = &[
     (11, b"}"),
 ];
 
-/// `/49` source-locals shape token kinds:
-/// `int main ( void ) { int x = 2 ; return x ; } EOF`.
-const M1_LOCALS_KINDS: &[TokenKind] = &[
+/// `/52` source-locals prefix token kinds:
+/// `int main ( void ) { int x = <int> ; return <expr> ; } EOF`.
+const M1_LOCALS_PREFIX_KINDS: &[TokenKind] = &[
     TokenKind::Keyword,
     TokenKind::Identifier,
     TokenKind::Punctuator,
@@ -206,37 +206,10 @@ const M1_LOCALS_KINDS: &[TokenKind] = &[
     TokenKind::Integer,
     TokenKind::Punctuator,
     TokenKind::Keyword,
-    TokenKind::Identifier,
-    TokenKind::Punctuator,
-    TokenKind::Punctuator,
-    TokenKind::Eof,
 ];
 
-/// `/50` source-local-binary shape token kinds:
-/// `int main ( void ) { int x = 2 ; return x <op> 3 ; } EOF`.
-const M1_LOCALS_ADD_KINDS: &[TokenKind] = &[
-    TokenKind::Keyword,
-    TokenKind::Identifier,
-    TokenKind::Punctuator,
-    TokenKind::Keyword,
-    TokenKind::Punctuator,
-    TokenKind::Punctuator,
-    TokenKind::Keyword,
-    TokenKind::Identifier,
-    TokenKind::Punctuator,
-    TokenKind::Integer,
-    TokenKind::Punctuator,
-    TokenKind::Keyword,
-    TokenKind::Identifier,
-    TokenKind::Punctuator,
-    TokenKind::Integer,
-    TokenKind::Punctuator,
-    TokenKind::Punctuator,
-    TokenKind::Eof,
-];
-
-/// `/49` keyword/identifier spellings at fixed positions.
-const M1_LOCALS_WORDS: &[(&[u8], usize)] = &[
+/// `/52` keyword/identifier spellings at fixed prefix positions.
+const M1_LOCALS_PREFIX_WORDS: &[(&[u8], usize)] = &[
     (b"int".as_slice(), 0),
     (b"main".as_slice(), 1),
     (b"void".as_slice(), 3),
@@ -244,29 +217,19 @@ const M1_LOCALS_WORDS: &[(&[u8], usize)] = &[
     (b"return".as_slice(), 11),
 ];
 
-/// `/49` punctuator spellings at fixed positions.
-const M1_LOCALS_PUNCTUATORS: &[(usize, &[u8])] = &[
-    (2, b"("),
-    (4, b")"),
-    (5, b"{"),
-    (8, b"="),
-    (10, b";"),
-    (13, b";"),
-    (14, b"}"),
-];
+/// `/52` punctuator spellings at fixed prefix positions.
+const M1_LOCALS_PREFIX_PUNCTUATORS: &[(usize, &[u8])] =
+    &[(2, b"("), (4, b")"), (5, b"{"), (8, b"="), (10, b";")];
 
-/// `/50` fixed punctuator spellings for the local-binary shape. The operator
-/// at position 13 is validated separately so `+`, `-`, `*`, `/`, and `%` share
-/// the closed token layout.
-const M1_LOCALS_ADD_PUNCTUATORS: &[(usize, &[u8])] = &[
-    (2, b"("),
-    (4, b")"),
-    (5, b"{"),
-    (8, b"="),
-    (10, b";"),
-    (15, b";"),
-    (16, b"}"),
-];
+/// One parsed local expression node. IDs are assigned after the parse.
+struct ExprNode {
+    kind: NodeKind,
+    first: usize,
+    last: usize,
+    name: Option<NameId>,
+    literal: Option<LiteralId>,
+    children: Vec<ExprNode>,
+}
 
 /// One pre-order node row: kind, parent, children, token range, name, literal.
 type NodeSpec = (
@@ -291,9 +254,7 @@ impl PaTuChip {
                 ),
             )];
         }
-        if input.tokens.len() == M1_LOCALS_KINDS.len()
-            || input.tokens.len() == M1_LOCALS_ADD_KINDS.len()
-        {
+        if input.tokens.len() >= 16 {
             return self.compute_locals(input);
         }
         if input.tokens.len() != M1_KINDS.len() {
@@ -459,23 +420,20 @@ impl PaTuChip {
         append_nodes(input, specs)
     }
 
-    /// `/49`/`/50` source-locals shapes. Validates the closed token sequence
-    /// and appends the pre-order tree; any deviation fails without an append.
+    /// `/52` source-locals shape. The fixed prefix is
+    /// `int main(void){int x=<int>;return`, followed by a closed expression
+    /// tree and `; } EOF`. Parsing happens before any append; failures leave
+    /// the bus untouched.
     fn compute_locals(&self, input: &PaTuInput) -> Vec<Proposal> {
-        let binary = input.tokens.len() == M1_LOCALS_ADD_KINDS.len();
-        if !binary && input.tokens.len() != M1_LOCALS_KINDS.len() {
+        if input.tokens.len() < 16 {
             return vec![fail(
                 input.task,
-                DiagnosticDraft::unsupported("non-locals token sequence length"),
+                DiagnosticDraft::unsupported("locals token sequence is too short"),
             )];
         }
-        let kinds = if binary {
-            M1_LOCALS_ADD_KINDS
-        } else {
-            M1_LOCALS_KINDS
-        };
-        for (position, id) in input.tokens.iter().enumerate() {
-            let Some(projected) = input.bodies.get(id) else {
+        for (position, expected) in M1_LOCALS_PREFIX_KINDS.iter().enumerate() {
+            let id = input.tokens[position];
+            let Some(projected) = input.bodies.get(&id) else {
                 return vec![fail(
                     input.task,
                     DiagnosticDraft::error(
@@ -484,14 +442,14 @@ impl PaTuChip {
                     ),
                 )];
             };
-            if projected.kind != kinds[position] {
+            if projected.kind != *expected {
                 return vec![fail(
                     input.task,
-                    DiagnosticDraft::unsupported("non-locals token shape at fixed position"),
+                    DiagnosticDraft::unsupported("non-locals token shape at fixed prefix"),
                 )];
             }
         }
-        for (spelling, position) in M1_LOCALS_WORDS {
+        for (spelling, position) in M1_LOCALS_PREFIX_WORDS {
             if input.bodies[&input.tokens[*position]].spelling != *spelling {
                 return vec![fail(
                     input.task,
@@ -499,12 +457,7 @@ impl PaTuChip {
                 )];
             }
         }
-        let punctuators = if binary {
-            M1_LOCALS_ADD_PUNCTUATORS
-        } else {
-            M1_LOCALS_PUNCTUATORS
-        };
-        for (position, spelling) in punctuators {
+        for (position, spelling) in M1_LOCALS_PREFIX_PUNCTUATORS {
             if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
                 return vec![fail(
                     input.task,
@@ -512,80 +465,48 @@ impl PaTuChip {
                 )];
             }
         }
-        let binary_kind = if binary {
-            let operator = input.bodies[&input.tokens[13]].pp_spelling.clone();
-            match operator.as_slice() {
-                b"+" => NodeKind::BinaryAdd,
-                b"-" => NodeKind::BinarySub,
-                b"*" => NodeKind::BinaryMul,
-                b"/" => NodeKind::BinaryDiv,
-                b"%" => NodeKind::BinaryRem,
-                _ => {
-                    return vec![fail(
-                        input.task,
-                        DiagnosticDraft::unsupported("non-locals binary operator spelling"),
-                    )];
-                }
-            }
-        } else {
-            NodeKind::BinaryAdd
-        };
-        let eof_index = if binary { 17 } else { 15 };
-        let eof = &input.bodies[&input.tokens[eof_index]];
-        if !eof.pp_spelling.is_empty() || eof.name.is_some() {
-            return vec![fail(
-                input.task,
-                DiagnosticDraft::unsupported("non-locals EOF token shape"),
-            )];
-        }
         let Some(decl_name) = input.bodies[&input.tokens[7]].name else {
             return vec![fail(
                 input.task,
                 DiagnosticDraft::unsupported("locals declaration has no identifier name"),
             )];
         };
-        let Some(use_name) = input.bodies[&input.tokens[12]].name else {
+        let initializer_token = input.tokens[9];
+        let Some(initializer) = input.literals_by_token.get(&initializer_token) else {
             return vec![fail(
                 input.task,
-                DiagnosticDraft::unsupported("locals use has no identifier name"),
-            )];
-        };
-        if decl_name != use_name {
-            return vec![fail(
-                input.task,
-                DiagnosticDraft::unsupported(
-                    "locals declaration and use name different identifiers",
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!(
+                        "parse reads missing literal for token {}",
+                        initializer_token.index()
+                    ),
                 ),
             )];
-        }
-        let mut leaves = Vec::new();
-        for position in if binary {
-            &[9usize, 14][..]
-        } else {
-            &[9usize][..]
-        } {
-            let token = input.tokens[*position];
-            let Some(literal) = input.literals_by_token.get(&token) else {
-                return vec![fail(
-                    input.task,
-                    DiagnosticDraft::error(
-                        DiagnosticCode::new(DiagGroup::Task, 4),
-                        format!("parse reads missing literal for token {}", token.index()),
-                    ),
-                )];
-            };
-            leaves.push(*literal);
-        }
+        };
         let main_name = input.bodies[&input.tokens[1]].name;
+        let mut parser = ExprParser {
+            input,
+            pos: 12,
+            local_name: decl_name,
+        };
+        let (expression, semicolon, brace, eof) = match parser.parse_tail() {
+            Ok(tail) => tail,
+            Err(diagnostic) => return vec![fail(input.task, diagnostic)],
+        };
         let base = input.nodes_allocated;
         let node = |index: u32| crate::ids::NodeId::from_index(base.saturating_add(index));
+        let mut next = 10u32;
+        let mut expression_nodes = std::collections::BTreeMap::new();
+        let expression_root =
+            assign_expression(expression, &mut next, node(9), base, &mut expression_nodes);
         let mut specs: Vec<NodeSpec> = vec![
             (
                 NodeKind::TranslationUnit,
                 None,
                 vec![node(1)],
                 0,
-                if binary { 17 } else { 15 },
+                eof,
                 None,
                 None,
             ),
@@ -594,7 +515,7 @@ impl PaTuChip {
                 Some(node(0)),
                 vec![node(2), node(3), node(4)],
                 0,
-                if binary { 16 } else { 14 },
+                brace,
                 None,
                 None,
             ),
@@ -621,7 +542,7 @@ impl PaTuChip {
                 Some(node(1)),
                 vec![node(5), node(9)],
                 5,
-                if binary { 16 } else { 14 },
+                brace,
                 None,
                 None,
             ),
@@ -659,61 +580,227 @@ impl PaTuChip {
                 9,
                 9,
                 None,
-                Some(leaves[0]),
+                Some(*initializer),
             ),
             (
                 NodeKind::Return,
                 Some(node(4)),
-                vec![node(10)],
+                vec![expression_root],
                 11,
-                if binary { 15 } else { 13 },
+                semicolon,
                 None,
                 None,
             ),
         ];
-        if binary {
-            specs.extend([
-                (
-                    binary_kind,
-                    Some(node(9)),
-                    vec![node(11), node(12)],
-                    12,
-                    14,
-                    None,
-                    None,
-                ),
-                (
-                    NodeKind::Identifier,
-                    Some(node(10)),
-                    vec![],
-                    12,
-                    12,
-                    Some(use_name),
-                    None,
-                ),
-                (
-                    NodeKind::IntLiteral,
-                    Some(node(10)),
-                    vec![],
-                    14,
-                    14,
-                    None,
-                    Some(leaves[1]),
-                ),
-            ]);
-        } else {
-            specs.push((
-                NodeKind::Identifier,
-                Some(node(9)),
-                vec![],
-                12,
-                12,
-                Some(use_name),
-                None,
-            ));
+        for offset in 10..next {
+            let Some(spec) = expression_nodes.remove(&offset) else {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        "missing parsed expression node",
+                    ),
+                )];
+            };
+            specs.push(spec);
         }
         append_nodes(input, specs)
     }
+}
+
+struct ExprParser<'a> {
+    input: &'a PaTuInput,
+    pos: usize,
+    local_name: NameId,
+}
+
+impl<'a> ExprParser<'a> {
+    fn body(&self, index: usize) -> Result<&'a ProjectedToken, DiagnosticDraft> {
+        let id =
+            self.input.tokens.get(index).ok_or_else(|| {
+                DiagnosticDraft::unsupported("expression ends before a closed shape")
+            })?;
+        self.input.bodies.get(id).ok_or_else(|| {
+            DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("parse reads missing token {}", id.index()),
+            )
+        })
+    }
+
+    fn punct(&self, index: usize) -> Option<&[u8]> {
+        let body = self.body(index).ok()?;
+        (body.kind == TokenKind::Punctuator).then_some(body.pp_spelling.as_slice())
+    }
+
+    fn bump(&mut self) -> Result<usize, DiagnosticDraft> {
+        let index = self.pos;
+        let _ = self.body(index)?;
+        self.pos += 1;
+        Ok(index)
+    }
+
+    fn expect_punct(&mut self, spelling: &[u8]) -> Result<usize, DiagnosticDraft> {
+        if self.punct(self.pos) == Some(spelling) {
+            return self.bump();
+        }
+        Err(DiagnosticDraft::unsupported("missing expected punctuator"))
+    }
+
+    fn parse_tail(&mut self) -> Result<(ExprNode, usize, usize, usize), DiagnosticDraft> {
+        let expression = self.parse_binary(0)?;
+        let semicolon = self.expect_punct(b";")?;
+        let brace = self.expect_punct(b"}")?;
+        let eof = self.pos;
+        let body = self.body(eof)?;
+        if body.kind != TokenKind::Eof || !body.pp_spelling.is_empty() || body.name.is_some() {
+            return Err(DiagnosticDraft::unsupported("missing trailing EOF"));
+        }
+        self.pos += 1;
+        if self.pos != self.input.tokens.len() {
+            return Err(DiagnosticDraft::unsupported(
+                "tokens after the function body",
+            ));
+        }
+        Ok((expression, semicolon, brace, eof))
+    }
+
+    fn parse_binary(&mut self, min_bp: u8) -> Result<ExprNode, DiagnosticDraft> {
+        let mut lhs = self.parse_unary()?;
+        while let Some((kind, bp)) = self.peek_binary() {
+            if bp < min_bp {
+                break;
+            }
+            let _ = self.bump()?;
+            let rhs = self.parse_binary(bp + 1)?;
+            let first = lhs.first;
+            let last = rhs.last;
+            lhs = ExprNode {
+                kind,
+                first,
+                last,
+                name: None,
+                literal: None,
+                children: vec![lhs, rhs],
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn peek_binary(&self) -> Option<(NodeKind, u8)> {
+        let spelling = self.punct(self.pos)?;
+        match spelling {
+            b"*" => Some((NodeKind::BinaryMul, 20)),
+            b"/" => Some((NodeKind::BinaryDiv, 20)),
+            b"%" => Some((NodeKind::BinaryRem, 20)),
+            b"+" => Some((NodeKind::BinaryAdd, 10)),
+            b"-" => Some((NodeKind::BinarySub, 10)),
+            _ => None,
+        }
+    }
+
+    fn parse_unary(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        let kind = match self.punct(self.pos) {
+            Some(b"+") => NodeKind::UnaryPlus,
+            Some(b"-") => NodeKind::UnaryMinus,
+            _ => return self.parse_primary(),
+        };
+        let first = self.bump()?;
+        let operand = self.parse_unary()?;
+        let last = operand.last;
+        Ok(ExprNode {
+            kind,
+            first,
+            last,
+            name: None,
+            literal: None,
+            children: vec![operand],
+        })
+    }
+
+    fn parse_primary(&mut self) -> Result<ExprNode, DiagnosticDraft> {
+        let index = self.pos;
+        let body = self.body(index)?;
+        match body.kind {
+            TokenKind::Integer => {
+                let token = self.input.tokens[index];
+                let Some(literal) = self.input.literals_by_token.get(&token) else {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("parse reads missing literal for token {}", token.index()),
+                    ));
+                };
+                self.pos += 1;
+                Ok(ExprNode {
+                    kind: NodeKind::IntLiteral,
+                    first: index,
+                    last: index,
+                    name: None,
+                    literal: Some(*literal),
+                    children: vec![],
+                })
+            }
+            TokenKind::Identifier => {
+                let Some(name) = body.name else {
+                    return Err(DiagnosticDraft::unsupported(
+                        "local expression identifier has no name",
+                    ));
+                };
+                if name != self.local_name {
+                    return Err(DiagnosticDraft::unsupported(
+                        "local expression uses an identifier other than the local",
+                    ));
+                }
+                self.pos += 1;
+                Ok(ExprNode {
+                    kind: NodeKind::Identifier,
+                    first: index,
+                    last: index,
+                    name: Some(name),
+                    literal: None,
+                    children: vec![],
+                })
+            }
+            TokenKind::Punctuator if body.pp_spelling == b"(" => {
+                self.pos += 1;
+                let inner = self.parse_binary(0)?;
+                let _ = self.expect_punct(b")")?;
+                Ok(inner)
+            }
+            _ => Err(DiagnosticDraft::unsupported(
+                "local expression primary is not covered",
+            )),
+        }
+    }
+}
+
+fn assign_expression(
+    node: ExprNode,
+    next: &mut u32,
+    parent: crate::ids::NodeId,
+    base: u32,
+    out: &mut std::collections::BTreeMap<u32, NodeSpec>,
+) -> crate::ids::NodeId {
+    let offset = *next;
+    *next += 1;
+    let id = crate::ids::NodeId::from_index(base.saturating_add(offset));
+    let mut children = Vec::new();
+    for child in node.children {
+        children.push(assign_expression(child, next, id, base, out));
+    }
+    out.insert(
+        offset,
+        (
+            node.kind,
+            Some(parent),
+            children,
+            node.first,
+            node.last,
+            node.name,
+            node.literal,
+        ),
+    );
+    id
 }
 
 fn append_nodes(input: &PaTuInput, specs: Vec<NodeSpec>) -> Vec<Proposal> {

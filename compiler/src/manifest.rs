@@ -880,6 +880,12 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         TaskKind::SEMANTIC_IDENTIFIER_EXPR,
     ),
     (
+        SE_UNARY_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_UNARY_EXPR,
+    ),
+    (
         IR_FUNCTION_CHIP,
         StoreId::Ir,
         "functions",
@@ -1176,6 +1182,9 @@ pub const SE_FUNC_CHIP: ChipId = ChipId(57);
 /// `Identifier` node to an automatic `int` object in the active block scope
 /// and appends one `SemRecord`).
 pub const SE_ID_CHIP: ChipId = ChipId(58);
+/// `/52` T07 unary-expression chip reservation (checks one `UnaryPlus`/
+/// `UnaryMinus` node over a committed `int` fact).
+pub const SE_UNARY_CHIP: ChipId = ChipId(59);
 
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
@@ -1358,6 +1367,7 @@ pub const fn is_se_slice_kind(kind: TaskKind) -> bool {
         || kind.raw() == TaskKind::SEMANTIC_RETURN_STMT.raw()
         || kind.raw() == TaskKind::VERIFICATION_TYPED_INVARIANT.raw()
         || kind.raw() == TaskKind::SEMANTIC_IDENTIFIER_EXPR.raw()
+        || kind.raw() == TaskKind::SEMANTIC_UNARY_EXPR.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/13`) TY slice.
@@ -1480,6 +1490,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::SEMANTIC_BINARY_EXPR, 4),
     (TaskKind::SEMANTIC_RETURN_STMT, 4),
     (TaskKind::SEMANTIC_IDENTIFIER_EXPR, 4),
+    (TaskKind::SEMANTIC_UNARY_EXPR, 4),
     (TaskKind::VERIFICATION_TYPED_INVARIANT, 4),
     (TaskKind::IR_FUNCTION, 5),
     (TaskKind::PREPROCESS_SPLICE, 1),

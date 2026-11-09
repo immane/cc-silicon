@@ -155,7 +155,7 @@ fn evidence_kind_stage_registry_manifest_frozen() {
     // The chip is Ack-only: zero writes, no allowlist rows
     // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(VF14_CHIP, ChipId(56));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 34);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 35);
     assert!(
         !STORE_OWNER_ALLOWLIST
             .iter()

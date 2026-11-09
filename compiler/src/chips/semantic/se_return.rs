@@ -100,6 +100,8 @@ pub fn project_se_return_input(
             | NodeKind::BinaryMul
             | NodeKind::BinaryDiv
             | NodeKind::BinaryRem
+            | NodeKind::UnaryPlus
+            | NodeKind::UnaryMinus
             | NodeKind::Identifier
     ) {
         return Err(DiagnosticDraft::unsupported(

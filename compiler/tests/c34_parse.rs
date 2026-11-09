@@ -368,7 +368,7 @@ fn decl_kinds_stage_registry_manifest_frozen() {
     assert_eq!(PA03_CHIP, cc_silicon_compiler::ids::ChipId(45));
     assert_eq!(PA05_CHIP, cc_silicon_compiler::ids::ChipId(46));
     assert_eq!(PA28_CHIP, cc_silicon_compiler::ids::ChipId(47));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 34);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 35);
     for chip in [PA02_CHIP, PA03_CHIP, PA05_CHIP, PA28_CHIP] {
         assert!(
             !STORE_OWNER_ALLOWLIST

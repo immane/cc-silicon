@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/51");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/52");
 }
 
 #[test]
@@ -113,14 +113,18 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "se.identifier-checked-nonlvalue",
         "se.binary-identifier-operand",
         "se.local-binary-operators",
+        "se.unary-checked-nonlvalue",
         "ir.local-load-store-return",
         "ir.local-add-return",
         "ir.local-binary-operators",
+        "ir.local-expression-tree",
         "vf12.local-load-store-return",
         "vf12.local-add-modeled-integer",
         "vf12.local-binary-operators",
+        "vf12.local-expression-program",
         "result.integer-modeled",
         "parse.tu-local-binary-operators",
+        "parse.tu-local-expression-tree",
         "symbol.declare-block-object",
         "parse.token-range-committed",
         "commit.node-materialized",

@@ -49,15 +49,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// the `/48` probe-attested target baseline, the `/49` M1 source-locals
 /// slice (shape-gated TU parser, block automatic object, identifier fact,
 /// local load/store IR, symbolic local model), the `/50` modeled-integer
-/// result plus local-add source slice, and the `/51` local binary-operator
-/// source slice.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/51";
+/// result plus local-add source slice, the `/51` local binary-operator
+/// source slice, and the `/52` local expression-tree slice.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/52";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "4f110d098a54d56b8c39d1c90d902141e0e9e4f6aab1192203763017fe57a6ce";
+pub const CONTRACT_HASH: &str = "c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -194,6 +194,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "se.identifier-checked-nonlvalue",
     "se.binary-identifier-operand",
     "se.local-binary-operators",
+    "se.unary-checked-nonlvalue",
     "se.binary-forwards-identical-fold",
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
@@ -202,6 +203,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "ir.local-load-store-return",
     "ir.local-add-return",
     "ir.local-binary-operators",
+    "ir.local-expression-tree",
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
@@ -213,8 +215,10 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf12.local-load-store-return",
     "vf12.local-add-modeled-integer",
     "vf12.local-binary-operators",
+    "vf12.local-expression-program",
     "result.integer-modeled",
     "parse.tu-local-binary-operators",
+    "parse.tu-local-expression-tree",
     "vf12.unsupported-never-pass",
     "vf05.syntax-ranges-ordered",
     "vf05.required-fields-complete",

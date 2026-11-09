@@ -141,7 +141,14 @@ pub fn project_se_binary_input(
                 }
                 leaves.push((*child, literal));
             }
-            NodeKind::Identifier => {}
+            NodeKind::Identifier
+            | NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+            | NodeKind::UnaryPlus
+            | NodeKind::UnaryMinus => {}
             _ => {
                 return Err(DiagnosticDraft::unsupported(
                     "se-binary of a non-covered operand",

@@ -22,6 +22,7 @@ use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{BlockId, ConstId, FunctionId, InstructionId, RecordRef, TaskId, TypeId, ValueId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, VF12_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
+use std::collections::BTreeMap;
 
 /// Narrow projection for the symbolic-interpret computation.
 #[derive(Clone, Debug)]
@@ -285,22 +286,12 @@ impl Vf12Chip {
         {
             return vec![shape_fail(input.task, "block is not the single entry")];
         }
-        // `/49` source-locals shape: Constant, LocalStore, LocalLoad, Return.
-        if input.instructions.len() == 4 {
-            return self.compute_local_return(input, block_id);
-        }
-        // `/50` local addition: Constant, LocalStore, LocalLoad, Constant,
-        // Add, Return.
-        if input.instructions.len() == 6 {
-            return self.compute_local_binary(input, block_id);
+        // Non-canonical local programs are interpreted as a small
+        // deterministic stack machine (`/52`).
+        if input.instructions.len() != 2 {
+            return self.compute_local_program(input, block_id);
         }
         // Canonical `Constant` then `Return`, in ascending ID order.
-        if input.instructions.len() != 2 {
-            return vec![shape_fail(
-                input.task,
-                "block has an unsupported instruction count",
-            )];
-        }
         let (const_id, constant) = &input.instructions[0];
         let (ret_id, ret) = &input.instructions[1];
         if const_id.index() >= ret_id.index() {
@@ -354,228 +345,239 @@ impl Vf12Chip {
         }]
     }
 
-    /// `/49` exact `Constant`/`LocalStore`/`LocalLoad`/`Return` path. The
-    /// symbolic model only accepts a local that is stored before it is
-    /// loaded and returned; no arithmetic is interpreted yet.
-    fn compute_local_return(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
-        let [(constant_id, constant), (store_id, store), (load_id, load), (ret_id, ret)] =
-            input.instructions.as_slice()
-        else {
-            return vec![shape_fail(input.task, "locals instruction shape")];
-        };
-        if !(constant_id.index() < store_id.index()
-            && store_id.index() < load_id.index()
-            && load_id.index() < ret_id.index())
-        {
-            return vec![shape_fail(input.task, "locals instructions out of order")];
+    /// `/52` general local-program interpreter over the covered IR ops:
+    /// `Constant`, `LocalLoad`, `LocalStore`, `Add`/`Sub`/`Mul`/`Div`/`Rem`,
+    /// `Neg`, and the final `Return`. Values and locals are canonical `int`.
+    fn compute_local_program(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
+        let mut values: BTreeMap<ValueId, i32> = BTreeMap::new();
+        let mut locals: BTreeMap<crate::ids::SymbolId, i32> = BTreeMap::new();
+        let mut returned = None;
+        for (index, (instruction_id, instruction)) in input.instructions.iter().enumerate() {
+            if instruction.block != *block_id {
+                return vec![shape_fail(input.task, "local-program block mismatch")];
+            }
+            if returned.is_some() {
+                return vec![shape_fail(
+                    input.task,
+                    "local-program instruction after Return",
+                )];
+            }
+            match instruction.op {
+                IrOp::Constant => {
+                    if !instruction.operands.is_empty()
+                        || instruction.local.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program constant shape")];
+                    }
+                    let Some(const_id) = instruction.immediate else {
+                        return vec![shape_fail(input.task, "local-program constant has no id")];
+                    };
+                    let Some(result) = instruction.result else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program constant has no value",
+                        )];
+                    };
+                    let Some((_, body)) = input.consts.iter().find(|(id, _)| *id == const_id)
+                    else {
+                        return vec![shape_fail(input.task, "local-program constant is missing")];
+                    };
+                    let Some(integer) = body.value.as_integer() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program constant is not integer",
+                        )];
+                    };
+                    let Some(value) = canonical_integer_i128(integer) else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program constant is out of range",
+                        )];
+                    };
+                    let Ok(value) = i32::try_from(value) else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program constant is not canonical int",
+                        )];
+                    };
+                    if values.insert(result, value).is_some() {
+                        return vec![shape_fail(input.task, "local-program duplicate value id")];
+                    }
+                }
+                IrOp::LocalLoad => {
+                    if !instruction.operands.is_empty()
+                        || instruction.immediate.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program load shape")];
+                    }
+                    let Some(local) = instruction.local else {
+                        return vec![shape_fail(input.task, "local-program load has no local")];
+                    };
+                    let Some(result) = instruction.result else {
+                        return vec![shape_fail(input.task, "local-program load has no value")];
+                    };
+                    let Some(value) = locals.get(&local).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program load reads an uninitialized local",
+                        )];
+                    };
+                    if values.insert(result, value).is_some() {
+                        return vec![shape_fail(input.task, "local-program duplicate value id")];
+                    }
+                }
+                IrOp::LocalStore => {
+                    if instruction.operands.len() != 1
+                        || instruction.immediate.is_some()
+                        || instruction.result.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program store shape")];
+                    }
+                    let Some(local) = instruction.local else {
+                        return vec![shape_fail(input.task, "local-program store has no local")];
+                    };
+                    let Some(value) = values.get(&instruction.operands[0]).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program store reads a missing value",
+                        )];
+                    };
+                    locals.insert(local, value);
+                }
+                IrOp::Add | IrOp::Sub | IrOp::Mul | IrOp::Div | IrOp::Rem => {
+                    if instruction.operands.len() != 2
+                        || instruction.immediate.is_some()
+                        || instruction.local.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program binary shape")];
+                    }
+                    let Some(result) = instruction.result else {
+                        return vec![shape_fail(input.task, "local-program binary has no value")];
+                    };
+                    let Some(lhs) = values.get(&instruction.operands[0]).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program binary reads a missing lhs",
+                        )];
+                    };
+                    let Some(rhs) = values.get(&instruction.operands[1]).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program binary reads a missing rhs",
+                        )];
+                    };
+                    let lhs = i128::from(lhs);
+                    let rhs = i128::from(rhs);
+                    let result_value = match instruction.op {
+                        IrOp::Add => lhs.checked_add(rhs),
+                        IrOp::Sub => lhs.checked_sub(rhs),
+                        IrOp::Mul => lhs.checked_mul(rhs),
+                        IrOp::Div => {
+                            if rhs == 0 {
+                                return vec![shape_fail(
+                                    input.task,
+                                    "local-program division by zero",
+                                )];
+                            }
+                            lhs.checked_div(rhs)
+                        }
+                        IrOp::Rem => {
+                            if rhs == 0 {
+                                return vec![shape_fail(
+                                    input.task,
+                                    "local-program remainder by zero",
+                                )];
+                            }
+                            lhs.checked_rem(rhs)
+                        }
+                        _ => unreachable!(),
+                    };
+                    let Some(result_value) = result_value else {
+                        return vec![shape_fail(input.task, "local-program arithmetic overflow")];
+                    };
+                    let Ok(result_value) = i32::try_from(result_value) else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program arithmetic is not canonical int",
+                        )];
+                    };
+                    if values.insert(result, result_value).is_some() {
+                        return vec![shape_fail(input.task, "local-program duplicate value id")];
+                    }
+                }
+                IrOp::Neg => {
+                    if instruction.operands.len() != 1
+                        || instruction.immediate.is_some()
+                        || instruction.local.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program neg shape")];
+                    }
+                    let Some(result) = instruction.result else {
+                        return vec![shape_fail(input.task, "local-program neg has no value")];
+                    };
+                    let Some(operand) = values.get(&instruction.operands[0]).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program neg reads a missing value",
+                        )];
+                    };
+                    let value = i128::from(operand).checked_neg();
+                    let Some(value) = value else {
+                        return vec![shape_fail(input.task, "local-program neg overflow")];
+                    };
+                    let Ok(value) = i32::try_from(value) else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program neg is not canonical int",
+                        )];
+                    };
+                    if values.insert(result, value).is_some() {
+                        return vec![shape_fail(input.task, "local-program duplicate value id")];
+                    }
+                }
+                IrOp::Return => {
+                    if instruction.operands.len() != 1
+                        || instruction.immediate.is_some()
+                        || instruction.result.is_some()
+                        || instruction.local.is_some()
+                        || !instruction.successors.is_empty()
+                    {
+                        return vec![shape_fail(input.task, "local-program return shape")];
+                    }
+                    if index + 1 != input.instructions.len() {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program Return is not the last instruction",
+                        )];
+                    }
+                    let Some(value) = values.get(&instruction.operands[0]).copied() else {
+                        return vec![shape_fail(
+                            input.task,
+                            "local-program return reads a missing value",
+                        )];
+                    };
+                    returned = Some(value);
+                }
+                IrOp::Branch | IrOp::CondBranch => {
+                    return vec![shape_fail(
+                        input.task,
+                        "local-program control flow is not covered",
+                    )];
+                }
+            }
+            let _ = instruction_id;
         }
-        if constant.op != IrOp::Constant
-            || constant.block != *block_id
-            || !constant.operands.is_empty()
-            || constant.immediate != Some(input.modeled.0)
-            || constant.result.is_none()
-            || constant.local.is_some()
-        {
-            return vec![shape_fail(
-                input.task,
-                "locals initializer is not a constant",
-            )];
-        }
-        let Some(initial) = constant.result else {
-            return vec![shape_fail(input.task, "locals initializer has no value")];
-        };
-        let Some(local) = store.local else {
-            return vec![shape_fail(input.task, "locals store has no local")];
-        };
-        if store.op != IrOp::LocalStore
-            || store.block != *block_id
-            || store.operands != vec![initial]
-            || store.immediate.is_some()
-            || store.result.is_some()
-            || !store.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "locals store shape")];
-        }
-        if load.op != IrOp::LocalLoad
-            || load.block != *block_id
-            || !load.operands.is_empty()
-            || load.immediate.is_some()
-            || load.local != Some(local)
-            || load.result != Some(input.ret_value.0)
-            || !load.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "locals load shape")];
-        }
-        if ret.op != IrOp::Return
-            || ret.block != *block_id
-            || ret.operands != vec![input.ret_value.0]
-            || ret.immediate.is_some()
-            || ret.result.is_some()
-            || ret.local.is_some()
-            || !ret.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "locals return shape")];
-        }
-        if input.ret_value.1.ty != input.int || input.modeled.1.ty != input.int {
-            return vec![shape_fail(input.task, "locals value is not int")];
-        }
-        let Some(integer) = input.modeled.1.value.as_integer() else {
-            return vec![shape_fail(input.task, "locals constant is not integer")];
+        let Some(returned) = returned else {
+            return vec![shape_fail(input.task, "local-program has no Return")];
         };
         vec![Proposal::Complete {
             task: input.task,
-            value: ResultValue::Integer(integer.clone()),
-        }]
-    }
-
-    /// `/50` exact `Constant`/`LocalStore`/`LocalLoad`/`Constant`/`Add`/
-    /// `Return` path over canonical `int`. The result is a modeled integer,
-    /// not a newly committed `ConstRecord`.
-    fn compute_local_binary(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
-        let [(c0id, c0), (s1id, s1), (l2id, l2), (c3id, c3), (a4id, a4), (r5id, r5)] =
-            input.instructions.as_slice()
-        else {
-            return vec![shape_fail(input.task, "local-binary instruction shape")];
-        };
-        if !(c0id.index() < s1id.index()
-            && s1id.index() < l2id.index()
-            && l2id.index() < c3id.index()
-            && c3id.index() < a4id.index()
-            && a4id.index() < r5id.index())
-        {
-            return vec![shape_fail(
-                input.task,
-                "local-binary instructions out of order",
-            )];
-        }
-        if c0.op != IrOp::Constant
-            || c0.block != *block_id
-            || !c0.operands.is_empty()
-            || c0.immediate != Some(input.modeled.0)
-            || c0.result.is_none()
-            || c0.local.is_some()
-        {
-            return vec![shape_fail(input.task, "local-binary initializer shape")];
-        }
-        let Some(initial) = c0.result else {
-            return vec![shape_fail(
-                input.task,
-                "local-binary initializer has no value",
-            )];
-        };
-        let Some(local) = s1.local else {
-            return vec![shape_fail(input.task, "local-binary store has no local")];
-        };
-        if s1.op != IrOp::LocalStore
-            || s1.block != *block_id
-            || s1.operands != vec![initial]
-            || s1.immediate.is_some()
-            || s1.result.is_some()
-            || !s1.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "local-binary store shape")];
-        }
-        if l2.op != IrOp::LocalLoad
-            || l2.block != *block_id
-            || !l2.operands.is_empty()
-            || l2.immediate.is_some()
-            || l2.local != Some(local)
-            || l2.result.is_none()
-            || !l2.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "local-binary load shape")];
-        }
-        let Some(loaded) = l2.result else {
-            return vec![shape_fail(input.task, "local-binary load has no value")];
-        };
-        let Some(rhs_const_id) = c3.immediate else {
-            return vec![shape_fail(input.task, "local-binary rhs has no constant")];
-        };
-        let Some(rhs_value) = c3.result else {
-            return vec![shape_fail(input.task, "local-binary rhs has no value")];
-        };
-        if c3.op != IrOp::Constant
-            || c3.block != *block_id
-            || !c3.operands.is_empty()
-            || c3.local.is_some()
-        {
-            return vec![shape_fail(input.task, "local-binary rhs shape")];
-        }
-        let Some((_, rhs_const)) = input.consts.iter().find(|(id, _)| *id == rhs_const_id) else {
-            return vec![shape_fail(
-                input.task,
-                "local-binary rhs constant is missing",
-            )];
-        };
-        let Some(sum_value) = a4.result else {
-            return vec![shape_fail(input.task, "local-binary result is missing")];
-        };
-        if !matches!(
-            a4.op,
-            IrOp::Add | IrOp::Sub | IrOp::Mul | IrOp::Div | IrOp::Rem
-        ) || a4.block != *block_id
-            || a4.operands != vec![loaded, rhs_value]
-            || a4.immediate.is_some()
-            || a4.local.is_some()
-            || !a4.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "local-binary operation shape")];
-        }
-        if r5.op != IrOp::Return
-            || r5.block != *block_id
-            || r5.operands != vec![sum_value]
-            || r5.immediate.is_some()
-            || r5.result.is_some()
-            || r5.local.is_some()
-            || !r5.successors.is_empty()
-        {
-            return vec![shape_fail(input.task, "local-binary return shape")];
-        }
-        let Some(lhs_integer) = input.modeled.1.value.as_integer() else {
-            return vec![shape_fail(input.task, "local-binary lhs is not integer")];
-        };
-        let Some(rhs_integer) = rhs_const.value.as_integer() else {
-            return vec![shape_fail(input.task, "local-binary rhs is not integer")];
-        };
-        let (Some(lhs), Some(rhs)) = (
-            canonical_integer_i128(lhs_integer),
-            canonical_integer_i128(rhs_integer),
-        ) else {
-            return vec![shape_fail(
-                input.task,
-                "local-binary operand is out of range",
-            )];
-        };
-        let result = match a4.op {
-            IrOp::Add => lhs.checked_add(rhs),
-            IrOp::Sub => lhs.checked_sub(rhs),
-            IrOp::Mul => lhs.checked_mul(rhs),
-            IrOp::Div => {
-                if rhs == 0 {
-                    return vec![shape_fail(input.task, "local-binary division by zero")];
-                }
-                lhs.checked_div(rhs)
-            }
-            IrOp::Rem => {
-                if rhs == 0 {
-                    return vec![shape_fail(input.task, "local-binary remainder by zero")];
-                }
-                lhs.checked_rem(rhs)
-            }
-            _ => unreachable!(),
-        };
-        let Some(result) = result else {
-            return vec![shape_fail(input.task, "local-binary overflow")];
-        };
-        let Ok(result) = i32::try_from(result) else {
-            return vec![shape_fail(
-                input.task,
-                "local-binary result is not canonical int",
-            )];
-        };
-        vec![Proposal::Complete {
-            task: input.task,
-            value: ResultValue::Integer(encode_canonical_int(result)),
+            value: ResultValue::Integer(encode_canonical_int(returned)),
         }]
     }
 }

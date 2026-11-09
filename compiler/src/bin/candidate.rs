@@ -27,8 +27,8 @@ use cc_silicon_compiler::chips::{
     PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
     PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
     PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip,
-    SeIdentifierChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip,
-    Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip, TyConvChip, TyScopeChip, TySymbolChip,
+    TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -38,8 +38,9 @@ use cc_silicon_compiler::manifest::{
     StoreSchema, G1_FOLD_CHIP, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
     PA_TU_CHIP, PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP,
     PP17_CHIP, PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP,
-    PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
-    TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP, SE_RET_CHIP, SE_UNARY_CHIP,
+    TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP,
+    VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -275,6 +276,7 @@ fn install(bus: &mut CompilerBus) {
         &SeRetChip,
         &SeFuncChip,
         &SeIdentifierChip,
+        &SeUnaryChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -319,6 +321,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_RETURN_STMT, SE_RET_CHIP, 4),
         (TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4),
         (TaskKind::SEMANTIC_IDENTIFIER_EXPR, SE_ID_CHIP, 4),
+        (TaskKind::SEMANTIC_UNARY_EXPR, SE_UNARY_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -407,6 +410,60 @@ fn step(
         }
         _ => Err("step task is not terminal after drain".to_string()),
     }
+}
+
+/// Post-order traversal of one expression subtree (children before parent).
+fn expression_postorder(
+    bus: &CompilerBus,
+    root: NodeId,
+    out: &mut Vec<NodeId>,
+) -> Result<(), String> {
+    let body = bus
+        .arenas
+        .nodes
+        .get(root)
+        .map_err(|_| format!("expression node {} vanished", root.index()))?;
+    for child in &body.children {
+        expression_postorder(bus, *child, out)?;
+    }
+    out.push(root);
+    Ok(())
+}
+
+fn run_literal(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    node: NodeId,
+    fold: bool,
+) -> Result<(), String> {
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SEMANTIC_LITERAL_EXPR,
+        SE_LIT_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(node)]),
+    )?;
+    if !fold {
+        return Ok(());
+    }
+    let literal = bus
+        .arenas
+        .nodes
+        .get(node)
+        .map_err(|_| "literal node vanished".to_string())?
+        .literal
+        .ok_or_else(|| "literal node carries no literal".to_string())?;
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::CONSTANT_CONST_FOLD,
+        G1_FOLD_CHIP,
+        Payload::from_refs(vec![RecordRef::Literal(literal)]),
+    )?;
+    Ok(())
 }
 
 /// Find nodes of one kind in ascending-ID order.
@@ -507,6 +564,9 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeIdentifierChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeUnaryChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -1336,74 +1396,123 @@ fn run(
     } else {
         None
     };
-    // Semantic checks over every literal/return/binary node found.
-    for node in nodes_of(&bus, NodeKind::IntLiteral) {
-        step(
-            &mut bus,
-            &workers,
-            &mut trace,
-            TaskKind::SEMANTIC_LITERAL_EXPR,
-            SE_LIT_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        )?;
-        if locals {
-            let literal = bus
+    if locals {
+        // Initializer literal fact and its folded constant.
+        let declaration = bus
+            .arenas
+            .nodes
+            .get(declarations[0])
+            .map_err(|_| "local declaration vanished".to_string())?;
+        let initializer = *declaration
+            .children
+            .get(2)
+            .ok_or_else(|| "local declaration has no initializer".to_string())?;
+        run_literal(&mut bus, &workers, &mut trace, initializer, true)?;
+
+        // The return expression is checked in post-order so every child fact
+        // exists before its parent binary/unary task runs.
+        let returns = nodes_of(&bus, NodeKind::Return);
+        if returns.len() != 1 {
+            return Err("expected exactly one return statement".to_string());
+        }
+        let ret = returns[0];
+        let root = bus
+            .arenas
+            .nodes
+            .get(ret)
+            .map_err(|_| "return node vanished".to_string())?
+            .children
+            .first()
+            .copied()
+            .ok_or_else(|| "return statement has no expression".to_string())?;
+        let mut order = Vec::new();
+        expression_postorder(&bus, root, &mut order)?;
+        for node in order {
+            let kind = bus
                 .arenas
                 .nodes
                 .get(node)
-                .map_err(|_| "literal node vanished".to_string())?
-                .literal
-                .ok_or_else(|| "literal node carries no literal".to_string())?;
-            step(
-                &mut bus,
-                &workers,
-                &mut trace,
-                TaskKind::CONSTANT_CONST_FOLD,
-                G1_FOLD_CHIP,
-                Payload::from_refs(vec![RecordRef::Literal(literal)]),
-            )?;
+                .map_err(|_| "expression node vanished".to_string())?
+                .kind;
+            match kind {
+                NodeKind::IntLiteral => {
+                    run_literal(&mut bus, &workers, &mut trace, node, true)?;
+                }
+                NodeKind::Identifier => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::SEMANTIC_IDENTIFIER_EXPR,
+                        SE_ID_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(node)]),
+                    )?;
+                }
+                NodeKind::BinaryAdd
+                | NodeKind::BinarySub
+                | NodeKind::BinaryMul
+                | NodeKind::BinaryDiv
+                | NodeKind::BinaryRem => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::SEMANTIC_BINARY_EXPR,
+                        SE_BIN_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(node)]),
+                    )?;
+                }
+                NodeKind::UnaryPlus | NodeKind::UnaryMinus => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::SEMANTIC_UNARY_EXPR,
+                        SE_UNARY_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(node)]),
+                    )?;
+                }
+                _ => {
+                    return Err(format!(
+                        "unsupported expression node kind {kind:?} in locals shape"
+                    ));
+                }
+            }
         }
-    }
-    for node in nodes_of(&bus, NodeKind::Identifier) {
-        step(
-            &mut bus,
-            &workers,
-            &mut trace,
-            TaskKind::SEMANTIC_IDENTIFIER_EXPR,
-            SE_ID_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        )?;
-    }
-    let mut binary_nodes = Vec::new();
-    for kind in [
-        NodeKind::BinaryAdd,
-        NodeKind::BinarySub,
-        NodeKind::BinaryMul,
-        NodeKind::BinaryDiv,
-        NodeKind::BinaryRem,
-    ] {
-        binary_nodes.extend(nodes_of(&bus, kind));
-    }
-    binary_nodes.sort_by_key(|id| id.index());
-    for node in binary_nodes {
-        step(
-            &mut bus,
-            &workers,
-            &mut trace,
-            TaskKind::SEMANTIC_BINARY_EXPR,
-            SE_BIN_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        )?;
-    }
-    for node in nodes_of(&bus, NodeKind::Return) {
         step(
             &mut bus,
             &workers,
             &mut trace,
             TaskKind::SEMANTIC_RETURN_STMT,
             SE_RET_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
+            Payload::from_refs(vec![RecordRef::Node(ret)]),
         )?;
+    } else {
+        // Canonical shaped path: literal facts, then the additive fold, then
+        // the return fact.
+        for node in nodes_of(&bus, NodeKind::IntLiteral) {
+            run_literal(&mut bus, &workers, &mut trace, node, false)?;
+        }
+        for node in nodes_of(&bus, NodeKind::BinaryAdd) {
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_BINARY_EXPR,
+                SE_BIN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+        }
+        for node in nodes_of(&bus, NodeKind::Return) {
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_RETURN_STMT,
+                SE_RET_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+        }
     }
     // SE29 function-definition fact: exactly one M1 definition. The
     // committed SemRecord is the signature fact IR lowering consumes below;

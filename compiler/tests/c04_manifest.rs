@@ -246,7 +246,7 @@ fn store_owner_allowlist_seed_holds_gate1_row_with_zero_ready_writers() {
     // PA recovery (`/36`), T08 const-branch (`/37`), and VF14 evidence
     // (`/38`) slices add no rows) plus the SE29 function row (`/39`) and the
     // `/49` identifier row.
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 34);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 35);
     // `tasks.ready` (`Tasks`, `"queue.ready"`) gets zero allowlisted chip
     // writers, now and for every future seed this test guards.
     assert!(

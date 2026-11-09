@@ -321,7 +321,9 @@ fn expected_type(input: &Vf06Input, kind: NodeKind) -> Option<crate::ids::TypeId
         | NodeKind::BinarySub
         | NodeKind::BinaryMul
         | NodeKind::BinaryDiv
-        | NodeKind::BinaryRem => Some(input.int),
+        | NodeKind::BinaryRem
+        | NodeKind::UnaryPlus
+        | NodeKind::UnaryMinus => Some(input.int),
         NodeKind::FunctionDefinition => Some(input.signature),
         _ => None,
     }

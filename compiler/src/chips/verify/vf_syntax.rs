@@ -233,6 +233,7 @@ impl Vf05Chip {
                 | NodeKind::BinaryMul
                 | NodeKind::BinaryDiv
                 | NodeKind::BinaryRem => (2, false, false),
+                NodeKind::UnaryPlus | NodeKind::UnaryMinus => (1, false, false),
                 NodeKind::IntLiteral => (0, false, true),
                 // `/49` source-locals shape.
                 NodeKind::Declaration => (3, false, false),
@@ -240,10 +241,7 @@ impl Vf05Chip {
                 // `/43` freezes the V1 AST inventory but VF05's V1 shape
                 // table is not part of this schema slice. Fail closed rather
                 // than silently validating an unknown shape.
-                NodeKind::ExpressionStatement
-                | NodeKind::Assignment
-                | NodeKind::UnaryPlus
-                | NodeKind::UnaryMinus => {
+                NodeKind::ExpressionStatement | NodeKind::Assignment => {
                     return vec![syntax_fail(
                         input.task,
                         "V1 AST kind is not covered by the M1 VF05 shape table",
