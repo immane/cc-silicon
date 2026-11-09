@@ -588,7 +588,7 @@ after checking T01.
 |---|---|
 | Scope | Post-sprint T27/R01/R02/R13/R14 correctness closure |
 | Commits | `9ebee63`, `df96c02`, `7f62a73`, `5770a4b` |
-| Compiler tests | **1001 / 114 suites macOS** after the closure |
+| Compiler tests | **1001 / 114 suites macOS; 1018 / 114 native AArch64 Linux** after the closure |
 | Fixed | VF12 uncommitted-const/stale-local rejection; legacy local-expression 32-level budget; emitter foreign-parameter and uninitialized-local rejection; parameter-name/constant-range/x31 guards from the sprint batch |
 | Tests | T27 5 checks; R02 32/33 grouping and spaced-unary source regression; emitter uninitialized-local inline test; existing c55/call_source green |
 | Still open | H05 setsid/prlimit post-probe failure classification; A09/A10 two-way ABI boundary; remaining synthetic IR ownership checks; CFG/memory production |
