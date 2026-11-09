@@ -1681,6 +1681,15 @@ mod tests {
     }
 
     #[test]
+    fn uninitialized_local_read_fails_closed() {
+        let mut fixture = Fixture::new();
+        let loaded = fixture.load_local();
+        fixture.ret(loaded);
+        let error = emit_m1_assembly(&fixture.bus).unwrap_err();
+        assert!(error.contains("uninitialized local"), "{error}");
+    }
+
+    #[test]
     fn every_integer_operator_lowers() {
         let mut fixture = Fixture::new();
         let ten = fixture.constant(10);
