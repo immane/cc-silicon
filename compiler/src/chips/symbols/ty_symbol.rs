@@ -1,17 +1,19 @@
 // ============================================================================
 // chips/ty_symbol.rs — T06 TY07/TY20/TY04/TY10 declare + TY03 lookup workers
-// (Wave 2 slice 4, `/13`)
+// (Wave 2 slice 4, `/13`; `/54` parameter declarations)
 //
 // `TySymbolChip` serves `symbol_type.declare` (payload: exactly
-// `[Declarator Node, FuncType, FileScope]`; appends one `SymbolRecord` for
-// `main` with external linkage and static storage; duplicate
-// `(name, scope, kind)` declarations fail as `RedeclarationConflict` chip
-// diagnostics, never silent merges) and `symbol_type.lookup` (payload:
-// exactly `[Scope, Name]`; walks the active scope chain innermost-first and
-// completes with the hit, or fails with a typed undeclared-identifier
-// diagnostic). Namespaces are derived from the symbol kind; a hit in another
-// namespace is a miss. Query-point ordering stays deferred: M1 has one
-// declarator, so declaration order is the commit order.
+// `[Declarator Node, FuncType, FileScope]` for file functions,
+// `[Declarator Node, canonical int Type, Block Scope]` for automatic
+// locals, or `[Parameter Node, canonical int Type, Block Scope]` for
+// parameters; appends one `SymbolRecord`; duplicate `(name, scope, kind)`
+// declarations fail as `RedeclarationConflict` chip diagnostics, never
+// silent merges) and `symbol_type.lookup` (payload: exactly `[Scope, Name]`;
+// walks the active scope chain innermost-first and completes with the hit,
+// or fails with a typed undeclared-identifier diagnostic). Namespaces are
+// derived from the symbol kind; a hit in another namespace is a miss.
+// Query-point ordering stays deferred: declaration order is the commit
+// order.
 // ============================================================================
 
 use crate::bus::{Linkage, NodeKind, StorageDuration, SymbolKind, TypeKind};
@@ -106,9 +108,14 @@ pub fn project_ty_declare_input(
             format!("declare reads missing node {}", node.index()),
         )
     })?;
-    if node_body.kind != NodeKind::Declarator {
+    if !matches!(node_body.kind, NodeKind::Declarator | NodeKind::Parameter) {
         return Err(DiagnosticDraft::unsupported(
             "declare of a non-declarator node",
+        ));
+    }
+    if node_body.kind == NodeKind::Parameter && !node_body.children.is_empty() {
+        return Err(DiagnosticDraft::unsupported(
+            "declare of a non-leaf parameter node",
         ));
     }
     let Some(name) = node_body.name else {
@@ -129,13 +136,18 @@ pub fn project_ty_declare_input(
             format!("declare reads missing scope {}", scope.index()),
         )
     })?;
-    let (symbol_kind, linkage, storage) = match (&ty_body.kind, scope_body.kind) {
-        (TypeKind::Function { .. }, crate::bus::ScopeKind::File) => (
+    let (symbol_kind, linkage, storage) = match (node_body.kind, &ty_body.kind, scope_body.kind) {
+        (
+            NodeKind::Declarator,
+            TypeKind::Function { .. },
+            crate::bus::ScopeKind::File,
+        ) => (
             SymbolKind::Function,
             Linkage::External,
             StorageDuration::Static,
         ),
         (
+            NodeKind::Declarator | NodeKind::Parameter,
             TypeKind::Int {
                 rank: crate::bus::IntRank::Int,
                 signed: true,
@@ -146,14 +158,19 @@ pub fn project_ty_declare_input(
             Linkage::None,
             StorageDuration::Automatic,
         ),
-        (TypeKind::Function { .. }, crate::bus::ScopeKind::Block) => {
+        (NodeKind::Declarator, TypeKind::Function { .. }, crate::bus::ScopeKind::Block) => {
             return Err(DiagnosticDraft::unsupported(
                 "block-scope function declarations are outside the M1 locals slice",
             ));
         }
-        (TypeKind::Int { .. }, crate::bus::ScopeKind::File) => {
+        (NodeKind::Declarator, TypeKind::Int { .. }, crate::bus::ScopeKind::File) => {
             return Err(DiagnosticDraft::unsupported(
                 "file-scope objects are outside the M1 locals slice",
+            ));
+        }
+        (NodeKind::Parameter, _, _) => {
+            return Err(DiagnosticDraft::unsupported(
+                "parameters require a canonical int type in a block scope",
             ));
         }
         _ => {

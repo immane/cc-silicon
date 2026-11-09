@@ -142,6 +142,7 @@ pub fn project_se_binary_input(
                 leaves.push((*child, literal));
             }
             NodeKind::Identifier
+            | NodeKind::Call
             | NodeKind::BinaryAdd
             | NodeKind::BinarySub
             | NodeKind::BinaryMul

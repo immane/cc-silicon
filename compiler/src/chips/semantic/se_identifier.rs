@@ -2,11 +2,13 @@
 // chips/semantic/se_identifier.rs — T07 identifier-expression worker
 // (`/49` M1 source-locals slice)
 //
-// Reads one committed `Identifier` node, resolves the named automatic
-// `int` object in the active block scope chain, appends one `SemRecord`
-// (`NonLvalue`, `EffectMask(0)`), and completes with its reference. The
-// declaration itself is validated by `TySymbolChip`; this worker only
-// consumes the committed symbol. Missing or non-int bindings fail loudly.
+// Reads one committed `Identifier` node, resolves the enclosing function
+// body's active block scope from committed parent links, resolves the named
+// automatic `int` object there, appends one `SemRecord` (`NonLvalue`,
+// `EffectMask(0)`), and completes with its reference. Sibling function
+// bodies have independent scopes. The declaration itself is validated by
+// `TySymbolChip`; this worker only consumes the committed symbol. Missing
+// or non-int bindings fail loudly.
 // ============================================================================
 
 use crate::bus::{
@@ -21,6 +23,112 @@ use crate::records::{G1DraftBody, RecordDraft};
 use crate::task::{
     AppendBatch, DraftRef, Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState,
 };
+
+/// The enclosing function body and its committed block-scope chain.
+#[derive(Clone, Debug)]
+pub(crate) struct EnclosingBlock {
+    /// Active scope chain, innermost first (the block, then its parents).
+    pub chain: Vec<ScopeId>,
+    /// Enclosing `FunctionDefinition` node.
+    pub function: NodeId,
+}
+
+/// Resolve the block scope owned by the node's enclosing function body.
+///
+/// Walks committed parent links to the nearest `Compound` and
+/// `FunctionDefinition`, then selects the unique block scope whose owner is
+/// that `Compound`. Multiple function bodies therefore have independent
+/// scopes; no global "exactly one block scope" assumption is made.
+pub(crate) fn enclosing_block(
+    bus: &crate::bus::CompilerBus,
+    node: NodeId,
+) -> Result<EnclosingBlock, DiagnosticDraft> {
+    let mut current = Some(node);
+    let mut compound = None;
+    let mut function = None;
+    let mut hops = 0u32;
+    while let Some(id) = current {
+        if hops > bus.arenas.nodes.allocated() {
+            return Err(protocol_fault(format!(
+                "parent chain from node {} is cyclic",
+                node.index()
+            )));
+        }
+        let body = bus.arenas.nodes.get(id).map_err(|_| {
+            DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("reads missing ancestor node {}", id.index()),
+            )
+        })?;
+        if compound.is_none() && body.kind == NodeKind::Compound {
+            compound = Some(id);
+        }
+        if function.is_none() && body.kind == NodeKind::FunctionDefinition {
+            function = Some(id);
+        }
+        if compound.is_some() && function.is_some() {
+            break;
+        }
+        current = body.parent;
+        hops += 1;
+    }
+    let Some(compound) = compound else {
+        return Err(DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Task, 4),
+            format!("node {} is not inside a function body", node.index()),
+        ));
+    };
+    let Some(function) = function else {
+        return Err(DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Task, 4),
+            format!(
+                "node {} is not inside a function definition",
+                node.index()
+            ),
+        ));
+    };
+    let mut scopes: Vec<ScopeId> = bus
+        .arenas
+        .scopes
+        .iter()
+        .filter(|(_, scope)| {
+            scope.kind == ScopeKind::Block && scope.owner == Some(compound)
+        })
+        .map(|(id, _)| id)
+        .collect();
+    scopes.sort_by_key(|id| id.index());
+    if scopes.len() != 1 {
+        return Err(DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Task, 4),
+            format!(
+                "function body {} must own exactly one block scope",
+                compound.index()
+            ),
+        ));
+    }
+    let scope = scopes[0];
+    let mut chain = Vec::new();
+    let mut current = Some(scope);
+    let mut hops = 0u32;
+    while let Some(id) = current {
+        if hops > bus.arenas.scopes.allocated() {
+            return Err(protocol_fault(format!(
+                "parent chain from scope {} is cyclic",
+                scope.index()
+            )));
+        }
+        let body = bus.arenas.scopes.get(id).map_err(|_| {
+            DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!("reads missing scope {}", id.index()),
+            )
+        })?;
+        chain.push(id);
+        current = body.parent;
+        hops += 1;
+    }
+    Ok(EnclosingBlock { chain, function })
+}
 
 /// Narrow projection for the identifier-expression check.
 #[derive(Clone, Debug)]
@@ -126,35 +234,11 @@ pub fn project_se_identifier_input(
             format!("se-identifier reads nameless node {}", node.index()),
         ));
     };
-    // Exactly one committed block scope is the M1 source-locals body.
-    let mut blocks: Vec<ScopeId> = bus
-        .arenas
-        .scopes
-        .iter()
-        .filter(|(_, scope)| scope.kind == ScopeKind::Block)
-        .map(|(id, _)| id)
-        .collect();
-    blocks.sort_by_key(|id| id.index());
-    if blocks.len() != 1 {
-        return Err(DiagnosticDraft::unsupported(
-            "se-identifier requires exactly one block scope",
-        ));
-    }
-    // Innermost-first chain over committed parents.
-    let mut chain = Vec::new();
-    let mut current = blocks.first().copied();
-    while let Some(id) = current {
-        let scope = bus.arenas.scopes.get(id).map_err(|_| {
-            DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                format!("se-identifier reads missing scope {}", id.index()),
-            )
-        })?;
-        chain.push(id);
-        current = scope.parent;
-    }
+    // Resolve the active block scope from this identifier's enclosing
+    // function body; sibling function bodies are independent.
+    let block = enclosing_block(bus, node)?;
     let mut hit: Option<SymbolId> = None;
-    for scope in &chain {
+    for scope in &block.chain {
         let mut scope_hit = None;
         for (id, symbol) in bus.arenas.symbols.iter() {
             if symbol.name != name || symbol.scope != *scope {

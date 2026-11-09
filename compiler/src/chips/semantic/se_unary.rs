@@ -99,6 +99,7 @@ pub fn project_se_unary_input(
         operand_body.kind,
         NodeKind::IntLiteral
             | NodeKind::Identifier
+            | NodeKind::Call
             | NodeKind::BinaryAdd
             | NodeKind::BinarySub
             | NodeKind::BinaryMul

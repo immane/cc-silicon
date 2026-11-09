@@ -8,14 +8,15 @@
 // is a non-lvalue. Missing/wrong bindings and non-int rhs facts fail closed.
 // ============================================================================
 
+use super::se_identifier::enclosing_block;
 use super::se_literal::sem_for_node;
 use crate::bus::{
-    EffectMask, NodeKind, ScopeKind, SemRecord, StorageDuration, SymbolKind, TypeKind,
-    ValueCategory, EFFECT_WRITES_LOCAL,
+    EffectMask, NodeKind, SemRecord, StorageDuration, SymbolKind, TypeKind, ValueCategory,
+    EFFECT_WRITES_LOCAL,
 };
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
-use crate::ids::{NodeId, RecordRef, ScopeId, SymbolId, TaskId, TypeId};
+use crate::ids::{NodeId, RecordRef, SymbolId, TaskId, TypeId};
 use crate::manifest::{
     BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, SE_ASSIGN_CHIP,
 };
@@ -134,6 +135,7 @@ pub fn project_se_assignment_input(
         rhs_body.kind,
         NodeKind::IntLiteral
             | NodeKind::Identifier
+            | NodeKind::Call
             | NodeKind::BinaryAdd
             | NodeKind::BinarySub
             | NodeKind::BinaryMul
@@ -167,33 +169,9 @@ pub fn project_se_assignment_input(
             ));
         }
     }
-    let mut blocks: Vec<ScopeId> = bus
-        .arenas
-        .scopes
-        .iter()
-        .filter(|(_, scope)| scope.kind == ScopeKind::Block)
-        .map(|(id, _)| id)
-        .collect();
-    blocks.sort_by_key(|id| id.index());
-    if blocks.len() != 1 {
-        return Err(DiagnosticDraft::unsupported(
-            "se-assignment requires exactly one block scope",
-        ));
-    }
-    let mut chain = Vec::new();
-    let mut current = blocks.first().copied();
-    while let Some(id) = current {
-        let scope = bus.arenas.scopes.get(id).map_err(|_| {
-            DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                format!("se-assignment reads missing scope {}", id.index()),
-            )
-        })?;
-        chain.push(id);
-        current = scope.parent;
-    }
+    let block = enclosing_block(bus, node)?;
     let mut hit = None;
-    for scope in &chain {
+    for scope in &block.chain {
         for (id, symbol) in bus.arenas.symbols.iter() {
             if symbol.name == name && symbol.scope == *scope && symbol.kind == SymbolKind::Object {
                 if hit.is_some() {
@@ -221,7 +199,10 @@ pub fn project_se_assignment_input(
             format!("se-assignment reads missing symbol {}", symbol.index()),
         )
     })?;
-    if symbol_body.storage != StorageDuration::Automatic || symbol_body.ty != Some(int) {
+    if symbol_body.kind != SymbolKind::Object
+        || symbol_body.storage != StorageDuration::Automatic
+        || symbol_body.ty != Some(int)
+    {
         return Err(DiagnosticDraft::unsupported(
             "se-assignment of a non-automatic-int lhs",
         ));
