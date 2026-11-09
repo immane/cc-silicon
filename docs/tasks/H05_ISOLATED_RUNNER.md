@@ -2,10 +2,38 @@
 
 | Field | Value |
 |---|---|
-| Status | **IMPLEMENTED / VERIFIED (2026-11-09)** — host tooling; no compiler/contract change |
+| Status | **IMPLEMENTED subset; release-blocking audit findings (2026-11-10)** — host tooling; no compiler/contract change |
 | Crate | `tools/runner` (`cc-silicon-runner`) |
 | Scope | Per-instance workdir, deterministic env, timeout, output caps, cancellation, Linux prlimit bounds, process-group termination, outcome classification |
 | Non-claims | No target compiler/codegen, no torture corpus/rate, no kernel-level sandbox |
+
+### 1A. 2026-11-10 read-only audit findings
+
+These findings were reported by a read-only audit and have not been fixed or
+independently re-run as a release gate. They block treating H05 as a T00 native
+acceptance boundary, though the compiler's local smoke tests do not depend on
+the runner.
+
+- The CLI prints the mapped runner exit code, not the child's exit code or
+  signal; `Signaled{0}` can be fabricated when status is unavailable.
+- A fast process that exceeds the output cap can be classified `completed`;
+  output exactly equal to the cap can be falsely marked truncated; the two
+  streams race on one flag.
+- Post-kill `wait()` and reader-thread joins are unbounded; elapsed time is
+  captured before joins; descendants can keep pipes open.
+- Requested `prlimit` is silently ignored when `setsid` is unavailable; tool
+  presence is checked by spawn, not successful execution.
+- Log writes follow symlinks; `PATH` is host-dependent; environment allowlisting
+  is incomplete for reproducible target runs.
+- H05 is not a filesystem/network sandbox and does not provide cgroups,
+  filesystem quotas, core suppression, or protection from daemonizing
+  descendants.
+
+Small file-exclusive follow-up orders are H05-R1 (`lib.rs` containment),
+H05-R2 (`main.rs` report), H05-R3 (`runner.rs` regressions), and H05-R4 (new CLI
+tests). H05-R1 and H05-R5 both touch `lib.rs` and must not run concurrently.
+No compiler/tools dependency is implied; H02/H03 own judging and H06 owns
+aggregation.
 
 ## 1. Purpose
 

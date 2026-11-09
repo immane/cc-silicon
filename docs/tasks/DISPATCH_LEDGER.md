@@ -505,6 +505,21 @@ defaults. The deferred restore package is `/55`.
 | Explicit deferrals | Recursion, variadics, external/indirect calls, stack arguments, wider scalar/FP/aggregate ABI, two-way mixed-link boundary, memory, control flow, object emission, corpus/runner |
 | Non-claims | No general codegen, `-S`/`-c`, full ABI, target torture rate, or full M1 acceptance |
 
+### Post-`/55` Follow-up Findings (2026-11-10; proposals only)
+
+| Area | Finding | State |
+|---|---|---|
+| T00 / H05 | Read-only audit found child-status reporting, output-cap race, post-kill/reader join, prlimit-without-setsid, symlink-log, and PATH/env defects. H05 is not yet a T00 native acceptance boundary | Findings recorded in [H05](H05_ISOLATED_RUNNER.md); no fix applied |
+| Two-way ABI | Directive 2 (candidate caller + reference callee) needs a frozen external-callee fixture boundary; directive 1 needs function-only emission without duplicate `main` | **BLOCKED_CONTRACT**; `call_abi` ignores both, no pass claimed |
+| Integer zero | Source `0` is octal and fails the decimal-only commit/fold gate; recommended fix is canonical-zero normalization in T04 `lx_decode.rs`, with tests | Design only; next language-slice candidate |
+| CFG | Proposed mandatory-else `if` slice with append-only `If`, ordered successors, one-return-per-path, bounded VF12 execution, and 4–5 file-exclusive lanes | Design only; not frozen |
+| Memory | Proposed one static `int` global (`GlobalLoad`/`GlobalStore`, `.bss`, no pointers/arrays) | Design only; blocked until call/CFG file handoff |
+| LEX/T00 | No corpus fetched, official T00 substrate unresolved, no torture rate | Unchanged non-claim |
+
+These are not implementation authorizations. The next contract freeze must
+allocate `/56` (currently the deferred restore package) or a later amendment
+after checking T01.
+
 ## 4. Dispatch Rules for This Batch
 
 1. A worker may write only its report path; reports are English markdown.
