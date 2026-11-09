@@ -9,9 +9,11 @@
 | Checked baseline | `t01-c01-c06/55`; re-read the version, hash, and workspace state at dispatch time |
 | This document does not provide | Started agents, completed implementations, rerun tests, target probe results, or a GCC pass rate |
 
-**Next dispatch:** use [Section 13](#13-next-dispatch-from-53) for the concrete
-post-`/53` work orders, ownership, release gates, and handoffs. Sections 5–8 are
-long-term capacity pools, not instructions to launch 100 implementations now.
+**One-hour dispatch:** use [Section 14](#14-one-hour-100-agent-dispatch) for
+the 100-agent sprint over `/55`, including exact assignments and closeout.
+[Section 13](#13-next-dispatch-from-53) records the preceding direct-call
+dispatch. Sections 5–8 are long-term capacity pools, not instructions to launch
+100 implementations now.
 
 ## 1. Authority and Usage Boundaries
 
@@ -715,3 +717,413 @@ real producer integration → native/Host acceptance. The whole A–G objective 
 not complete until its remaining Host/corpus/general-codegen obligations pass;
 CALL acceptance only adds one bounded capability. More than 99% remains a T00
 goal, not a result supplied by this dispatch procedure.
+
+## 14. One-Hour 100-Agent Dispatch
+
+### 14.1 Execution Boundary and Baseline
+
+| Field | Binding |
+|---|---|
+| Status | **Prepared; NOT STARTED**. Writing this procedure starts no agent and approves no new schema |
+| Window | 60 minutes from an explicitly recorded T0; use remaining wall time, not model token consumption |
+| Capacity | 100 logical child-agent assignments; actual concurrent sessions limited only by confirmed platform capacity and safety gates |
+| Baseline inspected | `b0e0849`, `wave4-development`; recheck actual HEAD and all dirty paths at T0 |
+| Contract | `t01-c01-c06/55`, hash `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| Existing evidence | Prior `/55` session: 839/68 macOS, 848/68 Linux AArch64; not rerun by this document |
+| First priorities | Reproducible `/55` defects, H05 supervision defects, source-zero gap, independent ABI evidence |
+| Secondary priorities | Ready-to-freeze Host and CFG interfaces; no concurrent memory/CFG feature rewrite |
+| Success | Reviewed fixes and independently checked regression evidence, plus recoverable unmerged deliveries; not 100 green agents |
+
+The master dispatcher is outside these 100 slots. A slot is one assignment, not a
+ChipId. Assign real session IDs only after a launch succeeds. No completion-time,
+100-session tool capacity, or bug-free implementation promise is made.
+
+All agents read this section, [T01](T01_COMPILER_CONTRACT.md),
+[PARALLEL_EXECUTION](PARALLEL_EXECUTION.md), [TASK_TEMPLATE](TASK_TEMPLATE.md),
+and their relevant specification. Compiler workers also read
+[DIRECT_CALL_SLICE](DIRECT_CALL_SLICE.md); runner workers read
+[H05](H05_ISOLATED_RUNNER.md). Accepted architecture and field-level permissions
+still apply. Do not treat historical `/9` or “probe never run” paragraphs in old
+documents as current state. Resolve conflicts against the actual frozen artifact.
+
+**The earlier conversational “20 coding + 60 testing/review + 20 preparation”
+split was a capacity estimate, not 20 ready production writers.** The exact
+100 assignments below supersede that estimate. Initially only H01, H02, and L01
+are potential production writers; most slots deliver executable tests or
+read-only findings. Additional fixes require a concrete defect, an exclusive
+file lease, and the same freeze gate. Do not fabricate code work to fill seats.
+
+### 14.2 Minute Gates and Launch Waves
+
+| Elapsed | Master action | Agent action / release gate |
+|---|---|---|
+| 0–3 min | Record T0/deadline, HEAD/hash, dirty paths, machine/target/toolchain identity; allocate files and resource queue owners | O01–O05 establish read-only intake; do not reset existing work |
+| 3–10 min | Launch bounded bursts of up to 20 until all 100 assignments are launched or capacity is explicitly blocked | T/R/A test-design and review slots start immediately; H/L/Host/CFG workers inspect first, not invent interfaces |
+| By 10 min | Decide H05 API and zero-radix contract; accept a narrow change or mark its dependency closure blocked | H01/H02/L01 can write only after the recorded decision; dependent tests pin that decision |
+| 10–25 min | Intake first reproducers; deduplicate by root cause and route to unique file owner | Each slot returns an initial result by minute 20, even if incomplete; independent tests precede repairs where feasible |
+| 25–40 min | Merge small reviewed repair batches; use spare slots to reproduce/fix accepted defects | No fresh broad phase implementation; ownership transfers require former owner to stop and hand off |
+| At 40 min | Stop new work orders and stop expanding scope | Finish or checkpoint current work; no new feature freeze to keep agents busy |
+| 40–50 min | Stop normal worker writes at minute 45; snapshot all delivery refs; merge candidates in dependency order | Final handoff includes commit/diff, failing evidence, unrun checks, and next command |
+| 50–60 min | Reserve builds/target queue for final integration validation and evidence review | Only dispatcher-authorized regression fixes; deadline is not permission to waive a check |
+| At 60 min | End sprint and record exact accepted/unmerged/blocked counts | Cancel or pause unfinished agents; preserve worktrees and refs; no forced merge, push, or history rewrite |
+
+Do not wait for 100 agents to finish before accepting the first useful patch.
+If launches take longer than expected, retain the fixed closeout window and
+prioritize H05, source-zero, and critical `/55` reproducers over secondary design.
+These are scheduling budgets, not predicted completion durations.
+
+### 14.3 Exact 100 Assignments
+
+**File conventions.** IDs below are local to this sprint. Every new path is
+proposed: confirm it is unused before launch. A tester owns only its exact file
+and any explicitly assigned fixture path, never an entire directory. Test
+support stays local to the file during the sprint; a shared helper would create
+another integration interface. Test target names are file stems and use Cargo's
+existing integration-test discovery; verify no `autotests = false` restriction.
+
+#### T01–T30: `/55` Adversarial Regression Tests (30)
+
+For Tnn, the sole writable path is `compiler/tests/sprint_tnn.rs`, with lowercase
+two-digit `nn`. No production or existing-test edits. Every task delivers a
+minimal, independently derived test, not random volume. A bug-reproducing RED
+test is useful evidence but is not merged as a passing delivery before its fix.
+
+| ID | Exclusive test focus |
+|---|---|
+| T01 | 0/1/2/8 parameter and argument ordering; nine rejected |
+| T02 | Eight distinct noncommutative arguments, permutations and repeated values |
+| T03 | Parameter spellings reused in sibling functions; no binding leakage |
+| T04 | Local/parameter shadows a function name; object must not be callable |
+| T05 | Duplicate parameters, parameter/local collision and ordinary-namespace conflicts |
+| T06 | Unknown, later, self and mutually recursive callee rejection |
+| T07 | Entry selection: absent/duplicate/parameterized `main`, calls to `main` |
+| T08 | Nested calls in separate argument positions; left-to-right IR operand order |
+| T09 | Two call results live across a third call; no scratch-register reuse corruption |
+| T10 | Parameter/local values survive callee execution and repeated invocations |
+| T11 | Repeated literals across functions select their own `ConstRecord.origins` |
+| T12 | Mixed canonical binary-fold and literal-fold origins; ambiguity rejected |
+| T13 | Parentheses, unary operators, calls and precedence interactions |
+| T14 | Signed division/remainder for defined negative inputs, hand-computed quotients |
+| T15 | Checked arithmetic limits; model overflow/divide-by-zero not native C oracles |
+| T16 | Call frame depth eight/nine; explicit typed failure |
+| T17 | Interpreted-work boundary 4096/4097 with valid instruction structure |
+| T18 | Function count 32/33 with independent AST verification |
+| T19 | Grouping/unary/call expression depth 32/33; bounded failure |
+| T20 | AST count 4096/4097; parser atomicity and no dangling same-batch links |
+| T21 | Malformed delimiters, EOF shape, trailing tokens and no parse fallback |
+| T22 | Cyclic, shared and dangling AST children; harness deadline prevents hangs |
+| T23 | Malformed Call fields, missing/extra operands and missing result |
+| T24 | Foreign block/function/value ownership and use-before-definition in IR |
+| T25 | Duplicate producers, duplicate function records and missing/followed Return |
+| T26 | Malformed parameter symbols/types/scope and signature count mismatch |
+| T27 | Uninitialized locals, missing constants, stale IDs and invalid origin links |
+| T28 | Replay: result, assembly and semantic snapshot/trace repeatability |
+| T29 | Nonmatching task, ZST, wrong-owner proposals and undeclared write rejection |
+| T30 | Canonical and `/49`–`/53` compatibility; no artifacts on failed compilation |
+
+#### R01–R15: Independent Code Review (15)
+
+Read-only; return findings in the agent response. Do not create report files.
+Every finding needs current file/line, contract obligation, minimal reproducer,
+expected/actual result and severity; explicitly state if it is unconfirmed.
+
+| ID | Review boundary |
+|---|---|
+| R01 | Parser legacy/general classifier, fallback and spelling validation |
+| R02 | Parser recursion, AST allocation, budgets and atomic failure |
+| R03 | TY function canonicalization and parameter signature validity |
+| R04 | Scope lookup, ordinary namespaces and declaration visibility |
+| R05 | SE_CALL callee resolution, self/forward/entry rejection |
+| R06 | Fact reuse, duplicate facts, effects and parent expression propagation |
+| R07 | Literal-origin provenance and canonical-vs-general lowering |
+| R08 | IR `LocalExpr::Program` projection, dummy IDs, unchecked indexing and panic paths |
+| R09 | Per-function IR ownership, parameter binding and source evaluation order |
+| R10 | VF05 traversal cycles, child roles, spans and untrusted graph termination |
+| R11 | VF06 per-function signature and no vacuous/missing-fact acceptance |
+| R12 | VF12 closure, cycles, frame isolation, work/depth accounting |
+| R13 | Emitter whole-module validation, names and non-call field hygiene |
+| R14 | Emitter LR, parameter entry, value slots, frame boundaries and call clobbers |
+| R15 | Candidate orchestration, literal-fold count, entry choice and artifact publication |
+
+#### A01–A10: Independent ABI Evidence (10)
+
+Ann owns only `compiler/tests/sprint_ann.rs`. External fixture sources, if
+needed, are embedded in that file and written only to the job's isolated temp
+directory. Use the existing emitter as the implementation under test; never
+let GCC compile the candidate function. No normal-source external-call support
+is added by a test. A01–A08 may create synthetic IR fixtures; A09/A10 remain
+blocked until the stated test-only boundary is accepted.
+
+| ID | Independent assertion / oracle |
+|---|---|
+| A01 | 0–8 argument register locations with distinct positional values |
+| A02 | Entry saves all incoming parameters before scratch-register use |
+| A03 | Leaf LR untouched; non-leaf LR saved/restored on return |
+| A04 | SP alignment at call boundaries; frame 4080 boundary and first invalid size |
+| A05 | No writes to callee-saved registers, x18, or veneer scratch assumptions |
+| A06 | Full modeled negative/wide results versus low-eight-bit process exit |
+| A07 | Nested/repeated calls and caller-value preservation using independent assertions |
+| A08 | Symbol spelling/escaping, internal linkage, duplicate labels and assembly rejection |
+| A09 | Candidate callee + independent reference caller: function-only emission boundary review and fixture |
+| A10 | Candidate caller + independent reference callee: test-only unresolved-callee boundary review and fixture |
+
+A09/A10 cannot be called PASS by adding an ignored test or deleting/renaming
+`main` in emitted assembly. They return `BLOCKED_CONTRACT` with the exact
+missing interface if no narrow boundary is approved within the window. Same-TU
+execution remains different from two-way reference ABI acceptance.
+
+#### H01–H10: H05 Repair and Verification (10)
+
+H01/H02 are the only runner production writers. Before they code, the master
+records library outcome/report fields and CLI compatibility policy; old field
+names and public behavior are not changed silently. If a safe bounded cleanup
+requires a new unsafe/platform dependency, return a change request, not a
+workaround that claims containment.
+
+| ID | Sole writable path / focus |
+|---|---|
+| H01 | `tools/runner/src/lib.rs`: output-cap race, strict truncation, bounded cleanup, prlimit independent of setsid, setup failures, log symlink rejection; one integrated repair owner |
+| H02 | `tools/runner/src/main.rs`: actual child exit/signal, report escaping and applied-mode disclosure; depends on agreed H01 API |
+| H03 | New `tools/runner/tests/sprint_h03.rs`: fast over-cap, exact-cap, stderr/both-stream output |
+| H04 | New `tools/runner/tests/sprint_h04.rs`: descendant-held pipes, TERM resistance and total deadline |
+| H05 | New `tools/runner/tests/sprint_h05.rs`: missing/failing setsid/prlimit, limits not silently dropped |
+| H06 | New `tools/runner/tests/sprint_h06.rs`: logs/tmp symlinks and preservation of victim files |
+| H07 | New `tools/runner/tests/sprint_h07.rs`: cancellation, stdin EOF, separate concurrent workdirs |
+| H08 | New `tools/runner/tests/sprint_h08.rs`: CLI child exit 5/42, signals, setup error/report escaping |
+| H09 | Read-only independent review of H01 cleanup, capture concurrency and no orphan/hang claims |
+| H10 | Read-only independent review of H02 status fidelity, permissions, environment and sandbox non-claims |
+
+Lifecycle probes run under an **outer** hard deadline in an isolated environment;
+the runner under test cannot supervise its own hang test reliably. No probe
+targets unrelated host files/processes. Do not claim H05 kernel sandboxing or
+T00 acceptance after these repairs alone.
+
+#### L01–L08: Zero-Literal Contract and Regression (8)
+
+Before L01 writes, the master decides whether `LiteralRecord.radix` is lexical
+provenance or normalized representation. The proposal is to normalize unsuffixed
+zero magnitude to radix 10 in T04 while preserving spelling, accepting `0`,
+`00`, `0x0` only; nonzero octal/hex and suffix typing stay unsupported. This is
+a **proposal**, not permission to mutate lexical facts under `/55` without
+acceptance. If rejected, widening commit/fold rules needs another reviewed
+freeze and additional file leases; do not rush it into this sprint.
+
+| ID | Sole writable path / focus |
+|---|---|
+| L01 | `compiler/src/chips/lex/lx_decode.rs`: the accepted zero fix only; no duplicate fold normalization |
+| L02 | New `compiler/tests/sprint_l02.rs`: `0`/`00`/`0x0`, spelling and radix contract |
+| L03 | New `compiler/tests/sprint_l03.rs`: commit/fold, canonical zero, origins and repeated occurrences |
+| L04 | New `compiler/tests/sprint_l04.rs`: source zero initializer/arguments, unary minus and native exit zero |
+| L05 | New `compiler/tests/sprint_l05.rs`: source divide/remainder by zero diagnosed before artifact success, no UB native oracle |
+| L06 | New `compiler/tests/sprint_l06.rs`: invalid octal/hex/suffix, nonzero unsupported forms, bit-budget boundary |
+| L07 | Read-only radix/candidate-type/target-width contract review; audit whether normalization loses required lexical meaning |
+| L08 | Read-only compatibility review of `/55` origins and old integer-radix expectations; master owns existing-test migrations |
+
+#### D01–D12: Host Acceptance Chain (12)
+
+Initial mode is read-only contract/fixture preparation, not twelve private Host
+implementations. Return concrete typed field proposals and a small input/output
+fixture in the response. Existing corpus assets, if any, are read-only. Do not
+fetch GCC, download sysroots, run upstream directives, or introduce dependencies.
+
+| ID | Exclusive design/fixture responsibility |
+|---|---|
+| D01 | H00 corpus revision, licensing, inventory and denominator freeze inputs |
+| D02 | Offline corpus-lock verification, path traversal and missing/unlisted files |
+| D03 | Test-instance identity: suite/file/config/options/environment, stable ordering |
+| D04 | DejaGnu directive subset, unsupported directives and expected outcomes |
+| D05 | H02 candidate compile command/artifact/status boundary, no delegated C compilation |
+| D06 | H03 external assembler/linker/sysroot command and provenance boundary |
+| D07 | H03 run/check oracle, timeout/signal classification and assertion capture |
+| D08 | H06 per-instance result schema, infrastructure errors and missing-phase retention |
+| D09 | H06 per-suite instance-rate aggregation fixture with hand-computed counts |
+| D10 | H06 all-configurations-per-file rates; pooled/per-config counts and missing cases |
+| D11 | H09 three-run stability/regression retention and artifact evidence identity |
+| D12 | Host I/O security: argv/env/path validation, cancellation and isolation policy |
+
+If the master accepts a Host interface by minute 15, it may convert a subset
+to coding only after naming **exact unused files**, module owner, tests and
+baseline in the ledger. Existing `tools/torture/src/verify.rs` stays single-owner;
+no umbrella `tools/torture/**` write grant. If the freeze is not ready, the
+deliverable remains a usable fixture/decision request rather than a fake handler.
+
+#### C01–C10: Next CFG Freeze Preparation (10)
+
+Read-only; do not touch the active `/55` parser/lowerer/VF/emitter. Each returns
+one bounded contract decision and fixture, not a broad design document.
+
+| ID | Exclusive responsibility |
+|---|---|
+| C01 | Mandatory-else `If` AST child roles, spans and append-only inventory |
+| C02 | Parser grammar, nesting, dangling else, invalid forms and atomicity |
+| C03 | Condition/branch semantic facts, effects and final-If function rule |
+| C04 | Block allocation, ordinals, CondBranch successors and return-per-path lowering |
+| C05 | CFG verification: reachability, terminators, no joins/backedges/foreign targets |
+| C06 | VF12 block transitions, local/value scope, global step budget and call interaction |
+| C07 | AArch64 branch labels, truth testing and per-return frame/LR restore |
+| C08 | Hand-derived nested/zero/nonzero/negative condition acceptance cases |
+| C09 | Malformed CFG counterexamples, missing terminator and budget boundaries |
+| C10 | File-exclusive ownership, dependency closure and minimal next-freeze packet |
+
+No CFG production change is promised in the hour. The existing deferred restore
+allocation and next amendment number must be checked by the integrator; none
+of these agents may claim `/56` or a ChipId independently.
+
+#### O01–O05: Intake and Cross-Review (5)
+
+Read-only helpers; only the master edits the dispatch ledger or merges branches.
+
+| ID | Intake shard / deliverable |
+|---|---|
+| O01 | T01–T30: test independence, duplicate roots, RED/GREEN classification |
+| O02 | R01–R15 and A01–A10: severity, contract validity and target-evidence limits |
+| O03 | H01–H10 and L01–L08: file ownership, API compatibility, minimal repro/fix pairing |
+| O04 | D01–D12 and C01–C10: duplicate interfaces, unresolved decisions and ready-to-freeze synthesis |
+| O05 | Global evidence audit: exit statuses, skipped tests, exact baseline/toolchain, unmerged delivery inventory |
+
+Count check: **30 + 15 + 10 + 10 + 8 + 12 + 10 + 5 = 100** child slots.
+
+### 14.4 File Leases, Worktrees and Resource Queues
+
+The master alone owns `bus.rs`, `task.rs`, `manifest.rs`, `contract.rs`,
+`snapshot.rs`, `records.rs`, `commit.rs`, `limits.rs`, `candidate.rs`, all
+`mod.rs`/Cargo/lock files, existing shared tests, contract markers and docs.
+Compiler production fixes discovered by T/R/A are routed to the master or a
+newly leased single owner; testers never repair the implementation themselves.
+
+Each writer uses an independent worktree/branch at the recorded baseline,
+named by sprint ID and slot, with a separate output/temp/target directory.
+Read-only reviewers may share a fixed snapshot. At T0, copy or explicitly
+pin relevant user changes without committing them as someone else's work.
+Never reset/overwrite a user's or another agent's worktree. Do not remove any
+worktree until its commits/diffs are durably recorded and removal is authorized.
+
+**100 LLMs do not mean 100 Rust builds.** Queue caps are three concurrent
+targeted builds/tests total (including tool crates), one full regression within
+that cap, and one target/native job. Record a concrete build lease before each
+command. If no enforceable shared lease mechanism exists, agents deliver
+patches without building and the master runs checks centrally; do not assume an
+unimplemented semaphore tool exists. This is preferable to 100 agents each
+running `cargo test --all-targets`.
+
+Recheck available memory at T0; reduce builds to two if memory pressure occurs.
+Use already installed/pinned toolchains and image **digests**, recording the
+actual digest/versions rather than trusting a mutable Docker tag. A prior
+`rust:1.99-bookworm` run does not freeze the official T00 substrate. No silent
+image pulls or corpus downloads. Preserve the native queue for a small smoke
+early and accepted patches' final execution later.
+
+### 14.5 Assignment Prompt and Delivery Contract
+
+Expand this template for every slot; no missing path or placeholder survives a
+real launch:
+
+```text
+Sprint/slot: <one exact ID from §14.3>
+Mode: read-only | test-only | production writer after accepted gate
+Deadline: <absolute timestamp>, checkpoint by <timestamp>
+Baseline: <commit>, t01-c01-c06/55, <full hash>; record actual dirty state
+Read: AGENTS.md, T01, parallel protocol, assigned spec and exact source paths
+Write only: <exact paths, or NONE>; all other paths forbidden
+Question/rule: <the row's one concrete obligation>
+Independent expected result: <spec/hand calculation/reference counterpart>
+Prerequisites: <accepted decision and dependency delivery refs, or BLOCKED>
+Build lease: NONE until master grants; no full-suite/target fan-out
+Return: minimal repro/test or focused patch, expected vs actual, exact commands
+and exit statuses, evidence paths, unrun checks, limitations, changed files,
+commit/diff and next command. State RED/GREEN/BLOCKED/INCONCLUSIVE explicitly.
+No cross-chip calls/hidden state/I/O, unsafe code, new dependencies, private
+schema, upstream-test edits, candidate C delegation, or unauthorized push.
+```
+
+A worker may create its focused branch commit only if the launch explicitly
+authorizes commits; otherwise return a diff and preserve the worktree. Use English
+Conventional Commit messages. This sprint procedure does not itself authorize
+committing the user's unrelated changes, pushing, force-pushing or history edits.
+
+Reports are structured agent responses, not 100 new Markdown files. Raw logs,
+generated C/assembly, binaries and repro inputs live in the assigned approved
+scratch path or evidence directory, not repository source unless the test owner
+explicitly owns that fixture. Include path and content identity in the handoff;
+a disappearing temp path is not durable evidence.
+
+### 14.6 Review, Repair Routing and Merge Gates
+
+Use separate states: `ASSIGNED`, `RUNNING`, `REPRO_CONFIRMED`, `RED_TEST`,
+`REVIEW`, `UNIT_ACCEPTED`, `INTEGRATED`, `CLOSED_LOOP_ACCEPTED`, `BLOCKED`,
+`INCONCLUSIVE`, `CHECKPOINTED`. A finished agent is not automatically accepted.
+
+1. O01–O04 deduplicate findings by root cause and attach related tests without
+   discarding independent evidence. The master confirms severity/repro before
+   granting a production lease. Multiple reports of one bug count as one repair.
+2. Reviewers do not review their own fixes. A RED test is reproduced at the pinned
+   baseline, then run unchanged against the fix. Tests for undefined C behavior
+   assert model failure, never a universal native result.
+3. H01 library API precedes H02 CLI; both precede their integration tests.
+   L01 follows the accepted radix decision and precedes L02–L06 integration.
+   Existing-regression migrations belong to the master and need rationale.
+4. Merge small batches: production repair plus its independent tests, targeted
+   checks, then full relevant crate regression. Do not bulk cherry-pick 60 test
+   commits without compiling/discovering them or install unready tests into the
+   accepted branch. Keep RED tests on recorded branches until repair acceptance.
+5. An agent-generated test that falsely fails from a bad fixture is a test defect;
+   do not weaken correct compiler behavior to satisfy it. Record corrected
+   expectation and provenance. Unknown/untested behavior stays INCONCLUSIVE.
+6. Changing frozen meaning needs T01 acceptance, next-version/hash reconciliation
+   and dependent tests. Unchanged hash does not prove unchanged behavior. Do not
+   invent new IDs/call effects or widen zero's integer typing casually.
+7. Stop new production assignments when unreviewed implementation deliveries
+   reach three, or the inherited >20% rework threshold is exceeded; tests/review
+   may continue. Limit local blocks to their dependency closure unless a shared
+   contract/security failure requires a global stop.
+
+### 14.7 Validation and Closeout
+
+For each new integration-test file, the first build command is the actual
+`cargo test --locked --manifest-path <crate>/Cargo.toml --test <file-stem>
+--no-run`; then execute it with a lease. Compilation alone is not a test pass.
+Use existing commands, not guessed validator paths.
+
+Final checks for affected compiler/root/runner packages, run by the build queue:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
+cargo fmt --manifest-path compiler/Cargo.toml --all -- --check
+cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path compiler/Cargo.toml --test freeze
+cargo test --locked --manifest-path compiler/Cargo.toml
+cargo fmt --manifest-path tools/runner/Cargo.toml --all -- --check
+cargo clippy --locked --manifest-path tools/runner/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path tools/runner/Cargo.toml
+git diff --check
+```
+
+Run standalone torture-tool checks only if that crate actually changes. Native
+acceptance covers `call_source`, `call_abi`, `c55_target_m1`, and
+`c56_source_locals` on the recorded Linux AArch64 substrate, plus H05's
+Linux-only tests if changed. Record target/tool versions, skips, ignored mixed-link
+directions and actual return codes. Host-green or early-returned tests cannot
+be counted as native passes. Use an outer timeout for untrusted cases; unresolved
+H05 defects mean its self-supervision is not sufficient isolation.
+
+Capture the command's exit status before counting results. In a shell pipeline
+use the shell's explicit pipeline-status mechanism or `pipefail`; a trailing
+grep/awk exit code or a summed pass count alone proves nothing. A deadline-hit
+full suite is UNRUN/INCOMPLETE, not PASS. Retain the earliest failure and its log.
+
+By minute 60, the master records in [DISPATCH_LEDGER](DISPATCH_LEDGER.md):
+
+- T0/end time, actual launched sessions versus the 100 slots and capacity failures;
+- each slot's session/worktree/ref, mode, state, actual files and evidence identity;
+- confirmed unique defects, fixed/reviewed/integrated defects and outstanding P0s;
+- exact command results, failing tests, native/host split, skipped/unrun checks;
+- accepted HEAD and contract hash, unmerged commits/diffs and the next command;
+- which paused agents still have recoverable work, without deleting their worktrees.
+
+Final reporting distinguishes **usable tests**, **confirmed defects**, **accepted
+repairs**, **independent target evidence**, and **design-only proposals**. The
+sprint succeeds even if some deliveries remain blocked, provided that evidence
+and unmerged work are recoverable. It does not establish full ABI, hostile-input
+sandboxing, GCC torture rates, or completion of A–G.
