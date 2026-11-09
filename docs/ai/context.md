@@ -1,19 +1,19 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/46`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/47`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
 > 2026-11-09 after accepting `/43` parser architecture/V1 AST, implementing
 > B2-02 `/42`, B-INT-00, B3-03a source `#define`/`#undef`, B3-03b bounded
 > quote include, and the target probe, with the full compiler suite green
-> (720 tests / 59 suites; clippy clean).
+> (723 tests / 60 suites; clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/46` (parser architecture/V1 AST, IR/CFG common
+- Frozen artifact: `t01-c01-c06/47` (parser architecture/V1 AST, IR/CFG common
   base, constant v3 float/address, determinism/limits/replay), hash
-  `3416b176c23f3802e2c57978db74f89bcc7719337c968c0c12c9d7b19aa6972f`.
+  `3c3d722def942d229e95d15f8e6758ee88f9a71720b170b3751bebf38245f593`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -93,7 +93,8 @@
 | `/43` | Parser architecture + V1 AST common base (single-task V1 parser decision, append-only NodeKind) | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c49_ast_schema` 2 |
 | `/44` | IR/CFG common base (`local`/`successors`, op append) | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c50_ir_schema` 2 |
 | `/45` | Constant v3 float/address tags | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c51_const_v3` 3 |
-| `/46` | Type/layout/init common base | `bus.rs`, `snapshot.rs`, `records.rs`, `commit.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c52_type_schema` 3, `c53_layout_init_schema` 2, full 720/59 |
+| `/46` | Type/layout/init common base | `bus.rs`, `snapshot.rs`, `records.rs`, `commit.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c52_type_schema` 3, `c53_layout_init_schema` 2 |
+| `/47` | Diagnostic taxonomy | `diagnostic.rs`, `contract.rs`, `snapshot.rs`, `contracts/CONTRACT_VERSION` | `c54_diag_taxonomy` 3, full 723/60 |
 | — | H01/H07 containerized target probe + attestation test (no contract bump) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 2 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
@@ -190,10 +191,9 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: Batch D `/47` diagnostics; then Batch E H05 runner, Batch F official
-  target baseline, and Batch G torture chain. B3-03c `#line`/`#pragma` and the
-  wider H04 include policy remain open. Continue the PP remainder in pipeline
-  order — then T04 LX
+- NEXT UP: Batch E H05 isolated runner; then Batch F official target baseline
+  and Batch G torture chain. B3-03c `#line`/`#pragma` and the wider H04 include
+  policy remain open. Continue the PP remainder in pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells
