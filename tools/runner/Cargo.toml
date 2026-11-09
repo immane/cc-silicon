@@ -1,0 +1,10 @@
+[package]
+name = "cc-silicon-runner"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "H05 per-instance isolated process runner for compiler/torture host tooling."
+license = "MIT"
+repository = "https://github.com/immane/cc-silicon"
+
+[dependencies]
