@@ -6,4 +6,6 @@
 
 mod ir_function;
 
-pub use self::ir_function::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
+pub use self::ir_function::{
+    project_ir_function_input, IrFunctionChip, IrFunctionInput, LocalExpr,
+};

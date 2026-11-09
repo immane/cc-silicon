@@ -87,24 +87,46 @@ trace shows exactly what the outside world contributed.
 
 ## What you can run today
 
-The walkthrough above is the plan. What actually executes today is the
-framework's counter example, which demonstrates the tick discipline on
-a trivial circuit:
+The walkthrough above is the plan. The framework counter example still
+demonstrates the tick discipline on a trivial circuit:
 
 ```bash
 cargo run --example counter
 ```
 
-It implements a small bus, two chips, two layers, and ticks — the same
-mechanics the compiler will one day ride on, with none of the language
-content. Full setup is in
-[design/GETTING_STARTED.md](../design/GETTING_STARTED.md).
+The compiler candidate also executes two narrow source paths end to end:
+
+```bash
+cargo run --manifest-path compiler/Cargo.toml --bin candidate -- \
+  --interpret-ir program.c
+cargo run --manifest-path compiler/Cargo.toml --bin candidate -- \
+  --emit-asm program.s --interpret-ir program.c
+```
+
+- `int main(void){return 2+3;}` models 5 and emits a constant-return leaf.
+- `int main(void){int x=2;return x;}` models 2 and emits local load/store IR.
+- `int main(void){int x=2;return x+3;}` models 5 and emits local-add IR.
+- `int main(void){int x=2;return x-3;}` (and `*`, `/`, `%`) emit the matching
+  local binary IR.
+- `int main(void){int x=2;return (x+3)*2;}` and unary forms parse a closed
+  local expression tree.
+- `int main(void){int x=2;x=x+3;return x;}` lowers the assignment as a store.
+- `int add(int a,int b){return a+b;} int main(void){return add(2,3);}` models 5
+  and emits two function symbols with `w0`/`w1` arguments and a direct `bl`.
+- `int inc(int x){return x+1;} int main(void){return inc(2)+inc(3);}` models 7
+  and keeps each call result live across the second call.
+
+On native AArch64 Linux the emitted assembly assembles, links, and exits the
+modeled values. This is not a general compiler: recursion, variadics,
+external/indirect calls, stack arguments, memory, branches, loops, object
+emission, and `-S`/`-c` remain absent. Full setup is
+in [design/GETTING_STARTED.md](../design/GETTING_STARTED.md).
 
 ## Sources
 
-- Frontend acceptance fixtures (planned):
+- Frontend acceptance fixtures (full milestone, planned):
   [tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md](../tasks/M1_VERTICAL_SLICE_ACCEPTANCE.md)
-- End-to-end acceptance, including the probe-gated target half:
+- End-to-end acceptance, including the probe-gated target half (full milestone, planned):
   [tasks/M1_TARGET_ACCEPTANCE.md](../tasks/M1_TARGET_ACCEPTANCE.md)
 - Per-stage chip tables (planned work, not code):
   [tasks/README.md](../tasks/README.md) §3

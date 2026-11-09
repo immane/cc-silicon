@@ -15,13 +15,13 @@
 // determinism), and stage/layer gates.
 // ============================================================================
 
-use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, ConstRecord};
+use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, ConstRecord, ConstValue, IntegerConst};
 use cc_silicon_compiler::chips::{
     classify_vf14_evidence, decode_gate_raw, decode_result_value, handler_for, project_vf14_input,
     StageEvidence, Vf14Chip, Vf14Input, Vf14Outcome, Vf14Stage, Worker, WorkerRegistry,
     VF14_TASK_KIND,
 };
-use cc_silicon_compiler::ids::{ChipId, ConstId, DiagnosticId, RecordRef, TaskId};
+use cc_silicon_compiler::ids::{ChipId, ConstId, DiagnosticId, RecordRef, TaskId, TypeId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     check_stage_layer_agreement, is_vf_evidence_slice_kind, stage_of, ManifestRegistry,
@@ -155,7 +155,7 @@ fn evidence_kind_stage_registry_manifest_frozen() {
     // The chip is Ack-only: zero writes, no allowlist rows
     // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(VF14_CHIP, ChipId(56));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     assert!(
         !STORE_OWNER_ALLOWLIST
             .iter()
@@ -433,8 +433,12 @@ fn seed_gate(bus: &mut CompilerBus, raw: u8) -> cc_silicon_compiler::ids::ConstI
         .consts
         .alloc(
             ConstRecord {
-                value: vec![raw],
-                negative: false,
+                ty: TypeId::from_index(0),
+                value: ConstValue::Integer(IntegerConst {
+                    magnitude: vec![raw],
+                    negative: false,
+                }),
+                origins: vec![],
             },
             &limits,
         )

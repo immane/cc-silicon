@@ -7,7 +7,9 @@
 // evaluates `#if`/`#elif` expressions with a chip-local PP-int evaluator
 // (recursive descent plus `defined`, folded from the PP20–PP22 catalog
 // rows — see `PP_CONDITIONAL_SLICE.md` §6 for the promotion criteria;
-// `/23` amendment: `defined` and `#ifdef` read the committed macro table),
+// `/23` amendment: `defined` and `#ifdef` read the committed macro table;
+// B3-01: `#if`/`#elif` expand committed object-like identifiers before
+// integer evaluation, with a blue-paint set and bounded depth),
 // and completes `Records` of the active-line token refs. Conditional
 // directive lines are fully consumed here (never kept); active
 // non-conditional lines — directives like `#error` included — pass
@@ -15,7 +17,7 @@
 // the EOF ref is always kept. No writes, no children, no joins.
 // ============================================================================
 
-use crate::bus::{PpTokenKind, PpTokenRecord, SpanRecord};
+use crate::bus::{MacroRecord, PpTokenKind, PpTokenRecord, SpanRecord};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{MacroId, PpTokenId, RecordRef, SourceId, SpanId, TaskId};
@@ -36,7 +38,10 @@ pub struct PpConditionalInput {
     /// Source byte strings referenced by those spans, in first-use order.
     pub sources: Vec<(SourceId, Vec<u8>)>,
     /// Committed macro definitions in ascending-ID order (latest wins).
-    pub macros: Vec<(MacroId, crate::bus::MacroRecord)>,
+    pub macros: Vec<(MacroId, MacroRecord)>,
+    /// Committed pp-tokens referenced by macro replacement lists, in
+    /// first-use order over the ascending-ID macro table.
+    pub macro_tokens: Vec<(PpTokenId, PpTokenRecord)>,
 }
 
 /// Build the narrow projection for one dispatched task.
@@ -110,13 +115,33 @@ pub fn project_pp_conditional_input(
             }
         }
     }
-    let mut macros: Vec<(MacroId, crate::bus::MacroRecord)> = bus
+    let mut macros: Vec<(MacroId, MacroRecord)> = bus
         .arenas
         .macros
         .iter()
         .map(|(id, body)| (id, body.clone()))
         .collect();
     macros.sort_by_key(|(id, _)| id.index());
+    let mut macro_tokens: Vec<(PpTokenId, PpTokenRecord)> = Vec::new();
+    for (_, record) in &macros {
+        for id in &record.replacement {
+            if macro_tokens.iter().any(|(known, _)| known == id) {
+                continue;
+            }
+            match bus.arenas.pp_tokens.get(*id) {
+                Ok(found) => macro_tokens.push((*id, found.clone())),
+                Err(_) => {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!(
+                            "conditional reads missing macro replacement pp-token {}",
+                            id.index()
+                        ),
+                    ));
+                }
+            }
+        }
+    }
     Ok(PpConditionalInput {
         task,
         state: record.state.clone(),
@@ -124,6 +149,7 @@ pub fn project_pp_conditional_input(
         spans,
         sources,
         macros,
+        macro_tokens,
     })
 }
 
@@ -153,7 +179,10 @@ impl Worker for PpConditionalChip {
             backend_class: BackendClass::CpuReference,
             phase: ChipPhase::Propagation,
             deterministic: true,
-            tests: vec!["compiler/tests/c22_conditional.rs"],
+            tests: vec![
+                "compiler/tests/c22_conditional.rs",
+                "compiler/tests/c43_pp_if_macro.rs",
+            ],
             dependencies: vec![],
         }
     }
@@ -305,7 +334,8 @@ fn conditional_step(
     };
     if name == b"if" {
         let tokens = expr_tokens(input, line)?;
-        let value = eval_pp_expr(&tokens, &input.macros)?;
+        let expanded = expand_condition_tokens(&tokens, &input.macros, &input.macro_tokens)?;
+        let value = eval_pp_expr(&expanded, &input.macros)?;
         let take = *active && value != 0;
         stack.push(CondLevel {
             parent_active: *active,
@@ -347,7 +377,8 @@ fn conditional_step(
             return Err(err("`#elif` after `#else`"));
         }
         let tokens = expr_tokens(input, line)?;
-        let value = eval_pp_expr(&tokens, &input.macros)?;
+        let expanded = expand_condition_tokens(&tokens, &input.macros, &input.macro_tokens)?;
+        let value = eval_pp_expr(&expanded, &input.macros)?;
         let take = !level.taken && level.parent_active && value != 0;
         level.taken = level.taken || take;
         *active = take;
@@ -589,37 +620,221 @@ fn directive_name(input: &PpConditionalInput, line: &RawLine) -> Result<Vec<u8>,
 /// True when the committed macro table defines this spelling: the latest
 /// record with equal spelling exists and is not a tombstone.
 fn macro_defined(input: &PpConditionalInput, spelling: &[u8]) -> bool {
-    let mut defined = false;
-    for (_, record) in &input.macros {
-        if record.spelling.as_slice() == spelling {
-            defined = !record.undefined;
-        }
+    match latest_macro(&input.macros, spelling) {
+        Some(record) => !record.undefined,
+        None => false,
     }
-    defined
 }
 
 /// Free-function twin for the expression parser (which cannot borrow the
 /// whole input): same latest-wins rule over committed macro bodies.
-fn defined_in(macros: &[(MacroId, crate::bus::MacroRecord)], spelling: &[u8]) -> i128 {
-    let mut defined = false;
-    for (_, record) in macros {
-        if record.spelling.as_slice() == spelling {
-            defined = !record.undefined;
-        }
-    }
-    if defined {
-        1
-    } else {
-        0
+fn defined_in(macros: &[(MacroId, MacroRecord)], spelling: &[u8]) -> i128 {
+    match latest_macro(macros, spelling) {
+        Some(record) if !record.undefined => 1,
+        _ => 0,
     }
 }
 
+/// Expansion budget per `#if`/`#elif` expression. The blue-paint set already
+/// terminates recursion; this bounds exponential replacement fan-out so a
+/// pathological committed table fails deterministically instead of spinning.
+const CONDITIONAL_EXPANSION_BUDGET: usize = 1 << 16;
+
+/// Latest committed definition for a spelling (`macros` is ascending-ID, so
+/// the last match wins). Tombstones are returned and treated as undefined by
+/// callers.
+fn latest_macro<'a>(
+    macros: &'a [(MacroId, MacroRecord)],
+    spelling: &[u8],
+) -> Option<&'a MacroRecord> {
+    let mut latest: Option<&'a MacroRecord> = None;
+    for (_, record) in macros {
+        if record.spelling.as_slice() == spelling {
+            latest = Some(record);
+        }
+    }
+    latest
+}
+
+/// Look up one committed replacement-list token in the projected pool.
+fn find_macro_token(pool: &[(PpTokenId, PpTokenRecord)], id: PpTokenId) -> Option<&PpTokenRecord> {
+    pool.iter()
+        .find(|(known, _)| *known == id)
+        .map(|(_, record)| record)
+}
+
+/// True when `spelling` is already blue-painted in the current expansion
+/// chain (C11 6.10.3.4 rescan/hide-set for the object-like case).
+fn is_painted(paint: &[Vec<u8>], spelling: &[u8]) -> bool {
+    paint.iter().any(|painted| painted.as_slice() == spelling)
+}
+
+/// Add `spelling` to the paint set unless already present.
+fn paint_insert(paint: &mut Vec<Vec<u8>>, spelling: &[u8]) {
+    if !is_painted(paint, spelling) {
+        paint.push(spelling.to_vec());
+    }
+}
+
+/// C11 6.10.1 replacement pass for one `#if`/`#elif` controlling expression.
+/// `defined` operands are copied verbatim; other object-like macro names are
+/// replaced and rescanned under a blue-paint hide set. Function-like
+/// invocations are outside this slice and fail loudly rather than silently
+/// evaluating the macro name as zero.
+fn expand_condition_tokens(
+    tokens: &[PpTokenRecord],
+    macros: &[(MacroId, MacroRecord)],
+    pool: &[(PpTokenId, PpTokenRecord)],
+) -> Result<Vec<PpTokenRecord>, DiagnosticDraft> {
+    let mut expander = ConditionalExpander {
+        macros,
+        pool,
+        max_depth: macros.len().saturating_add(2),
+        budget: CONDITIONAL_EXPANSION_BUDGET,
+    };
+    let mut out = Vec::new();
+    expander.expand_stream(tokens, &[], 0, &mut out)?;
+    Ok(out)
+}
+
+/// Object-like expansion state for one controlling expression.
+struct ConditionalExpander<'a> {
+    macros: &'a [(MacroId, MacroRecord)],
+    pool: &'a [(PpTokenId, PpTokenRecord)],
+    /// Nesting bound: committed-macro-count + 2 (mirrors PP12's breaker).
+    max_depth: usize,
+    /// Remaining macro expansions across the whole expression.
+    budget: usize,
+}
+
+impl ConditionalExpander<'_> {
+    fn err(&self, detail: &str) -> DiagnosticDraft {
+        DiagnosticDraft::error(DiagnosticCode::new(DiagGroup::Task, 4), detail.to_string())
+    }
+
+    fn expand_stream(
+        &mut self,
+        tokens: &[PpTokenRecord],
+        paint: &[Vec<u8>],
+        depth: usize,
+        out: &mut Vec<PpTokenRecord>,
+    ) -> Result<(), DiagnosticDraft> {
+        let mut index = 0usize;
+        while index < tokens.len() {
+            let token = &tokens[index];
+            if token.kind == PpTokenKind::Identifier && token.spelling.as_slice() == b"defined" {
+                copy_defined_operand(tokens, &mut index, out);
+                continue;
+            }
+            if token.kind == PpTokenKind::Identifier {
+                if let Some(def) = latest_macro(self.macros, &token.spelling).cloned() {
+                    if !def.undefined && !is_painted(paint, &def.spelling) {
+                        if def.function_like {
+                            if next_is_open_paren(tokens, index + 1) {
+                                return Err(DiagnosticDraft::unsupported(
+                                    "function-like macro invocation in `#if`/`#elif` is deferred past this slice",
+                                ));
+                            }
+                        } else {
+                            if depth >= self.max_depth {
+                                return Err(self.err(
+                                    "conditional macro expansion exceeds the committed-macro-count bound",
+                                ));
+                            }
+                            if self.budget == 0 {
+                                return Err(
+                                    self.err("conditional macro expansion budget exhausted")
+                                );
+                            }
+                            self.budget -= 1;
+                            let replacement = replacement_records(&def, self.pool)?;
+                            let mut nested = paint.to_vec();
+                            paint_insert(&mut nested, &def.spelling);
+                            self.expand_stream(&replacement, &nested, depth + 1, out)?;
+                            index += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            out.push(token.clone());
+            index += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Copy `defined` plus its operand form verbatim so macro replacement cannot
+/// rewrite the name the operator inspects.
+fn copy_defined_operand(tokens: &[PpTokenRecord], index: &mut usize, out: &mut Vec<PpTokenRecord>) {
+    let defined = match tokens.get(*index) {
+        Some(token) => token.clone(),
+        None => return,
+    };
+    out.push(defined);
+    *index += 1;
+    let next = match tokens.get(*index) {
+        Some(token) => token.clone(),
+        None => return,
+    };
+    if next.kind == PpTokenKind::Punctuator && next.spelling.as_slice() == b"(" {
+        out.push(next);
+        *index += 1;
+        if let Some(operand) = tokens.get(*index) {
+            out.push(operand.clone());
+            *index += 1;
+        }
+        if let Some(close) = tokens.get(*index) {
+            if close.kind == PpTokenKind::Punctuator && close.spelling.as_slice() == b")" {
+                out.push(close.clone());
+                *index += 1;
+            }
+        }
+    } else {
+        out.push(next);
+        *index += 1;
+    }
+}
+
+/// True when the next token is an invocation-opening `(`. Whitespace is not
+/// significant for a function-like call (unlike the `#define` shape).
+fn next_is_open_paren(tokens: &[PpTokenRecord], index: usize) -> bool {
+    match tokens.get(index) {
+        Some(token) => token.kind == PpTokenKind::Punctuator && token.spelling.as_slice() == b"(",
+        None => false,
+    }
+}
+
+/// Resolve one definition's replacement list through the projected pool.
+fn replacement_records(
+    def: &MacroRecord,
+    pool: &[(PpTokenId, PpTokenRecord)],
+) -> Result<Vec<PpTokenRecord>, DiagnosticDraft> {
+    let mut out = Vec::with_capacity(def.replacement.len());
+    for id in &def.replacement {
+        match find_macro_token(pool, *id) {
+            Some(record) => out.push(record.clone()),
+            None => {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!(
+                        "conditional reads unprojected macro replacement token {}",
+                        id.index()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Evaluate one `#if`/`#elif` expression (pp-token records, stream order)
-/// to an exact `i128`. Both sides of `&&`/`||`/`?:` always evaluate
-/// (fail-closed); division/modulo by zero, bad shifts, and overflow fail.
+/// to an exact `i128`. The caller has already performed C11 macro
+/// replacement. Both sides of `&&`/`||`/`?:` always evaluate (fail-closed);
+/// division/modulo by zero, bad shifts, and overflow fail.
 fn eval_pp_expr(
     tokens: &[PpTokenRecord],
-    macros: &[(MacroId, crate::bus::MacroRecord)],
+    macros: &[(MacroId, MacroRecord)],
 ) -> Result<i128, DiagnosticDraft> {
     let mut parser = ExprParser {
         tokens,
@@ -639,7 +854,7 @@ fn eval_pp_expr(
 /// Recursive-descent PP-int parser over pp-token records (frozen §3).
 struct ExprParser<'a> {
     tokens: &'a [PpTokenRecord],
-    macros: &'a [(MacroId, crate::bus::MacroRecord)],
+    macros: &'a [(MacroId, MacroRecord)],
     pos: usize,
 }
 

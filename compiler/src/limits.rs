@@ -20,6 +20,23 @@ use crate::ids::TaskId;
 /// constant together with `bus::Stage`.
 pub const STAGE_COUNT: usize = 11;
 
+/// `/54` direct-call slice bounds. These are closed implementation bounds,
+/// not configured job limits: exceeding one is a typed failure, never a
+/// truncated or partially appended program.
+pub const CALL_MAX_FUNCTIONS: usize = 32;
+/// Maximum parameters per function.
+pub const CALL_MAX_PARAMETERS: usize = 8;
+/// Maximum arguments per call.
+pub const CALL_MAX_ARGUMENTS: usize = 8;
+/// Maximum expression/grouping/parser nesting.
+pub const CALL_MAX_EXPRESSION_DEPTH: usize = 32;
+/// Maximum AST nodes in one translation unit.
+pub const CALL_MAX_AST_NODES: usize = 4096;
+/// Maximum live interpreted call frames, including `main`.
+pub const CALL_MAX_DEPTH: usize = 8;
+/// Maximum interpreted instructions across all frames.
+pub const CALL_MAX_STEPS: u64 = 4096;
+
 /// Explicit resource budget for one compiler job.
 ///
 /// All fields are hard upper bounds. A store that would exceed a bound returns
@@ -242,8 +259,9 @@ pub enum LimitError {
     /// The per-tick dispatch quota is zero; at least one dispatch per tick
     /// is required.
     ///
-    /// A limit-configuration violation (rejected by [`Limits::try_new`]),
-    /// never a runtime dispatch failure.
+    /// `Limits::try_new` rejects this configuration, and `/41` also makes it
+    /// a runtime fail-closed error at `propagate` (no dispatch, no commit,
+    /// no state mutation) rather than silently clamping to one.
     InvalidInflightQuota {
         /// The rejected value.
         value: u32,

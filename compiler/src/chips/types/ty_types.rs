@@ -1,13 +1,13 @@
 // ============================================================================
 // chips/ty_types.rs — T06 TY13/TY17 canonical-type workers
-// (Wave 2 slice 4, `/13`)
+// (Wave 2 slice 4, `/13`; `/54` parameterized direct-call shape)
 //
 // `TyTypeChip` serves two kinds: `symbol_type.int_type` (empty payload;
 // the canonical `int` singleton) and `symbol_type.func_type` (payload:
-// exactly one result `Type`; the `int(void)` shape). Both reuse the
-// committed canonical id through a deterministic bounded scan (lowest
-// matching `TypeId`, no cache) and append only on a miss. Non-M1 type
-// shapes are explicit `Unsupported`.
+// `[result Type, parameter Type xN]`, N = 0..8, all canonical `int`).
+// Both reuse the committed canonical id through a deterministic bounded
+// scan (lowest matching `TypeId`, no cache) and append only on a miss.
+// Non-M1 type shapes are explicit `Unsupported`.
 // ============================================================================
 
 use crate::bus::{IntRank, TypeKind, TypeRecord};
@@ -41,6 +41,9 @@ pub struct TyTypeInput {
     pub state: TaskState,
     /// Result type for `func_type` (committed body).
     pub result: Option<(TypeId, TypeRecord)>,
+    /// Canonical `int` parameter type ids for `func_type`, in declaration
+    /// order (empty for `int_type` and for `int(void)`).
+    pub params: Vec<TypeId>,
     /// Committed canonical id matching the wanted type, if any.
     pub existing: Option<TypeId>,
     /// `types` arena count at dispatch (append prediction base).
@@ -67,7 +70,7 @@ pub fn project_ty_type_input(
         .tasks
         .get(task)
         .map_err(|_| protocol_fault(format!("type of unknown task {}", task.index())))?;
-    let (wanted, result) = match record.kind {
+    let (wanted, result, params) = match record.kind {
         TaskKind::SYMBOL_INT_TYPE => {
             if !record.payload.refs.is_empty() {
                 return Err(protocol_fault(format!(
@@ -75,50 +78,64 @@ pub fn project_ty_type_input(
                     task.index()
                 )));
             }
-            (m1_int(), None)
+            (m1_int(), None, Vec::new())
         }
         TaskKind::SYMBOL_FUNC_TYPE => {
-            if record.payload.refs.len() != 1 {
+            // `[result Type, parameter Type xN]`, N = 0..8.
+            if record.payload.refs.is_empty() || record.payload.refs.len() > 9 {
                 return Err(protocol_fault(format!(
-                    "func_type task {} payload must carry exactly one result type",
+                    "func_type task {} payload must carry one result and 0..8 parameter types",
                     task.index()
                 )));
             }
-            let result_id = match record.payload.refs[0] {
-                RecordRef::Type(id) => id,
-                _ => {
-                    return Err(protocol_fault(format!(
-                        "func_type task {} payload must be a type",
-                        task.index()
-                    )));
+            let mut ids = Vec::with_capacity(record.payload.refs.len());
+            for reference in &record.payload.refs {
+                let id = match reference {
+                    RecordRef::Type(id) => *id,
+                    _ => {
+                        return Err(protocol_fault(format!(
+                            "func_type task {} payload must be types",
+                            task.index()
+                        )));
+                    }
+                };
+                let body = bus.arenas.types.get(id).map_err(|_| {
+                    DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("func_type reads missing type {}", id.index()),
+                    )
+                })?;
+                if body.kind
+                    != (TypeKind::Int {
+                        rank: IntRank::Int,
+                        signed: true,
+                    })
+                {
+                    return Err(DiagnosticDraft::unsupported(
+                        "non-int function signature is outside the direct-call subset",
+                    ));
                 }
-            };
+                ids.push(id);
+            }
+            let result_id = ids[0];
+            let params = ids[1..].to_vec();
             let result_body = bus.arenas.types.get(result_id).map_err(|_| {
                 DiagnosticDraft::error(
                     DiagnosticCode::new(DiagGroup::Task, 4),
                     format!("func_type reads missing type {}", result_id.index()),
                 )
             })?;
-            if result_body.kind
-                != (TypeKind::Int {
-                    rank: IntRank::Int,
-                    signed: true,
-                })
-            {
-                return Err(DiagnosticDraft::unsupported(
-                    "non-int function result is outside the M1 exercised subset",
-                ));
-            }
             (
                 TypeRecord {
                     kind: TypeKind::Function {
                         result: result_id,
-                        params: vec![],
+                        params: params.clone(),
                         prototype: true,
                         variadic: false,
                     },
                 },
                 Some((result_id, result_body.clone())),
+                params,
             )
         }
         _ => {
@@ -135,6 +152,7 @@ pub fn project_ty_type_input(
         kind: record.kind,
         state: record.state.clone(),
         result,
+        params,
         existing,
         types_allocated: bus.arenas.types.allocated(),
     })
@@ -198,14 +216,22 @@ impl TyTypeChip {
         }
         let wanted = match (input.kind, &input.result) {
             (TaskKind::SYMBOL_INT_TYPE, _) => m1_int(),
-            (TaskKind::SYMBOL_FUNC_TYPE, Some((result_id, _))) => TypeRecord {
-                kind: TypeKind::Function {
-                    result: *result_id,
-                    params: vec![],
-                    prototype: true,
-                    variadic: false,
-                },
-            },
+            (TaskKind::SYMBOL_FUNC_TYPE, Some((result_id, _))) => {
+                if input.params.len() > 8 {
+                    return vec![fail(
+                        input.task,
+                        protocol_fault("func_type carries more than eight parameters"),
+                    )];
+                }
+                TypeRecord {
+                    kind: TypeKind::Function {
+                        result: *result_id,
+                        params: input.params.clone(),
+                        prototype: true,
+                        variadic: false,
+                    },
+                }
+            }
             _ => {
                 return vec![fail(
                     input.task,

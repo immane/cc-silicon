@@ -28,14 +28,14 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/39");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/55");
 }
 
 #[test]
 fn target_and_probe_policy_are_recorded() {
     assert_eq!(field("target"), "aarch64-unknown-linux-gnu");
-    assert_eq!(field("target_verification"), "unverified");
-    assert!(field("probe_substrate").contains("not provisioned"));
+    assert_eq!(field("target_verification"), "probe-attested");
+    assert!(field("probe_substrate").contains("docker-linux-arm64"));
     assert!(field("corpus_fetch").contains("hash-locked"));
     let baseline = field("reference_baseline");
     assert!(baseline.contains("authorized"));
@@ -109,7 +109,27 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "lx.float-overflow",
         "commit.name-interned-lookup-first",
         "commit.token-materialized",
-        "parse.tu-fixed-nine-node-tree",
+        "parse.tu-shape-gated-tree",
+        "se.identifier-checked-nonlvalue",
+        "se.binary-identifier-operand",
+        "se.local-binary-operators",
+        "se.unary-checked-nonlvalue",
+        "se.assignment-writes-local",
+        "ir.local-load-store-return",
+        "ir.local-add-return",
+        "ir.local-binary-operators",
+        "ir.local-expression-tree",
+        "ir.local-assignment-order",
+        "vf12.local-load-store-return",
+        "vf12.local-add-modeled-integer",
+        "vf12.local-binary-operators",
+        "vf12.local-expression-program",
+        "vf12.local-assignment-model",
+        "result.integer-modeled",
+        "parse.tu-local-binary-operators",
+        "parse.tu-local-expression-tree",
+        "parse.tu-local-assignment",
+        "symbol.declare-block-object",
         "parse.token-range-committed",
         "commit.node-materialized",
         "ty.canonical-int-reuse-scan",
@@ -128,6 +148,9 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "ir.constant-no-refold",
         "ir.return-single-terminator",
         "ir.function-single-entry",
+        "vf06.function-signature-fact",
+        "ir.function-consumes-committed-sem",
+        "ir.constant-result-type-from-sem",
         "commit.ir-materialized",
         "pp.splice-exact-map",
         "pp.comment-m1-scope",
@@ -138,11 +161,66 @@ fn normative_rules_are_identifiers_and_change_the_hash_space() {
         "config.structurally-immutable",
         "bootstrap.integration-only",
         "snapshot.wire-payloads-encoded",
+        "snapshot.append-batch-handles-encoded",
+        "snapshot.append-batch-bodies-encoded",
+        "snapshot.append-batch-order-preserved",
+        "snapshot.task-self-id-encoded",
+        "trace.pins-digest-recorded",
+        "trace.canonical-ids-recorded",
+        "trace.decoder-round-trip",
+        "trace.first-divergence",
+        "replay.recorded-input-model",
         "snapshot.reserved-tombstones-visible",
-        "limits.every-configured-bound-enforced",
+        "limits.declared-bounds-enforced",
+        "limits.stage-queue-bound-reserved",
+        "limits.total-records-includes-macros",
+        "limits.zero-quota-fail-closed",
+        "task.select.stage-phase-enqueue-taskid",
+        "dispatch.stage-assignment-authoritative",
+        "commit.append-bumps-store-version",
+        "commit.names-bump-on-new-only",
+        "commit.result-version-meaningful",
     ] {
         assert!(NORMATIVE_RULES.contains(&rule), "missing rule `{rule}`");
     }
+    // The removed `/40` rules must not linger as normative aliases.
+    for removed in [
+        "limits.every-configured-bound-enforced",
+        "task.select.phase-enqueue-taskid",
+    ] {
+        assert!(
+            !NORMATIVE_RULES.contains(&removed),
+            "removed rule `{removed}` is still present"
+        );
+    }
+}
+
+#[test]
+fn frozen_41_tables_match_their_encoders() {
+    use cc_silicon_compiler::contract::{
+        APPEND_BATCH_FIELDS, APPEND_BODY_STORE_NAMES, CONTROL_RECORD_FIELDS, G1_DRAFT_BODY_NAMES,
+        PIN_RECORD_FIELDS, TASK_RECORD_FIELDS, TRACE_RECORD_FIELDS,
+    };
+    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 20);
+    assert_eq!(G1_DRAFT_BODY_NAMES[0], "literal");
+    assert_eq!(G1_DRAFT_BODY_NAMES[17], "macro");
+    assert_eq!(G1_DRAFT_BODY_NAMES[19], "init");
+    assert_eq!(APPEND_BATCH_FIELDS, &["records", "bodies"]);
+    assert_eq!(APPEND_BODY_STORE_NAMES.len(), G1_DRAFT_BODY_NAMES.len());
+    assert!(CONTROL_RECORD_FIELDS.contains(&"next_commit_ordinal"));
+    assert_eq!(TASK_RECORD_FIELDS[0], "id");
+    for field in [
+        "pins_digest",
+        "completed",
+        "failed",
+        "waiting",
+        "rejoined",
+        "appended",
+        "patches",
+    ] {
+        assert!(TRACE_RECORD_FIELDS.contains(&field), "trace field {field}");
+    }
+    assert!(PIN_RECORD_FIELDS.contains(&"host_responses"));
 }
 
 #[test]
@@ -253,6 +331,13 @@ fn frozen_enum_names_match_implementations() {
         (DiagGroup::Semantic, "semantic"),
         (DiagGroup::Unsupported, "unsupported"),
         (DiagGroup::Internal, "internal"),
+        (DiagGroup::Lex, "lex"),
+        (DiagGroup::Parse, "parse"),
+        (DiagGroup::Type, "type"),
+        (DiagGroup::Const, "const"),
+        (DiagGroup::Ir, "ir"),
+        (DiagGroup::Codegen, "codegen"),
+        (DiagGroup::Host, "host"),
     ];
     assert_eq!(DIAG_GROUP_NAMES.len(), groups.len());
     for (i, (variant, name)) in groups.iter().enumerate() {
@@ -310,6 +395,7 @@ fn result_value_names_match_wire_tags() {
         ResultValue::Record(RecordRef::Source(SourceId::from_index(0))),
         ResultValue::Records(Vec::new()),
         ResultValue::Diagnostic(DiagnosticId::from_index(0)),
+        ResultValue::Integer(cc_silicon_compiler::bus::IntegerConst::new(vec![5], false)),
     ];
     assert_eq!(RESULT_VALUE_NAMES.len(), values.len());
     for (i, value) in values.iter().enumerate() {
@@ -317,7 +403,7 @@ fn result_value_names_match_wire_tags() {
     }
     assert_eq!(
         RESULT_VALUE_NAMES,
-        &["empty", "ack", "record", "records", "diagnostic"]
+        &["empty", "ack", "record", "records", "diagnostic", "integer"]
     );
 }
 

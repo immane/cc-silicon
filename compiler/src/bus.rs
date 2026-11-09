@@ -18,8 +18,8 @@ use crate::diagnostic::DiagnosticRecord;
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
     HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId, PpTokenId,
-    ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId,
-    VRegId, ValueId,
+    RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId,
+    TypeId, VRegId, ValueId,
 };
 use crate::intern::InternTable;
 use crate::limits::{LimitError, Limits};
@@ -280,12 +280,72 @@ pub enum CharKind {
     Unsigned,
 }
 
+/// Type qualifiers (`/46` append).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TypeQualifiers {
+    /// `const`.
+    pub is_const: bool,
+    /// `volatile`.
+    pub is_volatile: bool,
+    /// `restrict`.
+    pub is_restrict: bool,
+    /// `_Atomic`.
+    pub is_atomic: bool,
+}
+
+/// Array bound (`/46` append).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayBound {
+    /// A constant element count.
+    Constant(u64),
+    /// An incomplete array bound.
+    Incomplete,
+    /// A VLA bound expression and its scope.
+    Vla {
+        /// Bound expression node.
+        bound: NodeId,
+        /// Scope holding the bound.
+        scope: ScopeId,
+    },
+}
+
+/// Aggregate kind (`/46` append).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AggregateKind {
+    /// `struct`.
+    Struct,
+    /// `union`.
+    Union,
+}
+
+/// One aggregate member (`/46` append).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AggregateMember {
+    /// Optional member name (`None` for unnamed bitfields/anonymous members).
+    pub name: Option<NameId>,
+    /// Member type.
+    pub ty: TypeId,
+    /// Bit width for bitfields.
+    pub bit_width: Option<u32>,
+    /// Whether this is a flexible array member.
+    pub flexible: bool,
+}
+
+/// One enum enumerator (`/46` append).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Enumerator {
+    /// Enumerator name.
+    pub name: NameId,
+    /// Committed constant value, when evaluated.
+    pub value: Option<ConstId>,
+}
+
 /// A T06-owned canonical type record (`/13` slice freeze).
 ///
 /// M1 produces only `Int { rank: Int, signed: true }` (TY13, single
 /// producer with reuse scan) and `Function { result: int, params: [],
-/// prototype: true, variadic: false }` (TY17). All other type forms are
-/// explicit unsupported.
+/// prototype: true, variadic: false }` (TY17). `/46` appends pointer,
+/// array, aggregate, and enum forms as schema-only carriers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeRecord {
     /// Type kind.
@@ -319,6 +379,35 @@ pub enum TypeKind {
         prototype: bool,
         /// Whether the function is variadic.
         variadic: bool,
+    },
+    // `/46` type-model append.
+    /// Pointer type.
+    Pointer {
+        /// Pointee type.
+        pointee: TypeId,
+        /// Pointer qualifiers.
+        qualifiers: TypeQualifiers,
+    },
+    /// Array type.
+    Array {
+        /// Element type.
+        element: TypeId,
+        /// Bound kind.
+        bound: ArrayBound,
+    },
+    /// Struct/union aggregate type.
+    Aggregate {
+        /// Struct or union.
+        kind: AggregateKind,
+        /// Members in declaration order.
+        members: Vec<AggregateMember>,
+    },
+    /// Enum type.
+    Enum {
+        /// Underlying integer type.
+        underlying: TypeId,
+        /// Enumerators in declaration order.
+        enumerators: Vec<Enumerator>,
     },
 }
 
@@ -432,10 +521,15 @@ pub enum ValueCategory {
     Void,
 }
 
-/// Effect mask (`/14`; M1 allows only `0` — a nonzero mask is a typed chip
-/// failure, never a pass).
+/// Effect mask (`/14`; M1 producers still emit only `0` — a nonzero mask is a
+/// typed M1 chip failure, never a pass). `/44` defines the V1
+/// [`EFFECT_WRITES_LOCAL`] bit; the V1 semantic producer/rule migration remains
+/// future work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectMask(pub u32);
+
+/// `/44` V1 effect bit: the node writes an automatic local.
+pub const EFFECT_WRITES_LOCAL: u32 = 1 << 0;
 
 /// IR opcode (`/15` M1-closed: constant materialization + function return).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -444,6 +538,33 @@ pub enum IrOp {
     Constant,
     /// Return a value (the unique terminator in M1).
     Return,
+    // `/44` V1/V2 IR append (local/arithmetic/control-flow common base).
+    /// Load an automatic object named by `InstructionRecord.local`.
+    LocalLoad,
+    /// Store one operand into the automatic object named by
+    /// `InstructionRecord.local`.
+    LocalStore,
+    /// Addition.
+    Add,
+    /// Subtraction.
+    Sub,
+    /// Multiplication.
+    Mul,
+    /// Division.
+    Div,
+    /// Remainder.
+    Rem,
+    /// Unary negation.
+    Neg,
+    /// Unconditional branch; successors are the target block(s).
+    Branch,
+    /// Conditional branch; operand 0 is the condition, successors are the
+    /// true/false targets in order.
+    CondBranch,
+    // `/54` direct-call append.
+    /// Direct call named by `InstructionRecord.callee`; operands are
+    /// arguments in source order. The result is the return value.
+    Call,
 }
 
 /// A T09-owned IR function (`/15` slice freeze; one per M1 `main`).
@@ -457,6 +578,8 @@ pub struct FunctionRecord {
     pub entry: crate::ids::BlockId,
     /// Linkage (from the symbol).
     pub linkage: Linkage,
+    /// Parameter objects in declaration order (`/54` append).
+    pub parameters: Vec<crate::ids::SymbolId>,
 }
 
 /// A T09-owned IR basic block (`/15`; instructions derived by ascending
@@ -489,8 +612,223 @@ pub struct InstructionRecord {
     pub operands: Vec<crate::ids::ValueId>,
     /// Folded constant (`Some` only for `Constant`).
     pub immediate: Option<crate::ids::ConstId>,
-    /// Result value (`None` for `Return`).
+    /// Result value (`None` for `Return`/`LocalStore`/branch instructions).
     pub result: Option<crate::ids::ValueId>,
+    /// Automatic local referenced by `LocalLoad`/`LocalStore`; `None`
+    /// otherwise (`/44` append).
+    pub local: Option<crate::ids::SymbolId>,
+    /// CFG successors for `Branch`/`CondBranch`; empty for non-terminators
+    /// (`/44` append). The ordered successor list is authoritative.
+    pub successors: Vec<crate::ids::BlockId>,
+    /// Direct-call target for `Call`; `None` otherwise (`/54` append).
+    pub callee: Option<crate::ids::SymbolId>,
+}
+
+/// Layout target identity (`/46`): symbolic Part A or an attested report hash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutTarget {
+    /// Target-independent symbolic layout.
+    Symbolic,
+    /// Attested target report fingerprint.
+    Probed([u8; 32]),
+}
+
+/// Layout extent (`/46`): symbolic vs a concrete bit count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutExtent {
+    /// Not computed in Part A.
+    Symbolic,
+    /// Concrete bit count.
+    Bits(u64),
+}
+
+/// Layout key (`/46`): type, effective pack, and target identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayoutKey {
+    /// Type being laid out.
+    pub ty: TypeId,
+    /// Effective pack, if any.
+    pub pack: Option<u8>,
+    /// Target identity used for the computation.
+    pub target: LayoutTarget,
+}
+
+/// Layout form (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutForm {
+    /// Scalar object.
+    Scalar,
+    /// Pointer object.
+    Pointer,
+    /// Array object.
+    Array {
+        /// Element layout.
+        element: LayoutId,
+        /// Constant element count (`None` for incomplete/VLA).
+        count: Option<u64>,
+    },
+    /// Struct object.
+    Record,
+    /// Union object.
+    Union,
+    /// Bitfield storage unit.
+    BitFieldStorage,
+    /// VLA descriptor.
+    Vla,
+}
+
+/// One layout member (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayoutMember {
+    /// Member ordinal.
+    pub index: u32,
+    /// Optional member name.
+    pub name: Option<NameId>,
+    /// Member type.
+    pub ty: TypeId,
+    /// Member layout.
+    pub layout: LayoutId,
+    /// Bit offset from object start.
+    pub offset: LayoutExtent,
+    /// Bitfield width.
+    pub bit_width: Option<u32>,
+    /// Bit offset within the allocation unit.
+    pub bit_offset: LayoutExtent,
+}
+
+/// VLA descriptor (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VlaDescriptor {
+    /// Runtime bound node.
+    pub bound: NodeId,
+    /// Scope holding the bound.
+    pub scope: ScopeId,
+    /// Element layout.
+    pub element: LayoutId,
+    /// Element stride in bits, when known.
+    pub stride: LayoutExtent,
+}
+
+/// A T08-owned layout record (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayoutRecord {
+    /// Structural key.
+    pub key: LayoutKey,
+    /// Layout form.
+    pub form: LayoutForm,
+    /// Object size.
+    pub size: LayoutExtent,
+    /// Object alignment.
+    pub align: LayoutExtent,
+    /// Members in declaration order.
+    pub members: Vec<LayoutMember>,
+    /// VLA descriptor, when applicable.
+    pub vla: Option<VlaDescriptor>,
+}
+
+/// Initialization storage duration (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InitStorage {
+    /// Static storage.
+    Static,
+    /// Automatic storage.
+    Automatic,
+    /// Thread storage.
+    Thread,
+}
+
+/// One initialization step (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InitStep {
+    /// Zero a range.
+    Zero {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Bit length.
+        length: LayoutExtent,
+    },
+    /// Store one constant.
+    Scalar {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Committed constant.
+        value: ConstId,
+    },
+    /// Copy from a record reference.
+    Copy {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Source record.
+        source: RecordRef,
+        /// Bit length.
+        length: LayoutExtent,
+    },
+    /// Link-time relocation.
+    Relocation {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Optional base symbol.
+        base: Option<SymbolId>,
+        /// Addend.
+        addend: IntegerConst,
+    },
+    /// Runtime store from a node.
+    RuntimeStore {
+        /// Destination node.
+        offset: NodeId,
+        /// Value node.
+        value: NodeId,
+    },
+}
+
+/// One static relocation (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reloc {
+    /// Byte offset in the static image.
+    pub offset: u64,
+    /// Base symbol.
+    pub base: SymbolId,
+    /// Addend.
+    pub addend: IntegerConst,
+}
+
+/// Initialization form (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InitForm {
+    /// A plan of steps.
+    Plan {
+        /// Storage duration.
+        storage: InitStorage,
+        /// Ordered steps.
+        steps: Vec<InitStep>,
+    },
+    /// A static image materialization of a plan.
+    StaticImage {
+        /// Plan being materialized.
+        plan: InitId,
+        /// Image bytes.
+        bytes: Vec<u8>,
+        /// Relocations in deterministic order.
+        relocs: Vec<Reloc>,
+    },
+    /// Runtime operations materializing a plan.
+    RuntimeOps {
+        /// Plan being materialized.
+        plan: InitId,
+        /// Ordered runtime steps.
+        ops: Vec<InitStep>,
+    },
+}
+
+/// A T08-owned initialization record (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InitRecord {
+    /// Initialized type.
+    pub ty: TypeId,
+    /// Object layout.
+    pub layout: LayoutId,
+    /// Initialization form.
+    pub form: InitForm,
 }
 
 /// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per
@@ -559,6 +897,34 @@ pub enum NodeKind {
     BinaryAdd,
     /// A committed integer literal leaf.
     IntLiteral,
+    // `/43` V1 AST append (declaration/expression/statement common base).
+    /// One declaration (`int x;` / `int x = expr;`).
+    Declaration,
+    /// An identifier leaf (`name: Some`).
+    Identifier,
+    /// An expression statement (`expr;`).
+    ExpressionStatement,
+    /// Assignment (`lhs = rhs`).
+    Assignment,
+    /// Subtraction.
+    BinarySub,
+    /// Multiplication.
+    BinaryMul,
+    /// Division.
+    BinaryDiv,
+    /// Remainder.
+    BinaryRem,
+    /// Unary plus.
+    UnaryPlus,
+    /// Unary minus.
+    UnaryMinus,
+    // `/54` direct-call append.
+    /// Parameter list `( ... )`; absent for `(void)`.
+    ParameterList,
+    /// One implicit-`int` function parameter (`name: Some`).
+    Parameter,
+    /// A direct call: callee `Identifier` then argument expressions.
+    Call,
 }
 
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
@@ -573,7 +939,8 @@ pub struct LiteralRecord {
     pub token: Option<TokenId>,
     /// Literal kind (M1 produces only `Integer`).
     pub kind: LiteralKind,
-    /// Numeric radix (`2`, `8`, `10`, `16`; M1 decimal only).
+    /// Numeric radix (`2`, `8`, `10`, `16`; the integer decoder currently
+    /// supports `8`, `10`, and `16`).
     pub radix: u8,
     /// Literal suffix (M1 produces only `None`).
     pub suffix: LiteralSuffix,
@@ -587,18 +954,127 @@ pub struct LiteralRecord {
     pub candidate_type: Lx08CandidateType,
 }
 
-/// A T08-owned folded constant: big-endian magnitude plus sign (Gate 1 `/7`
-/// freeze; user-selected magnitude-bytes carrier, 2026-10-06).
+/// A T08-owned folded constant: committed type plus tagged payload (`/42`
+/// B2-02 tagged-constant freeze).
 ///
-/// T08 decodes committed operands, folds with checked addition, and commits
-/// exactly one `ConstRecord` per evaluation; T09 consumes it without
-/// re-folding.
+/// T08 decodes committed operands, folds with checked addition, resolves the
+/// type from committed T07/T06 facts, and commits exactly one `ConstRecord`
+/// per evaluation; T09 consumes it without re-folding and enforces
+/// `ConstRecord.ty == ValueRecord.ty` for the IR immediate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstRecord {
-    /// Big-endian magnitude bytes (no width prefix).
-    pub value: Vec<u8>,
-    /// Sign of the folded value.
+    /// Committed canonical type of the value (T06-owned `TypeId`).
+    pub ty: crate::ids::TypeId,
+    /// Closed tagged payload.
+    pub value: ConstValue,
+    /// Literal origins in fold order (`/54` append): one literal for a
+    /// literal fold, `[lhs, rhs]` for a binary fold. Consumers use this to
+    /// select a constant without value guessing.
+    pub origins: Vec<crate::ids::LiteralId>,
+}
+
+/// The `/42` closed constant payload family.
+///
+/// Only `Integer` is frozen. Float and symbolic-address constants are
+/// append-only future tags: they require a committed canonical type and a
+/// producer before they may be added, so `/42` does not create empty variants.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstValue {
+    /// An integer constant.
+    Integer(IntegerConst),
+    /// A floating constant with raw IEEE-format bits (`/45` append).
+    Float(FloatConst),
+    /// A symbolic address constant (`/45` append).
+    Address(AddressConst),
+}
+
+impl ConstValue {
+    /// Wire tag for `Integer` (`/42` freeze).
+    pub const INTEGER_TAG: u8 = 0;
+    /// Wire tag for `Float` (`/45` append).
+    pub const FLOAT_TAG: u8 = 1;
+    /// Wire tag for `Address` (`/45` append).
+    pub const ADDRESS_TAG: u8 = 2;
+
+    /// The integer payload, if this is an integer constant.
+    pub fn as_integer(&self) -> Option<&IntegerConst> {
+        match self {
+            Self::Integer(value) => Some(value),
+            Self::Float(_) | Self::Address(_) => None,
+        }
+    }
+}
+
+/// A floating constant: target format plus big-endian raw IEEE bits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FloatConst {
+    /// Target floating format; concrete values remain probe-gated.
+    pub format: crate::target::FloatFormat,
+    /// Big-endian raw bits; length must match [`FloatFormat::byte_len`].
+    pub bits: Vec<u8>,
+}
+
+impl FloatConst {
+    /// Whether the bit length matches the declared format.
+    pub fn is_canonical(&self) -> bool {
+        self.bits.len() == self.format.byte_len()
+    }
+}
+
+/// A symbolic address constant: optional base symbol plus a signed addend.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AddressConst {
+    /// Base symbol, if any; `None` with a zero addend is a null pointer constant.
+    pub base: Option<crate::ids::SymbolId>,
+    /// Link-time addend, represented without a host pointer.
+    pub addend: IntegerConst,
+}
+
+impl AddressConst {
+    /// Whether the addend is canonical.
+    pub fn is_canonical(&self) -> bool {
+        self.addend.is_canonical()
+    }
+}
+
+/// A sign-magnitude integer constant.
+///
+/// The magnitude is big-endian, non-empty, and minimal: zero is exactly
+/// `[0]` with `negative = false`; any other value has no leading zero byte.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntegerConst {
+    /// Big-endian unsigned magnitude (no width prefix).
+    pub magnitude: Vec<u8>,
+    /// Sign of the value; zero is canonical only with `negative = false`.
     pub negative: bool,
+}
+
+impl IntegerConst {
+    /// Build a canonical integer constant: negative zero is normalized to
+    /// positive zero.
+    pub fn new(mut magnitude: Vec<u8>, negative: bool) -> Self {
+        let zero = magnitude.iter().all(|&byte| byte == 0);
+        let first = magnitude
+            .iter()
+            .position(|&byte| byte != 0)
+            .unwrap_or(magnitude.len().saturating_sub(1));
+        magnitude.drain(..first);
+        if magnitude.is_empty() {
+            magnitude.push(0);
+        }
+        Self {
+            magnitude,
+            negative: negative && !zero,
+        }
+    }
+
+    /// Whether the magnitude and sign satisfy the `/42` canonical rule.
+    pub fn is_canonical(&self) -> bool {
+        let non_empty = !self.magnitude.is_empty();
+        let minimal = self.magnitude.len() == 1 || self.magnitude.first() != Some(&0);
+        let zero_positive = !self.negative || self.magnitude.iter().any(|&byte| byte != 0);
+        non_empty && minimal && zero_positive
+    }
 }
 
 /// Every typed arena owned by the compiler bus.
@@ -642,10 +1118,10 @@ pub struct Arenas {
     /// T08 appends exactly one `ConstRecord` per evaluation through the
     /// commit materialization path.
     pub consts: TypedArena<ConstId, ConstRecord>,
-    /// Layout descriptors (schema owned by T08).
-    pub layouts: ReservedArena<LayoutId>,
-    /// Initialization plans (schema owned by T08).
-    pub inits: ReservedArena<InitId>,
+    /// Layout descriptors (`/46` typed schema).
+    pub layouts: TypedArena<LayoutId, LayoutRecord>,
+    /// Initialization records (`/46` typed schema).
+    pub inits: TypedArena<InitId, InitRecord>,
     /// IR functions (`/15` slice freeze: typed on freeze).
     pub functions: TypedArena<FunctionId, FunctionRecord>,
     /// IR basic blocks (`/15` slice freeze: typed on freeze).
@@ -682,6 +1158,7 @@ impl Arenas {
             + self.spans.allocated() as u64
             + self.expansions.allocated() as u64
             + self.pp_tokens.allocated() as u64
+            + self.macros.allocated() as u64
             + self.tokens.allocated() as u64
             + self.scopes.allocated() as u64
             + self.scope_events.allocated() as u64
@@ -798,6 +1275,12 @@ pub struct Control {
     pub next_enqueue_ordinal: u64,
     /// Diagnostic ordinal counter.
     pub next_diagnostic_ordinal: u64,
+    /// Global successful-commit ordinal (`/41`).
+    ///
+    /// Incremented once per successful `commit_proposals` batch and stamped
+    /// into every `ResultRecord.version` created by that batch. Failed
+    /// commits do not advance it.
+    pub next_commit_ordinal: u64,
     /// Whether the tick/task budget was reported exhausted.
     pub budget_exhausted: bool,
     /// Whether the host requested cancellation (consumed by T02 CT13).
@@ -813,6 +1296,7 @@ impl Default for Control {
             selected: None,
             next_enqueue_ordinal: 0,
             next_diagnostic_ordinal: 0,
+            next_commit_ordinal: 0,
             budget_exhausted: false,
             cancel_requested: false,
         }
@@ -1094,9 +1578,19 @@ impl CompilerBus {
     }
 
     /// Intern a name.
+    ///
+    /// The trusted Host/checked entry point applies the same revision rule as
+    /// a committed `Name` body: `Names` bumps exactly once when the intern
+    /// table grows. A duplicate lookup returns the existing ID and does not
+    /// bump.
     pub fn intern_name(&mut self, bytes: &[u8]) -> Result<NameId, crate::intern::InternError> {
         let limits = self.limits();
-        self.intern.intern(bytes, &limits)
+        let before = self.intern.len();
+        let id = self.intern.intern(bytes, &limits)?;
+        if self.intern.len() > before {
+            self.store_versions.bump(StoreId::Names);
+        }
+        Ok(id)
     }
 
     /// Allocate a source record, enforcing the source-byte and total bounds.

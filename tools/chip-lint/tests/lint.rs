@@ -1,4 +1,16 @@
-use cc_silicon_chip_lint::lint_source;
+use std::path::{Path, PathBuf};
+
+use cc_silicon_chip_lint::{lint_source, lint_tree};
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
+}
+
+fn relative(path: &str) -> String {
+    Path::new(path).display().to_string()
+}
 
 fn messages(source: &str) -> Vec<String> {
     lint_source("fixture.rs", source)
@@ -211,4 +223,66 @@ fn accepts_type_constructors_but_rejects_bare_unknown_calls() {
     assert!(messages(source)
         .iter()
         .any(|message| message.contains("not statically auditable")));
+}
+
+#[test]
+fn lint_tree_scans_nested_tree_in_sorted_order() {
+    let root = fixture("nested");
+    let diagnostics = lint_tree(&root).expect("nested fixture tree must lint");
+    let files = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.file.clone())
+        .collect::<Vec<_>>();
+    let expected = [
+        "a_dir/alpha.rs",
+        "group/deeper/second.rs",
+        "group/mod.rs",
+        "root.rs",
+    ]
+    .into_iter()
+    .map(relative)
+    .collect::<Vec<_>>();
+    assert_eq!(files, expected);
+    assert_eq!(diagnostics.len(), 4, "{diagnostics:?}");
+    assert_eq!(
+        lint_tree(&root).expect("repeat scan must succeed"),
+        diagnostics,
+        "tree lint must be deterministic"
+    );
+}
+
+#[test]
+fn lint_tree_rejects_missing_directory() {
+    let root = fixture("missing");
+    let error = lint_tree(&root).expect_err("missing directory must fail closed");
+    assert!(
+        error.contains("chip source directory does not exist"),
+        "{error}"
+    );
+    assert!(error.contains(&root.display().to_string()), "{error}");
+}
+
+#[test]
+fn lint_tree_rejects_tree_without_rust_files() {
+    // Git cannot track a truly empty directory, so `.gitkeep` keeps this
+    // fixture present while leaving it with no `.rs` files. That exercises the
+    // same fail-closed branch as a genuinely empty directory.
+    let root = fixture("empty_tree");
+    let error = lint_tree(&root).expect_err("tree without Rust files must fail closed");
+    assert!(error.contains("no Rust files found"), "{error}");
+    assert!(error.contains(&root.display().to_string()), "{error}");
+}
+
+#[test]
+fn lint_tree_reports_syntax_errors_as_deterministic_diagnostics() {
+    let root = fixture("syntax_error");
+    let diagnostics = lint_tree(&root).expect("syntax errors are diagnostics, not tree errors");
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].file, relative("broken.rs"));
+    assert!(diagnostics[0].message.contains("refusing strict lint"));
+    assert_eq!(
+        lint_tree(&root).expect("repeat scan must succeed"),
+        diagnostics,
+        "syntax-error diagnostic must be deterministic"
+    );
 }

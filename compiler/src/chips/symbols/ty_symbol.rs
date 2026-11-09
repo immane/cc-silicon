@@ -1,17 +1,19 @@
 // ============================================================================
 // chips/ty_symbol.rs — T06 TY07/TY20/TY04/TY10 declare + TY03 lookup workers
-// (Wave 2 slice 4, `/13`)
+// (Wave 2 slice 4, `/13`; `/54` parameter declarations)
 //
 // `TySymbolChip` serves `symbol_type.declare` (payload: exactly
-// `[Declarator Node, FuncType, FileScope]`; appends one `SymbolRecord` for
-// `main` with external linkage and static storage; duplicate
-// `(name, scope, kind)` declarations fail as `RedeclarationConflict` chip
-// diagnostics, never silent merges) and `symbol_type.lookup` (payload:
-// exactly `[Scope, Name]`; walks the active scope chain innermost-first and
-// completes with the hit, or fails with a typed undeclared-identifier
-// diagnostic). Namespaces are derived from the symbol kind; a hit in another
-// namespace is a miss. Query-point ordering stays deferred: M1 has one
-// declarator, so declaration order is the commit order.
+// `[Declarator Node, FuncType, FileScope]` for file functions,
+// `[Declarator Node, canonical int Type, Block Scope]` for automatic
+// locals, or `[Parameter Node, canonical int Type, Block Scope]` for
+// parameters; appends one `SymbolRecord`; duplicate `(name, scope, kind)`
+// declarations fail as `RedeclarationConflict` chip diagnostics, never
+// silent merges) and `symbol_type.lookup` (payload: exactly `[Scope, Name]`;
+// walks the active scope chain innermost-first and completes with the hit,
+// or fails with a typed undeclared-identifier diagnostic). Namespaces are
+// derived from the symbol kind; a hit in another namespace is a miss.
+// Query-point ordering stays deferred: declaration order is the commit
+// order.
 // ============================================================================
 
 use crate::bus::{Linkage, NodeKind, StorageDuration, SymbolKind, TypeKind};
@@ -42,10 +44,16 @@ pub struct TyDeclareInput {
     pub node: NodeId,
     /// Declarator name.
     pub name: NameId,
-    /// Function type.
+    /// Function or object kind to declare.
+    pub symbol_kind: SymbolKind,
+    /// Declared type.
     pub ty: TypeId,
-    /// File scope.
+    /// File scope or function block scope.
     pub scope: ScopeId,
+    /// Linkage for the declared symbol.
+    pub linkage: Linkage,
+    /// Storage duration for the declared symbol.
+    pub storage: StorageDuration,
     /// Whether an identical `(name, scope, kind)` symbol is committed.
     pub conflict: bool,
     /// `symbols` arena count at dispatch (prediction base).
@@ -100,9 +108,14 @@ pub fn project_ty_declare_input(
             format!("declare reads missing node {}", node.index()),
         )
     })?;
-    if node_body.kind != NodeKind::Declarator {
+    if !matches!(node_body.kind, NodeKind::Declarator | NodeKind::Parameter) {
         return Err(DiagnosticDraft::unsupported(
             "declare of a non-declarator node",
+        ));
+    }
+    if node_body.kind == NodeKind::Parameter && !node_body.children.is_empty() {
+        return Err(DiagnosticDraft::unsupported(
+            "declare of a non-leaf parameter node",
         ));
     }
     let Some(name) = node_body.name else {
@@ -117,32 +130,64 @@ pub fn project_ty_declare_input(
             format!("declare reads missing type {}", ty.index()),
         )
     })?;
-    if !matches!(ty_body.kind, TypeKind::Function { .. }) {
-        return Err(DiagnosticDraft::unsupported(
-            "declare of a non-function type",
-        ));
-    }
     let scope_body = bus.arenas.scopes.get(scope).map_err(|_| {
         DiagnosticDraft::error(
             DiagnosticCode::new(DiagGroup::Task, 4),
             format!("declare reads missing scope {}", scope.index()),
         )
     })?;
-    if scope_body.kind != crate::bus::ScopeKind::File {
-        return Err(DiagnosticDraft::unsupported(
-            "block-scope declarations are deferred past M1",
-        ));
-    }
+    let (symbol_kind, linkage, storage) = match (node_body.kind, &ty_body.kind, scope_body.kind) {
+        (NodeKind::Declarator, TypeKind::Function { .. }, crate::bus::ScopeKind::File) => (
+            SymbolKind::Function,
+            Linkage::External,
+            StorageDuration::Static,
+        ),
+        (
+            NodeKind::Declarator | NodeKind::Parameter,
+            TypeKind::Int {
+                rank: crate::bus::IntRank::Int,
+                signed: true,
+            },
+            crate::bus::ScopeKind::Block,
+        ) => (
+            SymbolKind::Object,
+            Linkage::None,
+            StorageDuration::Automatic,
+        ),
+        (NodeKind::Declarator, TypeKind::Function { .. }, crate::bus::ScopeKind::Block) => {
+            return Err(DiagnosticDraft::unsupported(
+                "block-scope function declarations are outside the M1 locals slice",
+            ));
+        }
+        (NodeKind::Declarator, TypeKind::Int { .. }, crate::bus::ScopeKind::File) => {
+            return Err(DiagnosticDraft::unsupported(
+                "file-scope objects are outside the M1 locals slice",
+            ));
+        }
+        (NodeKind::Parameter, _, _) => {
+            return Err(DiagnosticDraft::unsupported(
+                "parameters require a canonical int type in a block scope",
+            ));
+        }
+        _ => {
+            return Err(DiagnosticDraft::unsupported(
+                "declare of a non-M1 declaration shape",
+            ));
+        }
+    };
     let conflict = bus.arenas.symbols.iter().any(|(_, symbol)| {
-        symbol.name == name && symbol.scope == scope && symbol.kind == SymbolKind::Function
+        symbol.name == name && symbol.scope == scope && symbol.kind == symbol_kind
     });
     Ok(TyDeclareInput {
         task,
         state: record.state.clone(),
         node,
         name,
+        symbol_kind,
         ty,
         scope,
+        linkage,
+        storage,
         conflict,
         symbols_allocated: bus.arenas.symbols.allocated(),
     })
@@ -305,7 +350,7 @@ impl TySymbolChip {
                 input.task,
                 DiagnosticDraft::error(
                     DiagnosticCode::new(DiagGroup::Semantic, 1),
-                    "redeclaration conflict: duplicate function declaration in this scope",
+                    "redeclaration conflict: duplicate declaration in this scope",
                 ),
             )];
         }
@@ -321,10 +366,10 @@ impl TySymbolChip {
                     bodies: vec![G1DraftBody::Symbol(crate::bus::SymbolRecord {
                         name: input.name,
                         scope: input.scope,
-                        kind: SymbolKind::Function,
+                        kind: input.symbol_kind,
                         ty: Some(input.ty),
-                        linkage: Linkage::External,
-                        storage: StorageDuration::Static,
+                        linkage: input.linkage,
+                        storage: input.storage,
                         decl: input.node,
                     })],
                 },

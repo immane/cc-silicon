@@ -1,5 +1,7 @@
 # T05: Taskified Parsing Chips
 
+**`/43` parser-architecture note (2026-11-09; accepted).** V1 uses one atomic `PARSE_TU` batch parser, not the taskified/`NodeLinkRecord` architecture in this catalog. The catalog remains the V2 direction; V2 must explicitly choose between extending the single parser and adopting the taskified parser. The V1 `NodeKind` inventory is frozen append-only in [ADR-0003](../architecture/ADR-0003-PARSER-ARCHITECTURE-AND-V1-AST.md). No V1 parser producer is implemented by `/43`.
+
 Prerequisite T01; the interface depends on T04 tokens and T06 scope/name/type requests. Directory `chips/parse/`. Read lex/parse frames and typed service results; write AST/declarator/frame records and proposals; do not perform type compatibility/ABI itself. During parse, scope and typedef visibility must be maintained, so it is not a pipeline fully isolated from the symbol phase.
 
 Unified `ParseRequest(production, token_cursor, scope_id, context, binding_power)` → `ParseResult(node/declarator, next_cursor)`. All nesting goes through child tasks/continuations. Without a typedef query result, it must not guess from the string; a T01 implementation may first return a declaration AST, but during parse it must register enough name categories.

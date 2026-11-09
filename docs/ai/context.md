@@ -1,35 +1,55 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/39` in progress, UNCOMMITTED)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/55`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-10-06 after landing `/38` with `/39` implemented and test-green
-> but NOT yet fully verified or committed.
+> 2026-11-10 after freezing `/55` same-TU direct calls, with the full compiler
+> suite green (839 tests / 68 suites (848 on native AArch64 Linux); clippy
+> clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Committed: `t01-c01-c06/38` (VF14 evidence-classify), hash
-  `f18068f9178ba6daf8aebff67c3099e8680aa370f8b400096532cdc9ea020d83`.
-- In worktree, UNCOMMITTED: `/39` SE29 function-definition (T07
-  function-definition worker; delivered draft `se_function.rs` was
-  unwired — arbitrated to SEMANTIC local 21 + chip 57),
-  contract already bumped to `t01-c01-c06/39`, hash recomputed
-  (`07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24`).
-  `c39_sefunc` green (8 tests), but the final full-suite (§5) run
-  is still pending — run §5 fully, then commit as
-  `feat: add SE29 function slice as t01-c01-c06/39`.
-- Branch: `initial-compiler-development`. PR #14 (slices `/17`–`/19` +
-  H04) is MERGED; `/20`–`/32` are committed locally,
-  UNPUSHED, no PR yet. Push + open PR when ready (no force-push).
-- The M1 C frontend is closed end-to-end with a working PP pipeline:
-  normalize→splice→comment→scan→conditional→define→expand→directive→LX
-  (macros recorded + expanded incl. variadic + builtins; conditionals evaluated;
-  single-pass include implemented). `candidate` drives
-  source bytes to snapshot/trace/interpret evidence (H04 Part A).
+- Frozen artifact: `t01-c01-c06/55` (direct-call schema plus same-TU acyclic
+  `int` calls, source locals/expressions/assignments, modeled integer results,
+  parser/semantic facts, T09 lowering, VF12 frames, and AArch64 emission), hash
+  `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652`.
+- Implemented and test-green at `/41`: append handles/bodies in snapshots,
+  stage-first scheduling with zero-quota fail-closed, macro/store/result
+  version accounting, `Task.id`, pin-aware trace decoder/first divergence,
+  and the Host `ReplayEvidence` envelope. Evidence: `c05_codec` 29,
+  `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22,
+  `c11_lex` 11, `freeze` 15.
+- Implemented and test-green at `/42`: `ConstRecord { ty, value:
+  ConstValue::Integer(..) }`, fold type resolution from committed
+  `SemRecord.ty` (binary) / unique canonical `int` (literal), T09/VF12
+  `ir.op-immediate-type` checks, VF14 integer gate decode, canonical typed
+  snapshot body. Evidence: `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13,
+  `c17_vf12` 6, `c38_vf14` 10, `c05_codec` 29, `freeze` 15; direct
+  candidate emits `/42` and `value=05` with byte-identical repeated output.
+- `/40` remains the M1 Part A A3 closure: SE29 dispatch, VF06 four-kind
+  typed-fact set, T09 committed-fact consumption (`c14_se` 16,
+  `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18).
+- B-INT-00 is complete: all nine unregistered parse/lex drafts are parked,
+  clippy is clean, and no candidate ID is frozen
+  (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
+- Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
+  projections, per-stage queues, and `StorePatch` materialization (deferred
+  package now `/56`); B3-03 PP driver orchestration implementation (design complete,
+  gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
+  Part B general target codegen; full M1 acceptance. A host-only M1
+  `--emit-asm` prototype now emits/runs constant-return, `/49`–`/53` local, and
+  `/55` same-TU direct-call fixtures (0–8 int arguments, nested calls, aligned
+  frames, LR handling); the modeled integer result carrier avoids verification
+  writes. One pinned containerized AArch64
+  probe report is H07-classified and attested by `c48_target_probe`; the global
+  target state is `probe-attested`, while the official T00 CI/bare-metal
+  baseline remains open. No torture-corpus target run or GCC pass rate is claimed.
+- Branch: `wave4-development`. Commits through `/55` are local; no push was
+  performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
-  integrate + verify + commit per slice, continue without stopping.
+  integrate + verify per slice, continue without stopping.
   Open threads in §6 are ordered next-up.
 
 ## 2. Slice history (each amends the version via the R1 auto-bump rule)
@@ -68,8 +88,27 @@
 | `/36` | PA recovery | `parse/{pa_pod,pa_recovery}.rs` | `c36_recovery` 11 |
 | `/37` | T08 const-branch | `constant_layout_init/fold_branch.rs` | `c37_const_branch` 10 |
 | `/38` | VF14 evidence-classify | `verify/vf_evidence.rs` | `c38_vf14` 10 |
-| `/39` | SE29 function-definition (UNCOMMITTED) | `semantic/se_function.rs` | `c39_sefunc` 8 |
-| — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 6 |
+| `/39` | SE29 function-definition | `semantic/se_function.rs` | `c39_sefunc` 8 |
+| `/40` | M1 Part A A3 closure (SE29 wiring + VF06 four-kind + T09 consumption) | `bin/candidate.rs`, `verify/vf_invariant.rs`, `ir_lower/ir_function.rs` | `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18 |
+| `/41` | B2-00 determinism/limits/replay (append bodies, stage-first, versions, pin-aware trace) | `snapshot.rs`, `routing.rs`, `commit.rs`, `bus.rs` | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, full 723/50 |
+| `/42` | B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks) | `bus.rs`, `snapshot.rs`, `chips/constant_layout_init/fold.rs`, `chips/ir_lower/ir_function.rs`, `chips/verify/{vf_interpret,vf_evidence}.rs` | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, full 684/51 |
+| — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10 |
+| — | B3-03b bounded quote-include driver slice (host-only, no version bump) | `candidate/pp_include.rs`, candidate PP17/PP18 wiring | `c47_pp_include_driver` 12 |
+| `/43` | Parser architecture + V1 AST common base (single-task V1 parser decision, append-only NodeKind) | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c49_ast_schema` 2 |
+| `/44` | IR/CFG common base (`local`/`successors`, op append) | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c50_ir_schema` 2 |
+| `/45` | Constant v3 float/address tags | `bus.rs`, `snapshot.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c51_const_v3` 3 |
+| `/46` | Type/layout/init common base | `bus.rs`, `snapshot.rs`, `records.rs`, `commit.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c52_type_schema` 3, `c53_layout_init_schema` 2 |
+| `/47` | Diagnostic taxonomy | `diagnostic.rs`, `contract.rs`, `snapshot.rs`, `contracts/CONTRACT_VERSION` | `c54_diag_taxonomy` 3, full 725/61 |
+| `/48` | Probe-attested target baseline | `target.rs`, `contract.rs`, `contracts/CONTRACT_VERSION` | `c48_target_probe` 3, full 725/61 |
+| `/49` | M1 source locals (`int x=2;return x;`) | `task.rs`, `manifest.rs`, `chips/{parse,symbols,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 5 macOS / 6 Linux, full 735/62 (737 Linux) |
+| `/50` | Modeled integer result + local add (`x+3`) | `task.rs`, `snapshot.rs`, `contract.rs`, `chips/{parse,semantic,ir_lower,verify,constant_layout_init}`, `bin/candidate.rs` | `c56_source_locals` 6 macOS / 8 Linux, full 736/62 (739 Linux) |
+| `/51` | Local binary operators (`- * / %`) | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 7 macOS / 10 Linux, full 737/62 (741 Linux) |
+| `/52` | Local expression trees (precedence, parentheses, unary) | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 8 macOS / 12 Linux, full 738/62 (743 Linux) |
+| `/53` | Local assignment statements | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 10 macOS / 13 Linux, full 740/62 (746 Linux) |
+| — | M1 AArch64 constant-return assembly prototype (`candidate --emit-asm`) | `compiler/src/bin/candidate/target_m1.rs`, `compiler/tests/c55_target_m1.rs` | `c55_target_m1` 1 macOS / 2 native AArch64 Linux |
+| — | M1 automatic-local/integer-arithmetic IR slice | `candidate/target_m1.rs` | 14 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` execution of add/div/rem/mul/sub/neg and signed-constant fixtures |
+| — | H01/H07 containerized target probe + attestation test (`/48`) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 3 |
+| — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
 
@@ -164,21 +203,26 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/39` (run §5 first), then PP remainder in pipeline
-  order — then T04 LX
+- NEXT UP: calls and parameter ABI after the assignment/statement foundation;
+  then memory and control flow; the Batch G
+  torture chain still needs the official corpus/runner (H05 process
+  supervision is implemented in `tools/runner`). B3-03c `#line`/`#pragma` and
+  the wider H04 include policy remain open. Continue the PP remainder in
+  pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells
   per R2 until a Linux runner exists), T13 VF02–04/VF13 (H6/H9-gated),
   H04 remainder (`-E`/`-I`/`-D`/`-U`/multi-source/torture flags), H02/H03
-  runner, H05–H10 gate.
+  runner, H06–H10 aggregation/gate.
 - T02 control subset (blocked on the `/6` co-freeze) — biggest gap after
   language coverage; do NOT implement control chips on draft semantics.
 - T13 VF remainder on real records (VF02–04/VF13–14 need H6/H9 batch
   fixtures; VF01/VF05/VF06/VF12-M1 exist).
 - L1 carryover: multi-line-comment tail classifies non-directive (loud
   downstream failure, recorded in `/21` doc).
-- Quota>1 (unaccepted); probe substrate unprovisioned; no torture corpus.
+- Quota>1 (unaccepted); official probe substrate/baseline unprovisioned (one
+  containerized report/attestation exists); no torture corpus.
 - Known tech debt: `poll_await_joins` closure loop is O(waiters²),
   accepted for the small profile (PCR-13); PP predicate logic is
   copy-per-chip by precedent (drift-pinned by cross tests).

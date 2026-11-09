@@ -34,14 +34,31 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// the Wave 3 PA expr slice (`/35`), the Wave 3 PA recovery
 /// slice (`/36`), and the Wave 3 T08 const-branch slice (`/37`), and
 /// the Wave 3 VF14 evidence slice (`/38`), and the Wave 3 SE29
-/// function-definition slice (`/39`).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/39";
+/// function-definition slice (`/39`), the M1 Part A A3 closure
+/// amendment (`/40`: SE29 candidate wiring, VF06 four-kind typed-fact
+/// set, T09 consumed committed function fact; D-09 deferred at `/40`), and
+/// the B2-00 determinism/limits/replay closure (`/41`: append wire
+/// bodies, stage-first scheduling, macro/limit accounting, store and
+/// result versions, pin-aware trace evidence), and the B2-02 tagged,
+/// typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload,
+/// immediate-type enforcement), and the `/43` parser/AST common-base append
+/// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
+/// IR/CFG schema append (local load/store, arithmetic, branch successors),
+/// the `/45` constant v3 append (float/address payload tags), the `/46`
+/// T06 type-model/layout/init common base, the `/47` diagnostic taxonomy,
+/// the `/48` probe-attested target baseline, the `/49` M1 source-locals
+/// slice (shape-gated TU parser, block automatic object, identifier fact,
+/// local load/store IR, symbolic local model), the `/50` modeled-integer
+/// result plus local-add source slice, the `/51` local binary-operator
+/// source slice, the `/52` local expression-tree slice, and the `/53` local
+/// assignment/statement slice.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/55";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24";
+pub const CONTRACT_HASH: &str = "e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -60,13 +77,20 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "storage.checked-access.structured-errors",
     "storage.application-scoped-vec-only",
     "source.content-hash-computed-internally",
-    "limits.every-configured-bound-enforced",
+    "limits.declared-bounds-enforced",
+    "limits.stage-queue-bound-reserved",
+    "limits.total-records-includes-macros",
+    "limits.zero-quota-fail-closed",
     "task.enqueue.next-tick",
-    "task.select.phase-enqueue-taskid",
+    "task.select.stage-phase-enqueue-taskid",
+    "dispatch.stage-assignment-authoritative",
     "task.completion.exactly-once",
     "task.single-transition-per-batch",
     "task.result.consume-once",
     "commit.result-consume-error-accurate",
+    "commit.append-bumps-store-version",
+    "commit.names-bump-on-new-only",
+    "commit.result-version-meaningful",
     "task.reserved-local-code-range",
     "tasktree.dangling-parent-rejected",
     "commit.inner-task-binding",
@@ -123,6 +147,15 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.budget-enforced-chip-overflow",
     "bootstrap.integration-only",
     "snapshot.wire-payloads-encoded",
+    "snapshot.append-batch-handles-encoded",
+    "snapshot.append-batch-bodies-encoded",
+    "snapshot.append-batch-order-preserved",
+    "snapshot.task-self-id-encoded",
+    "trace.pins-digest-recorded",
+    "trace.canonical-ids-recorded",
+    "trace.decoder-round-trip",
+    "trace.first-divergence",
+    "replay.recorded-input-model",
     "snapshot.reserved-tombstones-visible",
     "serialize.canonical-deterministic",
     "snapshot.config-encodes-all-bounds",
@@ -146,7 +179,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "lex.token-back-link-committed",
     "commit.name-interned-lookup-first",
     "commit.token-materialized",
-    "parse.tu-fixed-nine-node-tree",
+    "parse.tu-shape-gated-tree",
     "parse.token-range-committed",
     "commit.node-materialized",
     "ty.canonical-int-reuse-scan",
@@ -154,15 +187,26 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "scope.enter-after-tu-guarded-once",
     "scope.lifecycle-worker-enforced",
     "symbol.declare-no-duplicate",
+    "symbol.declare-block-object",
     "symbol.lookup-chain-hit-or-typed-miss",
     "ty.identity-completes-no-plan",
     "commit.type-symbol-scope-materialized",
     "se.literal-checked-nonlvalue",
+    "se.identifier-checked-nonlvalue",
+    "se.binary-identifier-operand",
+    "se.local-binary-operators",
+    "se.unary-checked-nonlvalue",
+    "se.assignment-writes-local",
     "se.binary-forwards-identical-fold",
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
     "commit.sem-materialized",
     "ir.constant-no-refold",
+    "ir.local-load-store-return",
+    "ir.local-add-return",
+    "ir.local-binary-operators",
+    "ir.local-expression-tree",
+    "ir.local-assignment-order",
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
@@ -171,6 +215,15 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.scan-maximal-munch",
     "commit.span-pptoken-materialized",
     "vf12.interpret-symbolic-m1",
+    "vf12.local-load-store-return",
+    "vf12.local-add-modeled-integer",
+    "vf12.local-binary-operators",
+    "vf12.local-expression-program",
+    "vf12.local-assignment-model",
+    "result.integer-modeled",
+    "parse.tu-local-binary-operators",
+    "parse.tu-local-expression-tree",
+    "parse.tu-local-assignment",
     "vf12.unsupported-never-pass",
     "vf05.syntax-ranges-ordered",
     "vf05.required-fields-complete",
@@ -238,12 +291,52 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf.evidence-never-pass-missing",
     "se.function-signature",
     "se.function-body-checked",
+    "vf06.function-signature-fact",
+    "ir.function-consumes-committed-sem",
+    "ir.constant-result-type-from-sem",
+    // `/42` B2-02 tagged, typed constants.
+    "const.record-type-committed",
+    "const.record-type-from-sem",
+    "const.integer-payload-type-int",
+    "const.zero-canonical",
+    "ir.op-immediate-type",
+    "snapshot.const-record-typed-body",
+    // `/44` IR/CFG schema.
+    "ir.op-table-v1",
+    "ir.local-symbol-link",
+    "ir.cfg-successors-ordered",
+    // `/45` constant v3.
+    "const.float-format-bits",
+    "const.address-symbolic",
+    "snapshot.const-v3-tags",
+    // `/46` type-model append.
+    "ty.pointer-qualifiers",
+    "ty.array-bound",
+    "ty.aggregate-members",
+    "ty.enum-underlying",
+    // `/47` diagnostic taxonomy.
+    "diag.taxonomy-stable",
+    "diag.code-unique",
+    "diag.span-task-attribution",
+    // `/54` direct-call common schema.
+    "parse.call-ast-append",
+    "parse.call-budget-bounded",
+    "ty.function-parameter-list",
+    "symbol.parameter-block-object",
+    "se.call-checked-nonlvalue",
+    "ir.direct-call-callee",
+    "ir.function-parameter-order",
+    "vf12.direct-call-frames",
+    "codegen.aapcs64-int-call",
+    "snapshot.call-record-fields",
+    "const.literal-origins",
 ];
 
 /// The `TaskState` variant names, in encoding order.
 pub const TASK_STATE_NAMES: &[&str] = &["ready", "running", "waiting", "completed", "failed"];
 /// The `ResultValue` variant names, in encoding order.
-pub const RESULT_VALUE_NAMES: &[&str] = &["empty", "ack", "record", "records", "diagnostic"];
+pub const RESULT_VALUE_NAMES: &[&str] =
+    &["empty", "ack", "record", "records", "diagnostic", "integer"];
 /// The `/6` M1 append seed version: inventories plus encode presence.
 ///
 /// Full metrics/report bodies stay deferred to Part B with a re-entry
@@ -332,6 +425,13 @@ pub const DIAG_GROUP_NAMES: &[&str] = &[
     "semantic",
     "unsupported",
     "internal",
+    "lex",
+    "parse",
+    "type",
+    "const",
+    "ir",
+    "codegen",
+    "host",
 ];
 /// The Gate 1 (`/7`) `LiteralRecord` field names, in frozen field order.
 pub const LITERAL_RECORD_FIELDS: &[&str] = &[
@@ -344,8 +444,16 @@ pub const LITERAL_RECORD_FIELDS: &[&str] = &[
     "spelling",
     "candidate_type",
 ];
-/// The Gate 1 (`/7`) `ConstRecord` field names, in frozen field order.
-pub const CONST_RECORD_FIELDS: &[&str] = &["value", "negative"];
+/// The `/42` `ConstRecord` field names, in frozen field order.
+pub const CONST_RECORD_FIELDS: &[&str] = &["ty", "value", "origins"];
+/// The `/42` `ConstValue` tag names, in encoding order.
+pub const CONST_VALUE_NAMES: &[&str] = &["integer", "float", "address"];
+/// The `/42` `IntegerConst` field names, in frozen field order.
+pub const INTEGER_CONST_FIELDS: &[&str] = &["magnitude", "negative"];
+/// The `/45` `FloatConst` field names, in frozen field order.
+pub const FLOAT_CONST_FIELDS: &[&str] = &["format", "bits"];
+/// The `/45` `AddressConst` field names, in frozen field order.
+pub const ADDRESS_CONST_FIELDS: &[&str] = &["base", "addend"];
 /// The `LiteralKind` member names (only `integer` produced in M1).
 pub const LITERAL_KIND_NAMES: &[&str] = &["integer", "character", "string"];
 /// The `LiteralSuffix` member names (only `none` produced in M1).
@@ -386,10 +494,35 @@ pub const NODE_KIND_NAMES: &[&str] = &[
     "return",
     "binary_add",
     "int_literal",
+    // `/43` V1 AST append.
+    "declaration",
+    "identifier",
+    "expression_statement",
+    "assignment",
+    "binary_sub",
+    "binary_mul",
+    "binary_div",
+    "binary_rem",
+    "unary_plus",
+    "unary_minus",
+    // `/54` direct-call append.
+    "parameter_list",
+    "parameter",
+    "call",
 ];
 
 /// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).
-pub const TYPE_KIND_NAMES: &[&str] = &["void", "bool", "char", "int", "function"];
+pub const TYPE_KIND_NAMES: &[&str] = &[
+    "void",
+    "bool",
+    "char",
+    "int",
+    "function",
+    "pointer",
+    "array",
+    "aggregate",
+    "enum",
+];
 
 /// Frozen `/13` `IntRank` names, in declaration order.
 pub const INT_RANK_NAMES: &[&str] = &["short", "int", "long", "long_long"];
@@ -399,6 +532,16 @@ pub const CHAR_KIND_NAMES: &[&str] = &["plain", "signed", "unsigned"];
 
 /// Frozen `/13` `TypeRecord` fields, in declaration order.
 pub const TYPE_RECORD_FIELDS: &[&str] = &["kind"];
+/// The `/46` `TypeQualifiers` field names, in frozen field order.
+pub const TYPE_QUALIFIER_FIELDS: &[&str] = &["const", "volatile", "restrict", "atomic"];
+/// The `/46` `ArrayBound` tag names, in encoding order.
+pub const ARRAY_BOUND_NAMES: &[&str] = &["constant", "incomplete", "vla"];
+/// The `/46` `AggregateKind` names, in encoding order.
+pub const AGGREGATE_KIND_NAMES: &[&str] = &["struct", "union"];
+/// The `/46` `AggregateMember` field names, in frozen field order.
+pub const AGGREGATE_MEMBER_FIELDS: &[&str] = &["name", "ty", "bit_width", "flexible"];
+/// The `/46` `Enumerator` field names, in frozen field order.
+pub const ENUMERATOR_FIELDS: &[&str] = &["name", "value"];
 
 /// Frozen `/13` `SymbolKind` names, in declaration order.
 pub const SYMBOL_KIND_NAMES: &[&str] = &["function", "variable"];
@@ -432,10 +575,26 @@ pub const VALUE_CATEGORY_NAMES: &[&str] = &["lvalue", "non_lvalue", "function_de
 pub const SEM_RECORD_FIELDS: &[&str] = &["node", "ty", "category", "effects"];
 
 /// Frozen `/15` `IrOp` names, in declaration order.
-pub const IR_OP_NAMES: &[&str] = &["constant", "return"];
+pub const IR_OP_NAMES: &[&str] = &[
+    "constant",
+    "return",
+    "local_load",
+    "local_store",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "rem",
+    "neg",
+    "branch",
+    "cond_branch",
+    // `/54` direct-call append.
+    "call",
+];
 
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
-pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+pub const FUNCTION_RECORD_FIELDS: &[&str] =
+    &["symbol", "signature", "entry", "linkage", "parameters"];
 /// Frozen `/23` macro-record field inventory (hash-participating).
 pub const MACRO_RECORD_FIELDS: &[&str] = &[
     "spelling",
@@ -456,7 +615,16 @@ pub const VALUE_RECORD_FIELDS: &[&str] = &["ty"];
 pub const SPAN_RECORD_FIELDS: &[&str] = &["source", "start", "end", "expansion"];
 
 /// Frozen `/15` `InstructionRecord` fields, in declaration order.
-pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &["op", "block", "operands", "immediate", "result"];
+pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &[
+    "op",
+    "block",
+    "operands",
+    "immediate",
+    "result",
+    "local",
+    "successors",
+    "callee",
+];
 
 /// Frozen `/12` `NodeRecord` fields, in declaration order.
 pub const NODE_RECORD_FIELDS: &[&str] = &[
@@ -471,6 +639,112 @@ pub const NODE_RECORD_FIELDS: &[&str] = &[
 
 /// Frozen `/11` `TokenRecord` fields, in declaration order.
 pub const TOKEN_RECORD_FIELDS: &[&str] = &["kind", "span", "name", "pp_token"];
+
+/// Frozen `/41` `G1DraftBody` variant names, in declaration/encoding order.
+pub const G1_DRAFT_BODY_NAMES: &[&str] = &[
+    "literal",
+    "const",
+    "artifact",
+    "token",
+    "name",
+    "node",
+    "type",
+    "symbol",
+    "scope",
+    "scope_event",
+    "sem",
+    "function",
+    "block",
+    "value",
+    "instruction",
+    "span",
+    "pp_token",
+    "macro",
+    "layout",
+    "init",
+];
+
+/// Frozen `/41` `AppendBatch` fields, in declaration order.
+pub const APPEND_BATCH_FIELDS: &[&str] = &["records", "bodies"];
+
+/// Frozen `/41` owning `StoreId` labels for each `G1DraftBody` variant, in
+/// variant order. Validation and version bumps must agree with this table.
+pub const APPEND_BODY_STORE_NAMES: &[&str] = &[
+    "lex",
+    "constants",
+    "artifacts",
+    "lex",
+    "names",
+    "parse",
+    "types",
+    "symbols",
+    "symbols",
+    "symbols",
+    "sem",
+    "ir",
+    "ir",
+    "ir",
+    "ir",
+    "sources",
+    "pp",
+    "pp",
+    "layout",
+    "init",
+];
+
+/// Frozen `/41` `Control` fields, in snapshot encoding order.
+pub const CONTROL_RECORD_FIELDS: &[&str] = &[
+    "tick",
+    "job_state",
+    "stage",
+    "selected",
+    "next_enqueue_ordinal",
+    "next_diagnostic_ordinal",
+    "next_commit_ordinal",
+    "budget_exhausted",
+    "cancel_requested",
+];
+
+/// Frozen `/41` `Task` fields, in snapshot encoding order.
+pub const TASK_RECORD_FIELDS: &[&str] = &[
+    "id",
+    "kind",
+    "owner",
+    "enqueue_ordinal",
+    "ready_tick",
+    "progress_count",
+    "progress_ordinal",
+    "parent",
+    "continuation",
+    "payload",
+    "state",
+];
+
+/// Frozen `/41` `TraceRecord` fields, in canonical trace-encoding order.
+pub const TRACE_RECORD_FIELDS: &[&str] = &[
+    "tick",
+    "pins_digest",
+    "selected",
+    "outcome",
+    "resolution",
+    "error",
+    "ready_len",
+    "enqueued",
+    "completed",
+    "failed",
+    "waiting",
+    "rejoined",
+    "appended",
+    "patches",
+];
+
+/// Frozen `/41` `CompilerPins` digest fields, in canonical digest order.
+pub const PIN_RECORD_FIELDS: &[&str] = &[
+    "start_job",
+    "cancel",
+    "tick_budget_reached",
+    "host_responses",
+];
 
 /// Frozen `/10` total 8-variant `ArtifactKind` names, in declaration order.
 pub const ARTIFACT_KIND_NAMES: &[&str] = &[
@@ -489,7 +763,7 @@ pub const ARTIFACT_KIND_NAMES: &[&str] = &[
 pub struct FrozenSchema {
     /// Contract version.
     pub version: &'static str,
-    /// The complete target model, including unverified proposals.
+    /// The complete target model (probe-attested baseline).
     pub target: TargetSpec,
     /// Planned probe substrate.
     pub probe_substrate: ProbeSubstrate,
@@ -504,7 +778,7 @@ impl FrozenSchema {
     pub fn current() -> Self {
         Self {
             version: CONTRACT_VERSION,
-            target: TargetSpec::aarch64_unknown_linux_gnu_unverified(),
+            target: TargetSpec::aarch64_unknown_linux_gnu_probe_attested(),
             probe_substrate: probe_substrate(),
             corpus_policy: CorpusPolicy::t01(),
             limits: Limits::fixture(),
@@ -550,6 +824,12 @@ impl FrozenSchema {
         push_str_list(&mut w, CHIP_PHASE_NAMES);
         push_str_list(&mut w, HOST_REQUEST_NAMES);
         push_str_list(&mut w, DIAG_GROUP_NAMES);
+        w.u64(crate::diagnostic::DIAGNOSTIC_CODES.len() as u64);
+        for spec in crate::diagnostic::DIAGNOSTIC_CODES {
+            w.str(spec.name);
+            w.str(spec.code.group.name());
+            w.u16(spec.code.code);
+        }
         push_str_list(&mut w, ARTIFACT_KIND_NAMES);
         push_str_list(&mut w, PPTOKEN_KIND_NAMES);
         push_str_list(&mut w, TOKEN_KIND_NAMES);
@@ -558,6 +838,11 @@ impl FrozenSchema {
         push_str_list(&mut w, NODE_KIND_NAMES);
         push_str_list(&mut w, NODE_RECORD_FIELDS);
         push_str_list(&mut w, TYPE_KIND_NAMES);
+        push_str_list(&mut w, TYPE_QUALIFIER_FIELDS);
+        push_str_list(&mut w, ARRAY_BOUND_NAMES);
+        push_str_list(&mut w, AGGREGATE_KIND_NAMES);
+        push_str_list(&mut w, AGGREGATE_MEMBER_FIELDS);
+        push_str_list(&mut w, ENUMERATOR_FIELDS);
         push_str_list(&mut w, INT_RANK_NAMES);
         push_str_list(&mut w, CHAR_KIND_NAMES);
         push_str_list(&mut w, TYPE_RECORD_FIELDS);
@@ -578,6 +863,13 @@ impl FrozenSchema {
         push_str_list(&mut w, INSTRUCTION_RECORD_FIELDS);
         push_str_list(&mut w, SPAN_RECORD_FIELDS);
         push_str_list(&mut w, MACRO_RECORD_FIELDS);
+        push_str_list(&mut w, G1_DRAFT_BODY_NAMES);
+        push_str_list(&mut w, APPEND_BATCH_FIELDS);
+        push_str_list(&mut w, APPEND_BODY_STORE_NAMES);
+        push_str_list(&mut w, CONTROL_RECORD_FIELDS);
+        push_str_list(&mut w, TASK_RECORD_FIELDS);
+        push_str_list(&mut w, TRACE_RECORD_FIELDS);
+        push_str_list(&mut w, PIN_RECORD_FIELDS);
         let store_names: Vec<&'static str> =
             StoreId::ALL.iter().map(|store| store.name()).collect();
         push_str_list(&mut w, &store_names);
@@ -708,6 +1000,10 @@ impl FrozenSchema {
         // seed allowlist rows.
         push_str_list(&mut w, LITERAL_RECORD_FIELDS);
         push_str_list(&mut w, CONST_RECORD_FIELDS);
+        push_str_list(&mut w, CONST_VALUE_NAMES);
+        push_str_list(&mut w, INTEGER_CONST_FIELDS);
+        push_str_list(&mut w, FLOAT_CONST_FIELDS);
+        push_str_list(&mut w, ADDRESS_CONST_FIELDS);
         push_str_list(&mut w, LITERAL_KIND_NAMES);
         push_str_list(&mut w, LITERAL_SUFFIX_NAMES);
         push_str_list(&mut w, LX08_CANDIDATE_NAMES);
@@ -768,12 +1064,12 @@ fn push_str_list(w: &mut Writer, values: &[&str]) {
     }
 }
 
-/// The frozen probe substrate plan: Linux CI/VM, not yet available.
+/// The pinned probe substrate baseline: containerized Linux AArch64.
 pub const fn probe_substrate() -> ProbeSubstrate {
     ProbeSubstrate {
-        kind: "linux-ci-vm",
-        available: false,
-        notes: "Planned substrate for the AArch64 GNU/Linux target probe; not yet provisioned.",
+        kind: "docker-linux-arm64",
+        available: true,
+        notes: "2026-11-09 pinned Debian 12 arm64 probe (GCC 12.2.0, binutils 2.40); official T00 CI/bare-metal baseline remains open.",
     }
 }
 
@@ -790,8 +1086,8 @@ pub fn contract_version_file() -> String {
          version={CONTRACT_VERSION}\n\
          hash={CONTRACT_HASH}\n\
          target=aarch64-unknown-linux-gnu\n\
-         target_verification=unverified\n\
-         probe_substrate=linux-ci-vm (planned, not provisioned)\n\
+         target_verification=probe-attested\n\
+         probe_substrate=docker-linux-arm64 (pinned 2026-11-09; official T00 baseline open)\n\
          corpus_fetch=on-demand hash-locked\n\
          reference_baseline=authorized, not available, not candidate evidence\n\
          hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)\n\

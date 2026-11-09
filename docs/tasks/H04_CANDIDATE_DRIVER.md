@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Status | **PRESENT (Part A + `-E`/`-D`/`-U`)** 2026-10-06 — binary `candidate` (`compiler/src/bin/candidate.rs`); host tooling, no contract change, no version bump |
-| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset) plus host-only `-E` emission and `-D`/`-U` macro seeds |
+| Status | **PRESENT (Part A + `-E`/`-D`/`-U` + B3-03a `#define`/`#undef` + B3-03b quote include)** 2026-11-09 — binary `candidate` (`compiler/src/bin/candidate.rs`); host tooling, no contract change, no version bump |
+| Scope | Part A evidence (source bytes → snapshot/trace/interpret for the M1 subset), host-only `-E` emission, `-D`/`-U` seeds, ordered source `#define`/`#undef`, single-level quoted `#include "..."`, and the M1 `--emit-asm` AArch64 prototype (constant return and `/49`–`/53` local expressions/assignments) |
 | Authority | [T00](T00_GCC_TORTURE_GATE.md) H04 + [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) P7/§9 (Part A portion) |
 | Non-goal | `-I`, multi-source, `-S`/`-c` emission (all explicit errors) |
 
@@ -29,6 +29,7 @@ out to another C compiler.
 | `-D NAME=value` | Defines `NAME` with `value` scanned by the frozen PP scan into pp-tokens (empty `value` defines it as empty, still defined) |
 | `-U NAME` | Undefines `NAME` (tombstone, supersedes by commit order); repeated `-D`/`-U` for one name resolve last-wins |
 | `-E` | Emits the preprocessed source (PP28, host-only Part B) to stdout or `-o <path>` |
+| `--emit-asm <path>` | Host-only M1 AArch64 prototype: emits GNU assembly for the constant-return IR shape plus the `/49`–`/53` local expression/assignment source shape. Fails closed on any other IR |
 | `-I`, multi-source | **Deferred**: explicit error (exit 2), never a silent fallback |
 | unknown flags | Usage error (exit 2) |
 
@@ -38,14 +39,15 @@ no evidence); 2 = driver error.
 ## 3. Evidence
 
 ```text
-candidate evidence (t01-c01-c06/19)
+candidate evidence (t01-c01-c06/42)
 input: main.c
 snapshot: <hex>
 trace: <hex>
 interpret: value=05 negative=false
 ```
 
-Repeated runs are byte-identical (pinned by `h04_candidate`).
+Repeated runs are byte-identical (pinned by `h04_candidate`). The B3-03a
+source-macro path is pinned by `c46_pp_driver`.
 
 ## 4. Execution record
 
@@ -55,12 +57,25 @@ determinism, invalid-input diagnostic with exit 1 and no evidence,
 `-o` report file with section selection, `-E` golden/determinism/`-o`/
 `#error`/clash coverage, plus `-D` bare-default, `-D` value expansion,
 `-U` undef, `-D`/`-U` last-wins, empty-`-D`-stays-defined, bad-macro-flag
-exit 2, and `-D`-with-evidence intactness).
+exit 2, and `-D`-with-evidence intactness). B3-03a adds
+`compiler/tests/c46_pp_driver.rs` (10 tests): source `#define`/`#undef`
+ordering, benign/non-benign redefinition, leading-define-driven `#if`,
+inactive/active post-conditional defines, `#error` fail-closed,
+continuation rejection, directive removal, and deterministic reruns. See
+[PP_DRIVER_SLICE.md](PP_DRIVER_SLICE.md). B3-03b adds
+`compiler/tests/c47_pp_include_driver.rs` (12 tests) for the bounded
+quote-include policy: header `#define`/`#undef`, plain text, subdirectories,
+duplicate includes, missing/angle/traversal/nested/guard/pragma/
+after-conditional refusals, determinism, and symlink escape. See
+[B3_03B_LEAF_INCLUDE_POLICY.md](B3_03B_LEAF_INCLUDE_POLICY.md).
 
 ## 5. Explicitly deferred (still absent)
 
-- `-I`, multi-source compilation, quoting edge cases (need
-  include/multi-source freezes).
+- `#line`/`#pragma` effects (T03/T01 logical-location and pragma carriers;
+  W3 of B3-03).
+- `-I`, angle/system includes, nested includes, include guards/`once`,
+  multi-source compilation, and quoting edge cases (need the wider H04
+  freeze; B3-03b only accepts quoted headers beside the including file).
 - `-S`/`-c` target emission (Part B, probe-gated; the fail-closed rule
-  stays until C02 is attested).
+  stays until C02 is attested), plus the H02/H03/H05–H10 gate.
 - Torture flag propagation matrix (H02/H03 runner integration).

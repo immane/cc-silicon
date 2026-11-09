@@ -2,11 +2,13 @@
 // bin/candidate.rs — H04 candidate command-line driver (Part A).
 //
 // Host-side orchestration only: it reads source bytes, drives the frozen
-// M1 worker pipeline from real tasks (PP01→PP02→PP03→PP04→LX→PA→TY→SE→
-// VF06/VF05→IR→VF12→VF01), and prints Part A evidence (snapshot hash,
-// trace hash, modeled constant). It performs no compilation itself, never
-// shells out to another C compiler, and refuses target emission (`-S`,
-// `-c`) while the target is unverified (fail-closed, Part B). Part B adds
+// M1 worker pipeline from real tasks (PP01→PP02→PP03→PP04→LX→PA→TY→
+// SE literal→SE binary→SE return→SE29 function fact→VF06/VF05→IR
+// (consuming the function fact)→VF12→VF01), and prints Part A evidence
+// (snapshot hash, trace hash, modeled constant). It performs no compilation
+// itself, never shells out to another C compiler, and refuses target
+// emission (`-S`, `-c`) while the target is unverified (fail-closed, Part B).
+// Part B adds
 // host-only `-E` preprocessed emission through the frozen PP28 worker
 // (no contract change, no version bump), and H04 `-D`/`-U` seeds the frozen
 // macro table in flag order before preprocessing (host-only, no contract
@@ -16,26 +18,30 @@
 //
 // Exit codes: 0 = evidence produced; 1 = candidate diagnostic (the input
 // is rejected with a structured message, no evidence); 2 = driver error
-// (usage, unsupported flag, or refused emission).
+// (usage, unsupported flag, refused emission, or a non-UTF-8 argument).
 // ============================================================================
 
 use cc_silicon_compiler::bus::{CompilerBus, CompilerPins, NodeKind, TokenKind};
 use cc_silicon_compiler::chips::{
     handler_for, FoldChip, IrFunctionChip, LxClassifyChip, LxDecodeLiteralChip, LxInternChip,
-    PaTuChip, PpCommentChip, PpConditionalChip, PpDiagnosticChip, PpDirectiveChip, PpEmitChip,
-    PpInvokeChip, PpNormalizeChip, PpScanChip, PpSpliceChip, PpSubstituteChip, SeBinChip,
-    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
-    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
+    PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
+    PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeAssignmentChip,
+    SeBinChip, SeCallChip, SeFuncChip, SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip,
+    TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip,
+    Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
 use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
-use cc_silicon_compiler::limits::Limits;
+use cc_silicon_compiler::limits::{Limits, CALL_MAX_FUNCTIONS};
 use cc_silicon_compiler::manifest::{
-    StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP05_CHIP, PP09_CHIP, PP12_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP,
-    PP_SCAN_CHIP, PP_SPLICE_CHIP, SE_BIN_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
-    TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    StoreSchema, G1_FOLD_CHIP, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
+    PA_TU_CHIP, PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP,
+    PP17_CHIP, PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP,
+    PP_SPLICE_CHIP, SE_ASSIGN_CHIP, SE_BIN_CHIP, SE_CALL_CHIP, SE_FUNC_CHIP, SE_ID_CHIP,
+    SE_LIT_CHIP, SE_RET_CHIP, SE_UNARY_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP, TY_SYMBOL_CHIP,
+    TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -55,8 +61,23 @@ mod emit_helper;
 #[path = "candidate/macro_flags.rs"]
 mod macro_flags;
 
+/// B3-03a host-only PP line/directive grouping helper.
+#[path = "candidate/pp_driver.rs"]
+mod pp_driver;
+
+/// B3-03b bounded quote-include host policy.
+#[path = "candidate/pp_include.rs"]
+mod pp_include;
+
+/// M1 AArch64 assembly prototype (host-only T11 bootstrap).
+#[path = "candidate/target_m1.rs"]
+mod target_m1;
+
 /// Maximum drain ticks per pipeline step (M1 needs a handful for joins).
 const DRAIN_BUDGET: u32 = 16;
+
+/// Bounded quote-include limit per translation unit.
+const MAX_INCLUDES: usize = 64;
 
 /// Parsed Part A invocation.
 struct Invocation {
@@ -72,12 +93,15 @@ struct Invocation {
     emit: bool,
     /// `-D`/`-U` macro seeds in flag order (last-wins by commit order).
     macro_flags: Vec<macro_flags::MacroFlagSeed>,
+    /// Optional M1 AArch64 assembly output path (`--emit-asm`).
+    asm_output: Option<String>,
 }
 
 fn usage() -> &'static str {
     "usage: candidate [-std=c11] [-O0] [-D NAME[=value]] [-U NAME] [-o <path>] [--emit-ir-snapshot] [--emit-trace] [--interpret-ir] file.c\n\
      usage: candidate -E [-D NAME[=value]] [-U NAME] [-o <path>] file.c\n\
-     Part A evidence driver (M1): snapshot/trace emission and IR interpretation.\n\
+     usage: candidate --emit-asm <path> [-D NAME[=value]] [-U NAME] file.c\n\
+     Part A evidence driver (M1): snapshot/trace emission and IR interpretation; --emit-asm is the host-only M1 AArch64 prototype.\n\
      -D NAME defines NAME as 1; -D NAME=value defines NAME with that replacement text (empty value defines it as empty).\n\
      -U NAME undefines NAME; repeated -D/-U for one name resolve last-wins in flag order.\n\
      -E emits the preprocessed source (PP28) to stdout or -o <path> (Part B, host-only).\n\
@@ -94,6 +118,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
         interpret: false,
         emit: false,
         macro_flags: Vec::new(),
+        asm_output: None,
     };
     let mut inputs = Vec::new();
     let mut index = 0;
@@ -107,6 +132,12 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
             ));
         } else if arg == "-E" {
             invocation.emit = true;
+        } else if arg == "--emit-asm" {
+            index += 1;
+            let path = args
+                .get(index)
+                .ok_or_else(|| "--emit-asm requires a path".to_string())?;
+            invocation.asm_output = Some(path.clone());
         } else if arg == "-o" {
             index += 1;
             let path = args
@@ -212,7 +243,7 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
 }
 
 fn install(bus: &mut CompilerBus) {
-    bus.kinds = TaskKindRegistry::pp_emit_slice();
+    bus.kinds = TaskKindRegistry::se_function_slice();
     bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
@@ -222,11 +253,16 @@ fn install(bus: &mut CompilerBus) {
         &PpSpliceChip,
         &PpCommentChip,
         &PpScanChip,
+        &PpDefineChip,
+        &PpRedefineChip,
+        &PpUndefChip,
         &PpConditionalChip,
         &PpInvokeChip,
         &PpSubstituteChip,
         &PpDirectiveChip,
         &PpDiagnosticChip,
+        &PpIncludeResolveChip,
+        &PpIncludeEnterChip,
         &PpEmitChip,
         &LxInternChip,
         &LxClassifyChip,
@@ -239,6 +275,11 @@ fn install(bus: &mut CompilerBus) {
         &SeLitChip,
         &SeBinChip,
         &SeRetChip,
+        &SeFuncChip,
+        &SeIdentifierChip,
+        &SeUnaryChip,
+        &SeAssignmentChip,
+        &SeCallChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -254,11 +295,16 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::PREPROCESS_SPLICE, PP_SPLICE_CHIP, 1),
         (TaskKind::PREPROCESS_COMMENT, PP_COMMENT_CHIP, 1),
         (TaskKind::PREPROCESS_SCAN, PP_SCAN_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_DEFINE, PP06_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_REDEFINE, PP07_CHIP, 1),
+        (TaskKind::PREPROCESS_MACRO_UNDEF, PP08_CHIP, 1),
         (TaskKind::PREPROCESS_CONDITIONAL, PP19_CHIP, 1),
         (TaskKind::PREPROCESS_MACRO_INVOKE, PP09_CHIP, 1),
         (TaskKind::PREPROCESS_MACRO_SUBSTITUTE, PP12_CHIP, 1),
         (TaskKind::PREPROCESS_DIRECTIVE, PP05_CHIP, 1),
         (TaskKind::PREPROCESS_DIAGNOSTIC, PP26_CHIP, 1),
+        (TaskKind::PREPROCESS_INCLUDE_RESOLVE, PP17_CHIP, 1),
+        (TaskKind::PREPROCESS_INCLUDE_ENTER, PP18_CHIP, 1),
         (TaskKind::PREPROCESS_EMIT, PP28_CHIP, 1),
         (TaskKind::LEX_INTERN, LX_INTERN_CHIP, 2),
         (TaskKind::LEX_CLASSIFY, LX_CLASSIFY_CHIP, 2),
@@ -276,6 +322,11 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_LITERAL_EXPR, SE_LIT_CHIP, 4),
         (TaskKind::SEMANTIC_BINARY_EXPR, SE_BIN_CHIP, 4),
         (TaskKind::SEMANTIC_RETURN_STMT, SE_RET_CHIP, 4),
+        (TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4),
+        (TaskKind::SEMANTIC_IDENTIFIER_EXPR, SE_ID_CHIP, 4),
+        (TaskKind::SEMANTIC_UNARY_EXPR, SE_UNARY_CHIP, 4),
+        (TaskKind::SEMANTIC_ASSIGNMENT_EXPR, SE_ASSIGN_CHIP, 4),
+        (TaskKind::SEMANTIC_CALL_EXPR, SE_CALL_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -324,10 +375,11 @@ fn step(
         if quiescent(bus) {
             break;
         }
+        let pins = CompilerPins::default();
         let report = RoutingShell
-            .clock_tick_with(&CompilerPins::default(), bus, handler_for(workers))
+            .clock_tick_with(&pins, bus, handler_for(workers))
             .map_err(|error| format!("tick failed: {error}"))?;
-        trace.record(bus, &report);
+        trace.record(bus, &report, &pins);
         if matches!(report.outcome, TickOutcome::BudgetExhausted) {
             return Err("tick budget exhausted".to_string());
         }
@@ -365,6 +417,132 @@ fn step(
     }
 }
 
+/// Post-order traversal of one expression subtree (children before parent).
+fn expression_postorder(
+    bus: &CompilerBus,
+    root: NodeId,
+    out: &mut Vec<NodeId>,
+) -> Result<(), String> {
+    let body = bus
+        .arenas
+        .nodes
+        .get(root)
+        .map_err(|_| format!("expression node {} vanished", root.index()))?;
+    // A direct call's first child is the callee name, not a value expression:
+    // it must not receive an identifier-expression fact.
+    let start = usize::from(body.kind == NodeKind::Call);
+    for child in &body.children[start..] {
+        expression_postorder(bus, *child, out)?;
+    }
+    out.push(root);
+    Ok(())
+}
+
+fn run_literal(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    node: NodeId,
+    fold: bool,
+) -> Result<(), String> {
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SEMANTIC_LITERAL_EXPR,
+        SE_LIT_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(node)]),
+    )?;
+    if !fold {
+        return Ok(());
+    }
+    let literal = bus
+        .arenas
+        .nodes
+        .get(node)
+        .map_err(|_| "literal node vanished".to_string())?
+        .literal
+        .ok_or_else(|| "literal node carries no literal".to_string())?;
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::CONSTANT_CONST_FOLD,
+        G1_FOLD_CHIP,
+        Payload::from_refs(vec![RecordRef::Literal(literal)]),
+    )?;
+    Ok(())
+}
+
+fn run_expression_node(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    node: NodeId,
+    fold_literals: bool,
+) -> Result<(), String> {
+    let kind = bus
+        .arenas
+        .nodes
+        .get(node)
+        .map_err(|_| "expression node vanished".to_string())?
+        .kind;
+    match kind {
+        NodeKind::IntLiteral => run_literal(bus, workers, trace, node, fold_literals),
+        NodeKind::Identifier => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_IDENTIFIER_EXPR,
+                SE_ID_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::BinaryAdd
+        | NodeKind::BinarySub
+        | NodeKind::BinaryMul
+        | NodeKind::BinaryDiv
+        | NodeKind::BinaryRem => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_BINARY_EXPR,
+                SE_BIN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::UnaryPlus | NodeKind::UnaryMinus => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_UNARY_EXPR,
+                SE_UNARY_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        NodeKind::Call => {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SEMANTIC_CALL_EXPR,
+                SE_CALL_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+            Ok(())
+        }
+        _ => Err(format!(
+            "unsupported expression node kind {kind:?} in locals shape"
+        )),
+    }
+}
+
 /// Find nodes of one kind in ascending-ID order.
 fn nodes_of(bus: &CompilerBus, kind: NodeKind) -> Vec<NodeId> {
     let mut ids: Vec<NodeId> = bus
@@ -393,6 +571,15 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .register(PpScanChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
+        .register(PpDefineChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpRedefineChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpUndefChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
         .register(PpConditionalChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
@@ -406,6 +593,12 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpDiagnosticChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpIncludeResolveChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(PpIncludeEnterChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(PpEmitChip)
@@ -442,6 +635,21 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeRetChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeFuncChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeIdentifierChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeUnaryChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeAssignmentChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeCallChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -562,13 +770,312 @@ fn commit_macro_flags(
     Ok(())
 }
 
-/// Shared preprocessing prefix: source bytes through PP01→PP04, PP19
-/// conditional, PP09 expansion, and the PP05 directive gate. Returns the
-/// final pp-token stream (`expanded_tokens`, post-conditional,
-/// post-expansion, post-directive) that both the evidence pipeline and the
-/// `-E` emit step thread onward. Host owns the file read; chips own every
-/// semantic decision. `-D`/`-U` seeds commit in flag order before the
-/// first PP step so conditionals and expansion observe them.
+/// Run one PP step and require a `Records` result.
+fn step_records(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    kind: TaskKind,
+    owner: ChipId,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    match step(bus, workers, trace, kind, owner, Payload::from_refs(refs))? {
+        ResultValue::Records(refs) => Ok(refs),
+        other => Err(format!("expected pp-token refs, got {other:?}")),
+    }
+}
+
+/// Run PP09 over one contiguous text run and return the expanded refs.
+fn expand_text_run(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    if refs.is_empty() {
+        return Ok(Vec::new());
+    }
+    step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_MACRO_INVOKE,
+        PP09_CHIP,
+        refs,
+    )
+}
+
+/// A loaded header source plus its single PP01→PP04 scan.
+#[derive(Clone)]
+struct HeaderUnit {
+    source: cc_silicon_compiler::ids::SourceId,
+}
+
+/// Per-TU bounded include cache and occurrence counter.
+struct IncludeState {
+    by_path: std::collections::BTreeMap<std::path::PathBuf, (Vec<u8>, HeaderUnit)>,
+    occurrences: usize,
+}
+
+impl IncludeState {
+    fn new() -> Self {
+        Self {
+            by_path: std::collections::BTreeMap::new(),
+            occurrences: 0,
+        }
+    }
+}
+
+/// Process a header token stream under the bounded B3-03b policy.
+///
+/// Leading `#define`/`#undef` lines are applied with PP06/PP08; text runs are
+/// expanded with PP09. Nested includes, conditionals/guards, `#line`,
+/// `#pragma`, `#error`, and unknown directives are rejected.
+fn process_header_tokens(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    refs: Vec<RecordRef>,
+) -> Result<Vec<RecordRef>, String> {
+    let stream = pp_driver::group_lines(bus, &refs)?;
+    let mut expanded_refs: Vec<RecordRef> = Vec::new();
+    let mut index = 0usize;
+    while index < stream.lines.len() {
+        let line = &stream.lines[index];
+        if !pp_driver::line_is_directive(bus, line) {
+            let start = index;
+            while index < stream.lines.len()
+                && !pp_driver::line_is_directive(bus, &stream.lines[index])
+            {
+                index += 1;
+            }
+            let mut run = Vec::new();
+            for text_line in &stream.lines[start..index] {
+                run.extend(text_line.refs());
+            }
+            let expanded = expand_text_run(bus, workers, trace, run)?;
+            expanded_refs.extend(expanded);
+            continue;
+        }
+        if pp_driver::line_has_continuation(bus, line) {
+            return Err(format!(
+                "unsupported include: header directive on raw line {} spans multiple physical lines",
+                line.line + 1
+            ));
+        }
+        match pp_driver::directive_name(bus, line).as_deref() {
+            Some(name) if pp_driver::is_define(name) => {
+                step(
+                    bus,
+                    workers,
+                    trace,
+                    TaskKind::PREPROCESS_MACRO_DEFINE,
+                    PP06_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_undef(name) => {
+                step(
+                    bus,
+                    workers,
+                    trace,
+                    TaskKind::PREPROCESS_MACRO_UNDEF,
+                    PP08_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_include(name) || pp_driver::is_include_next(name) => {
+                return Err(
+                    "unsupported include: nested includes are outside the B3-03b single-level policy"
+                        .to_string(),
+                );
+            }
+            Some(name) if pp_driver::is_conditional_name(name) => {
+                return Err(
+                    "unsupported include: header conditionals/include guards are outside the B3-03b policy"
+                        .to_string(),
+                );
+            }
+            Some(name)
+                if name == b"line"
+                    || name == b"pragma"
+                    || name == b"error"
+                    || name == b"warning" =>
+            {
+                return Err(format!(
+                    "unsupported include: header directive `{}` is outside the B3-03b policy",
+                    String::from_utf8_lossy(name)
+                ));
+            }
+            Some(name) => {
+                return Err(format!(
+                    "unsupported include: unknown header directive `{}`",
+                    String::from_utf8_lossy(name)
+                ));
+            }
+            None if line.tokens.len() == 1 => {
+                // Null directive: drop it.
+            }
+            None => {
+                return Err("unsupported include: malformed header directive line".to_string());
+            }
+        }
+        index += 1;
+    }
+    Ok(expanded_refs)
+}
+
+/// Load, resolve, and splice one quoted `#include "..."` line.
+fn expand_include_line(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    input: &str,
+    line: &pp_driver::PpLine,
+    eof: cc_silicon_compiler::ids::PpTokenId,
+    state: &mut IncludeState,
+) -> Result<Vec<RecordRef>, String> {
+    state.occurrences += 1;
+    if state.occurrences > MAX_INCLUDES {
+        return Err(format!(
+            "unsupported include: more than {MAX_INCLUDES} includes in one translation unit"
+        ));
+    }
+    let request = pp_include::parse_include_line(bus, &line.tokens)?;
+    let path =
+        pp_include::resolve_header_path(input, &request.name, bus.limits().max_source_bytes)?;
+    let unit = if let Some((known_name, unit)) = state.by_path.get(&path) {
+        if known_name != &request.name {
+            return Err(format!(
+                "unsupported include: `{}` was already loaded under a different spelling",
+                path.display()
+            ));
+        }
+        unit.clone()
+    } else {
+        let bytes = std::fs::read(&path)
+            .map_err(|error| format!("cannot read include `{}`: {error}", path.display()))?;
+        if bytes.len() as u64 > bus.limits().max_source_bytes {
+            return Err(format!(
+                "include `{}` exceeds the configured source-byte limit",
+                path.display()
+            ));
+        }
+        let name = bus
+            .intern_name(&request.name)
+            .map_err(|error| format!("name table exhausted: {error}"))?;
+        let source = bus
+            .alloc_source(name, bytes)
+            .map_err(|error| format!("include source rejected: {error}"))?;
+        let _ = scan_source(bus, workers, trace, source)?;
+        let unit = HeaderUnit { source };
+        state
+            .by_path
+            .insert(path.clone(), (request.name.clone(), unit.clone()));
+        unit
+    };
+    // PP17 must resolve the main-line header token to the loaded source.
+    match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_INCLUDE_RESOLVE,
+        PP17_CHIP,
+        Payload::from_refs(vec![RecordRef::PpToken(request.header)]),
+    )? {
+        ResultValue::Record(RecordRef::Source(id)) if id == unit.source => {}
+        other => {
+            return Err(format!(
+                "include resolution did not name the loaded header: {other:?}"
+            ));
+        }
+    }
+    // Per-line PP18 splice: include-line refs plus the outer EOF and the
+    // resolved header source. The header's own EOF is excluded by PP18.
+    let mut payload = line.refs();
+    payload.push(RecordRef::PpToken(eof));
+    payload.push(RecordRef::Source(unit.source));
+    let mut stitched = step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_INCLUDE_ENTER,
+        PP18_CHIP,
+        payload,
+    )?;
+    match stitched.last() {
+        Some(RecordRef::PpToken(id))
+            if bus
+                .arenas
+                .pp_tokens
+                .get(*id)
+                .is_ok_and(|body| body.kind == cc_silicon_compiler::bus::PpTokenKind::Eof) =>
+        {
+            stitched.pop();
+        }
+        _ => {
+            return Err("include splice did not preserve the outer EOF".to_string());
+        }
+    }
+    process_header_tokens(bus, workers, trace, stitched)
+}
+
+/// Run the frozen PP01→PP04 scan for one committed source.
+fn scan_source(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    source: cc_silicon_compiler::ids::SourceId,
+) -> Result<Vec<RecordRef>, String> {
+    let artifact = |value: ResultValue| match value {
+        ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
+        other => Err(format!("expected artifact ref, got {other:?}")),
+    };
+    let normalized = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_NORMALIZE,
+        PP01_CHIP,
+        Payload::from_refs(vec![RecordRef::Source(source)]),
+    )?)?;
+    let spliced = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_SPLICE,
+        PP_SPLICE_CHIP,
+        Payload::from_refs(vec![RecordRef::Artifact(normalized)]),
+    )?)?;
+    let comment_free = artifact(step(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_COMMENT,
+        PP_COMMENT_CHIP,
+        Payload::from_refs(vec![RecordRef::Artifact(spliced)]),
+    )?)?;
+    step_records(
+        bus,
+        workers,
+        trace,
+        TaskKind::PREPROCESS_SCAN,
+        PP_SCAN_CHIP,
+        vec![RecordRef::Artifact(comment_free)],
+    )
+}
+
+/// Shared preprocessing prefix: source bytes through PP01→PP04, then the
+/// bounded B3-03a line walk.
+///
+/// Leading source `#define`/`#undef` lines are applied with PP06/PP08 before
+/// conditional evaluation; contiguous text runs are expanded with PP09 at
+/// their stream position. At the first conditional line, PP19 runs once over
+/// the remaining stream; active non-conditional directives are then handled
+/// by PP05 or rejected (active source macro mutation after the first
+/// conditional). Every consumed directive line is removed and exactly one
+/// EOF is preserved. `-D`/`-U` seeds commit in flag order before the first
+/// PP step, so conditionals and expansion observe them.
 fn pp_prefix(
     input: &str,
     seeds: &[macro_flags::MacroFlagSeed],
@@ -599,84 +1106,205 @@ fn pp_prefix(
     // last-wins by MacroId).
     commit_macro_flags(&mut bus, seeds)?;
     // Preprocess from real source bytes (no seeded fixtures).
-    let artifact = |value: ResultValue| match value {
-        ResultValue::Record(RecordRef::Artifact(id)) => Ok(id),
-        other => Err(format!("expected artifact ref, got {other:?}")),
-    };
-    let normalized = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_NORMALIZE,
-        PP01_CHIP,
-        Payload::from_refs(vec![RecordRef::Source(source)]),
-    )?)?;
-    let spliced = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_SPLICE,
-        PP_SPLICE_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(normalized)]),
-    )?)?;
-    let comment_free = artifact(step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_COMMENT,
-        PP_COMMENT_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(spliced)]),
-    )?)?;
-    let scanned = step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_SCAN,
-        PP_SCAN_CHIP,
-        Payload::from_refs(vec![RecordRef::Artifact(comment_free)]),
-    )?;
-    let pp_tokens = match scanned {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected pp-token refs, got {other:?}")),
-    };
-    // Conditional inclusion over the scanned stream (M1 sources carry no
-    // conditionals and pass through; inactive lines are dropped).
-    let active_tokens = match step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_CONDITIONAL,
-        PP19_CHIP,
-        Payload::from_refs(pp_tokens),
-    )? {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected active refs, got {other:?}")),
-    };
-    // Macro expansion over the active stream (M1 sources carry no
-    // invocations and stitch to themselves; per-line PP06 fan-out stays
-    // a host task until the expansion-runner slice).
-    let expanded_tokens = match step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_MACRO_INVOKE,
-        PP09_CHIP,
-        Payload::from_refs(active_tokens),
-    )? {
-        ResultValue::Records(refs) => refs,
-        other => return Err(format!("expected expanded refs, got {other:?}")),
-    };
-    // Directive dispatch over every expanded pp-token (M1 sources carry no
-    // directives and acknowledge here; `#error` fails with its message).
-    step(
-        &mut bus,
-        &workers,
-        &mut trace,
-        TaskKind::PREPROCESS_DIRECTIVE,
-        PP05_CHIP,
-        Payload::from_refs(expanded_tokens.clone()),
-    )?;
-    Ok((bus, workers, trace, expanded_tokens))
+    let pp_tokens = scan_source(&mut bus, &workers, &mut trace, source)?;
+    let stream = pp_driver::group_lines(&bus, &pp_tokens)?;
+    let mut final_refs: Vec<RecordRef> = Vec::new();
+    let mut include_state = IncludeState::new();
+    let mut index = 0usize;
+    let mut conditional_at: Option<usize> = None;
+    while index < stream.lines.len() {
+        let line = &stream.lines[index];
+        if !pp_driver::line_is_directive(&bus, line) {
+            let start = index;
+            while index < stream.lines.len()
+                && !pp_driver::line_is_directive(&bus, &stream.lines[index])
+            {
+                index += 1;
+            }
+            let mut refs = Vec::new();
+            for text_line in &stream.lines[start..index] {
+                refs.extend(text_line.refs());
+            }
+            let expanded = expand_text_run(&mut bus, &workers, &mut trace, refs)?;
+            final_refs.extend(expanded);
+            continue;
+        }
+        if pp_driver::line_has_continuation(&bus, line) {
+            return Err(format!(
+                "unsupported preprocessing: directive on raw line {} spans multiple physical lines; logical-line grouping is not frozen",
+                line.line + 1
+            ));
+        }
+        let name = pp_driver::directive_name(&bus, line);
+        match name.as_deref() {
+            Some(name) if pp_driver::is_conditional_name(name) => {
+                conditional_at = Some(index);
+                break;
+            }
+            Some(name) if pp_driver::is_define(name) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_MACRO_DEFINE,
+                    PP06_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_undef(name) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_MACRO_UNDEF,
+                    PP08_CHIP,
+                    Payload::from_refs(line.directive_body_refs()),
+                )?;
+            }
+            Some(name) if pp_driver::is_include(name) => {
+                let eof = stream
+                    .eof
+                    .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+                let refs = expand_include_line(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    input,
+                    line,
+                    eof,
+                    &mut include_state,
+                )?;
+                final_refs.extend(refs);
+            }
+            Some(name) if pp_driver::is_include_next(name) => {
+                return Err(
+                    "unsupported include: `include_next` is outside the B3-03b policy".to_string(),
+                );
+            }
+            Some(_) => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_DIRECTIVE,
+                    PP05_CHIP,
+                    Payload::from_refs(line.refs()),
+                )?;
+            }
+            None if line.tokens.len() == 1 => {
+                // Null directive: drop it.
+            }
+            None => {
+                step(
+                    &mut bus,
+                    &workers,
+                    &mut trace,
+                    TaskKind::PREPROCESS_DIRECTIVE,
+                    PP05_CHIP,
+                    Payload::from_refs(line.refs()),
+                )?;
+            }
+        }
+        index += 1;
+    }
+    if let Some(start) = conditional_at {
+        let mut remaining = Vec::new();
+        for line in &stream.lines[start..] {
+            remaining.extend(line.refs());
+        }
+        let eof = stream
+            .eof
+            .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+        remaining.push(RecordRef::PpToken(eof));
+        let active = step_records(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::PREPROCESS_CONDITIONAL,
+            PP19_CHIP,
+            remaining,
+        )?;
+        let active_stream = pp_driver::group_lines(&bus, &active)?;
+        let mut active_index = 0usize;
+        while active_index < active_stream.lines.len() {
+            let line = &active_stream.lines[active_index];
+            if !pp_driver::line_is_directive(&bus, line) {
+                let start = active_index;
+                while active_index < active_stream.lines.len()
+                    && !pp_driver::line_is_directive(&bus, &active_stream.lines[active_index])
+                {
+                    active_index += 1;
+                }
+                let mut refs = Vec::new();
+                for text_line in &active_stream.lines[start..active_index] {
+                    refs.extend(text_line.refs());
+                }
+                let expanded = expand_text_run(&mut bus, &workers, &mut trace, refs)?;
+                final_refs.extend(expanded);
+                continue;
+            }
+            if pp_driver::line_has_continuation(&bus, line) {
+                return Err(format!(
+                    "unsupported preprocessing: active directive on raw line {} spans multiple physical lines; logical-line grouping is not frozen",
+                    line.line + 1
+                ));
+            }
+            match pp_driver::directive_name(&bus, line).as_deref() {
+                Some(name) if pp_driver::is_define(name) || pp_driver::is_undef(name) => {
+                    return Err(format!(
+                        "unsupported preprocessing: source #define/#undef after the first conditional (raw line {}) is not supported; PP19 has already fixed the active stream",
+                        line.line + 1
+                    ));
+                }
+                Some(name) if pp_driver::is_conditional_name(name) => {
+                    return Err(
+                        "internal preprocessing error: conditional directive survived PP19"
+                            .to_string(),
+                    );
+                }
+                Some(name) if pp_driver::is_include(name) || pp_driver::is_include_next(name) => {
+                    return Err(format!(
+                        "unsupported include: `#include` after the first conditional (raw line {}) is outside the B3-03b policy",
+                        line.line + 1
+                    ));
+                }
+                Some(_) => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::PREPROCESS_DIRECTIVE,
+                        PP05_CHIP,
+                        Payload::from_refs(line.refs()),
+                    )?;
+                }
+                None if line.tokens.len() == 1 => {
+                    // Null directive: drop it.
+                }
+                None => {
+                    step(
+                        &mut bus,
+                        &workers,
+                        &mut trace,
+                        TaskKind::PREPROCESS_DIRECTIVE,
+                        PP05_CHIP,
+                        Payload::from_refs(line.refs()),
+                    )?;
+                }
+            }
+            active_index += 1;
+        }
+        let active_eof = active_stream
+            .eof
+            .ok_or_else(|| "PP19 returned a stream with no EOF token".to_string())?;
+        final_refs.push(RecordRef::PpToken(active_eof));
+    } else {
+        let eof = stream
+            .eof
+            .ok_or_else(|| "preprocessing stream has no EOF token".to_string())?;
+        final_refs.push(RecordRef::PpToken(eof));
+    }
+    Ok((bus, workers, trace, final_refs))
 }
 
 /// Part B `-E` terminal: the shared prefix, then the frozen PP28 worker
@@ -687,7 +1315,392 @@ fn run_emit(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Vec<u8>
     emit_helper::emit_preprocessed_bytes(&mut bus, &workers, &mut trace, final_tokens)
 }
 
-fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, String> {
+/// One function discovered for `/54` multi-function orchestration.
+struct ProgramFunction {
+    funcdef: NodeId,
+    compound: NodeId,
+    signature: cc_silicon_compiler::ids::TypeId,
+    symbol: cc_silicon_compiler::ids::SymbolId,
+    parameters: Vec<NodeId>,
+}
+
+fn symbol_name_matches(
+    bus: &CompilerBus,
+    symbol: cc_silicon_compiler::ids::SymbolId,
+    wanted: &[u8],
+) -> bool {
+    bus.arenas
+        .symbols
+        .get(symbol)
+        .ok()
+        .map(|record| record.name)
+        .and_then(|name| bus.intern.get(name).ok())
+        .map(|bytes| bytes == wanted)
+        .unwrap_or(false)
+}
+
+/// `/54` multi-function orchestration for the direct-call subset.
+///
+/// Lexing, parsing, and VF05 have already committed the whole TU. This host
+/// driver performs only protocol plumbing: it discovers functions in source
+/// order, asks TY/SE/IR/VF chips for every decision, then emits through the
+/// host-only AArch64 prototype. It does not perform C semantics itself.
+fn run_program(
+    bus: &mut CompilerBus,
+    workers: &WorkerRegistry,
+    trace: &mut Trace,
+    tu: NodeId,
+    input: &str,
+    asm_output: Option<&str>,
+) -> Result<Evidence, String> {
+    let funcdefs = nodes_of(bus, NodeKind::FunctionDefinition);
+    if funcdefs.is_empty() {
+        return Err("program has no function definition".to_string());
+    }
+    if funcdefs.len() > CALL_MAX_FUNCTIONS {
+        return Err(format!(
+            "program has {} functions; the direct-call slice allows at most {}",
+            funcdefs.len(),
+            CALL_MAX_FUNCTIONS
+        ));
+    }
+    let int = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SYMBOL_INT_TYPE,
+        TY_TYPE_CHIP,
+        Payload::empty(),
+    )? {
+        ResultValue::Record(RecordRef::Type(id)) => id,
+        other => return Err(format!("expected type ref, got {other:?}")),
+    };
+    let file_scope = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::SYMBOL_SCOPE_ENTER,
+        TY_SCOPE_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(tu)]),
+    )? {
+        ResultValue::Record(RecordRef::Scope(id)) => id,
+        other => return Err(format!("expected file scope ref, got {other:?}")),
+    };
+
+    let mut functions = Vec::with_capacity(funcdefs.len());
+    for funcdef in funcdefs {
+        let body = bus
+            .arenas
+            .nodes
+            .get(funcdef)
+            .map_err(|_| "function definition vanished".to_string())?
+            .clone();
+        if body.children.len() != 3 {
+            return Err("function definition does not have three children".to_string());
+        }
+        let declarator = body.children[1];
+        let compound = body.children[2];
+        let declarator_body = bus
+            .arenas
+            .nodes
+            .get(declarator)
+            .map_err(|_| "function declarator vanished".to_string())?
+            .clone();
+        if declarator_body.kind != NodeKind::Declarator || declarator_body.name.is_none() {
+            return Err("function declarator is malformed".to_string());
+        }
+        let parameters: Vec<NodeId> = match declarator_body.children.as_slice() {
+            [] => Vec::new(),
+            [parameter_list] => {
+                let list = bus
+                    .arenas
+                    .nodes
+                    .get(*parameter_list)
+                    .map_err(|_| "parameter list vanished".to_string())?
+                    .clone();
+                if list.kind != NodeKind::ParameterList {
+                    return Err("function declarator child is not a parameter list".to_string());
+                }
+                for parameter in &list.children {
+                    let parameter_body = bus
+                        .arenas
+                        .nodes
+                        .get(*parameter)
+                        .map_err(|_| "parameter vanished".to_string())?;
+                    if parameter_body.kind != NodeKind::Parameter || parameter_body.name.is_none() {
+                        return Err("parameter node is malformed".to_string());
+                    }
+                }
+                list.children
+            }
+            _ => return Err("function declarator has an unsupported child shape".to_string()),
+        };
+        if parameters.len() > cc_silicon_compiler::limits::CALL_MAX_PARAMETERS {
+            return Err(
+                "function has more parameters than the direct-call slice allows".to_string(),
+            );
+        }
+        let mut type_refs = vec![RecordRef::Type(int)];
+        type_refs.extend(parameters.iter().map(|_| RecordRef::Type(int)));
+        let signature = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_FUNC_TYPE,
+            TY_TYPE_CHIP,
+            Payload::from_refs(type_refs),
+        )? {
+            ResultValue::Record(RecordRef::Type(id)) => id,
+            other => return Err(format!("expected function type ref, got {other:?}")),
+        };
+        let symbol = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_DECLARE,
+            TY_SYMBOL_CHIP,
+            Payload::from_refs(vec![
+                RecordRef::Node(declarator),
+                RecordRef::Type(signature),
+                RecordRef::Scope(file_scope),
+            ]),
+        )? {
+            ResultValue::Record(RecordRef::Symbol(id)) => id,
+            other => return Err(format!("expected function symbol ref, got {other:?}")),
+        };
+        let block_scope = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SYMBOL_SCOPE_ENTER,
+            TY_SCOPE_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(compound)]),
+        )? {
+            ResultValue::Record(RecordRef::Scope(id)) => id,
+            other => return Err(format!("expected block scope ref, got {other:?}")),
+        };
+        for parameter in &parameters {
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SYMBOL_DECLARE,
+                TY_SYMBOL_CHIP,
+                Payload::from_refs(vec![
+                    RecordRef::Node(*parameter),
+                    RecordRef::Type(int),
+                    RecordRef::Scope(block_scope),
+                ]),
+            )?;
+        }
+        let compound_body = bus
+            .arenas
+            .nodes
+            .get(compound)
+            .map_err(|_| "function body vanished".to_string())?
+            .clone();
+        for statement in &compound_body.children {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| "function statement vanished".to_string())?;
+            if statement_body.kind != NodeKind::Declaration {
+                continue;
+            }
+            if statement_body.children.len() != 3 {
+                return Err("local declaration is malformed".to_string());
+            }
+            step(
+                bus,
+                workers,
+                trace,
+                TaskKind::SYMBOL_DECLARE,
+                TY_SYMBOL_CHIP,
+                Payload::from_refs(vec![
+                    RecordRef::Node(statement_body.children[1]),
+                    RecordRef::Type(int),
+                    RecordRef::Scope(block_scope),
+                ]),
+            )?;
+        }
+        functions.push(ProgramFunction {
+            funcdef,
+            compound,
+            signature,
+            symbol,
+            parameters,
+        });
+    }
+
+    // Materialize every literal once, in source/pre-order, so T09 can select
+    // constants by `ConstRecord.origins`. Binary folds appended later do not
+    // replace these literal folds.
+    for literal in nodes_of(bus, NodeKind::IntLiteral) {
+        run_literal(bus, workers, trace, literal, true)?;
+    }
+
+    for function in &functions {
+        let compound_body = bus
+            .arenas
+            .nodes
+            .get(function.compound)
+            .map_err(|_| "function body vanished".to_string())?
+            .clone();
+        let mut saw_return = false;
+        for statement in &compound_body.children {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| "function statement vanished".to_string())?
+                .clone();
+            match statement_body.kind {
+                NodeKind::Declaration => {}
+                NodeKind::Assignment => {
+                    if statement_body.children.len() != 2 {
+                        return Err("assignment statement is malformed".to_string());
+                    }
+                    let mut order = Vec::new();
+                    expression_postorder(bus, statement_body.children[1], &mut order)?;
+                    for node in order {
+                        run_expression_node(bus, workers, trace, node, false)?;
+                    }
+                    step(
+                        bus,
+                        workers,
+                        trace,
+                        TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
+                        SE_ASSIGN_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(*statement)]),
+                    )?;
+                }
+                NodeKind::Return => {
+                    if saw_return || statement_body.children.len() != 1 {
+                        return Err("function has a malformed or repeated return".to_string());
+                    }
+                    saw_return = true;
+                    let mut order = Vec::new();
+                    expression_postorder(bus, statement_body.children[0], &mut order)?;
+                    for node in order {
+                        run_expression_node(bus, workers, trace, node, false)?;
+                    }
+                    step(
+                        bus,
+                        workers,
+                        trace,
+                        TaskKind::SEMANTIC_RETURN_STMT,
+                        SE_RET_CHIP,
+                        Payload::from_refs(vec![RecordRef::Node(*statement)]),
+                    )?;
+                }
+                _ => return Err("function body has an unsupported statement".to_string()),
+            }
+        }
+        if !saw_return {
+            return Err("function has no return statement".to_string());
+        }
+        match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::SEMANTIC_FUNCTION_DEF,
+            SE_FUNC_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(function.funcdef)]),
+        )? {
+            ResultValue::Record(RecordRef::Sem(_)) => {}
+            other => return Err(format!("expected sem ref, got {other:?}")),
+        }
+    }
+
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_TYPED_INVARIANT,
+        VF06_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(tu)]),
+    )?;
+
+    let mut main_function = None;
+    for function in &functions {
+        let lowered = match step(
+            bus,
+            workers,
+            trace,
+            TaskKind::IR_FUNCTION,
+            IR_FUNCTION_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(function.funcdef)]),
+        )? {
+            ResultValue::Record(RecordRef::Function(id)) => id,
+            other => return Err(format!("expected function ref, got {other:?}")),
+        };
+        let _ = function.signature;
+        if symbol_name_matches(bus, function.symbol, b"main") {
+            if main_function.is_some() {
+                return Err("duplicate main function".to_string());
+            }
+            if !function.parameters.is_empty() {
+                return Err("main must not have parameters in the direct-call slice".to_string());
+            }
+            main_function = Some(lowered);
+        }
+    }
+    let Some(main_function) = main_function else {
+        return Err("program has no main function".to_string());
+    };
+
+    let (modeled_value, modeled_negative) = match step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_IR_INTERPRET,
+        VF12_CHIP,
+        Payload::from_refs(vec![RecordRef::Function(main_function)]),
+    )? {
+        ResultValue::Record(RecordRef::Const(id)) => {
+            let body = bus
+                .arenas
+                .consts
+                .get(id)
+                .map_err(|_| "modeled const vanished".to_string())?;
+            let integer = body
+                .value
+                .as_integer()
+                .ok_or_else(|| "modeled const is not an integer".to_string())?;
+            (integer.magnitude.clone(), integer.negative)
+        }
+        ResultValue::Integer(integer) => (integer.magnitude, integer.negative),
+        other => return Err(format!("expected modeled integer, got {other:?}")),
+    };
+    step(
+        bus,
+        workers,
+        trace,
+        TaskKind::VERIFICATION_STORE_INVARIANT,
+        VF01_CHIP,
+        Payload::empty(),
+    )?;
+    if let Some(path) = asm_output {
+        let assembly = target_m1::emit_m1_assembly(bus)?;
+        std::fs::write(path, assembly)
+            .map_err(|error| format!("cannot write assembly {path}: {error}"))?;
+    }
+    let snapshot = Snapshot::capture(bus);
+    Ok(Evidence {
+        snapshot,
+        trace: trace.clone(),
+        value: modeled_value,
+        negative: modeled_negative,
+        input: input.to_string(),
+    })
+}
+
+fn run(
+    input: &str,
+    seeds: &[macro_flags::MacroFlagSeed],
+    asm_output: Option<&str>,
+) -> Result<Evidence, String> {
     let (mut bus, workers, mut trace, expanded_tokens) = pp_prefix(input, seeds)?;
     // Lex over every expanded pp-token (no fixed positions).
     step(
@@ -749,10 +1762,57 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF05_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
-    // Types and symbols by tree walk (no fixed node IDs).
+    // `/54` direct-call and broader integer programs use the multi-function
+    // orchestration below. Only the exact canonical add tree and the closed
+    // `/53` single-local shape keep the legacy byte-identical path.
+    let initial_funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
+    let initial_declarations = nodes_of(&bus, NodeKind::Declaration);
+    let has_parameters = !nodes_of(&bus, NodeKind::ParameterList).is_empty();
+    let has_calls = !nodes_of(&bus, NodeKind::Call).is_empty();
+    let has_noncanonical_expression = [
+        NodeKind::BinarySub,
+        NodeKind::BinaryMul,
+        NodeKind::BinaryDiv,
+        NodeKind::BinaryRem,
+        NodeKind::UnaryPlus,
+        NodeKind::UnaryMinus,
+    ]
+    .iter()
+    .any(|kind| !nodes_of(&bus, *kind).is_empty());
+    let canonical_add_tree = initial_declarations.is_empty()
+        && !has_noncanonical_expression
+        && nodes_of(&bus, NodeKind::BinaryAdd).len() == 1
+        && nodes_of(&bus, NodeKind::IntLiteral).len() == 2;
+    let legacy_shape = initial_funcdefs.len() == 1
+        && !has_parameters
+        && !has_calls
+        && (initial_declarations.len() == 1 || canonical_add_tree);
+    let entry_is_main = initial_funcdefs.len() == 1
+        && bus
+            .arenas
+            .nodes
+            .get(initial_funcdefs[0])
+            .ok()
+            .and_then(|body| body.children.get(1).copied())
+            .and_then(|declarator| bus.arenas.nodes.get(declarator).ok())
+            .and_then(|declarator| declarator.name)
+            .and_then(|name| bus.intern.get(name).ok())
+            .map(|name| name == b"main")
+            .unwrap_or(false);
+    if !legacy_shape || !entry_is_main {
+        return run_program(&mut bus, &workers, &mut trace, tu[0], input, asm_output);
+    }
+    // Types and symbols by tree walk (no fixed node IDs). The `/49` locals
+    // shape has one function declarator plus one block-scope declarator.
+    let declarations = nodes_of(&bus, NodeKind::Declaration);
+    let locals = declarations.len() == 1;
     let declarators = nodes_of(&bus, NodeKind::Declarator);
-    if declarators.len() != 1 {
-        return Err("expected exactly one declarator".to_string());
+    let expected_declarators = if locals { 2 } else { 1 };
+    if declarators.len() != expected_declarators {
+        return Err(format!(
+            "expected {expected_declarators} declarator(s), got {}",
+            declarators.len()
+        ));
     }
     let int = match step(
         &mut bus,
@@ -799,38 +1859,173 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
             RecordRef::Scope(file_scope),
         ]),
     )?;
-    // Semantic checks over every literal/return/binary node found.
-    for node in nodes_of(&bus, NodeKind::IntLiteral) {
+    let _block_scope = if locals {
+        let compounds = nodes_of(&bus, NodeKind::Compound);
+        if compounds.len() != 1 {
+            return Err("expected exactly one function body".to_string());
+        }
+        let block_scope = match step(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::SYMBOL_SCOPE_ENTER,
+            TY_SCOPE_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(compounds[0])]),
+        )? {
+            ResultValue::Record(RecordRef::Scope(id)) => id,
+            other => return Err(format!("expected block scope ref, got {other:?}")),
+        };
+        let declaration = bus
+            .arenas
+            .nodes
+            .get(declarations[0])
+            .map_err(|_| "local declaration vanished".to_string())?;
+        let local_declarator = *declaration
+            .children
+            .get(1)
+            .ok_or_else(|| "local declaration has no declarator".to_string())?;
         step(
             &mut bus,
             &workers,
             &mut trace,
-            TaskKind::SEMANTIC_LITERAL_EXPR,
-            SE_LIT_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
+            TaskKind::SYMBOL_DECLARE,
+            TY_SYMBOL_CHIP,
+            Payload::from_refs(vec![
+                RecordRef::Node(local_declarator),
+                RecordRef::Type(int),
+                RecordRef::Scope(block_scope),
+            ]),
         )?;
-    }
-    for node in nodes_of(&bus, NodeKind::BinaryAdd) {
-        step(
-            &mut bus,
-            &workers,
-            &mut trace,
-            TaskKind::SEMANTIC_BINARY_EXPR,
-            SE_BIN_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        )?;
-    }
-    for node in nodes_of(&bus, NodeKind::Return) {
+        Some(block_scope)
+    } else {
+        None
+    };
+    if locals {
+        // Initializer literal fact and its folded constant.
+        let declaration = bus
+            .arenas
+            .nodes
+            .get(declarations[0])
+            .map_err(|_| "local declaration vanished".to_string())?;
+        let initializer = *declaration
+            .children
+            .get(2)
+            .ok_or_else(|| "local declaration has no initializer".to_string())?;
+        run_literal(&mut bus, &workers, &mut trace, initializer, true)?;
+
+        // The return expression is checked in post-order so every child fact
+        // exists before its parent binary/unary task runs.
+        let returns = nodes_of(&bus, NodeKind::Return);
+        if returns.len() != 1 {
+            return Err("expected exactly one return statement".to_string());
+        }
+        let ret = returns[0];
+        let root = bus
+            .arenas
+            .nodes
+            .get(ret)
+            .map_err(|_| "return node vanished".to_string())?
+            .children
+            .first()
+            .copied()
+            .ok_or_else(|| "return statement has no expression".to_string())?;
+        let compounds = nodes_of(&bus, NodeKind::Compound);
+        if compounds.len() != 1 {
+            return Err("expected exactly one function body".to_string());
+        }
+        let assignments: Vec<NodeId> = bus
+            .arenas
+            .nodes
+            .get(compounds[0])
+            .map_err(|_| "function body vanished".to_string())?
+            .children[1..]
+            .split_last()
+            .map(|(_, rest)| rest.to_vec())
+            .unwrap_or_default();
+        for statement in assignments {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(statement)
+                .map_err(|_| "assignment statement vanished".to_string())?;
+            if statement_body.kind != NodeKind::Assignment || statement_body.children.len() != 2 {
+                return Err("unsupported statement in locals shape".to_string());
+            }
+            let mut order = Vec::new();
+            expression_postorder(&bus, statement_body.children[1], &mut order)?;
+            for node in order {
+                run_expression_node(&mut bus, &workers, &mut trace, node, true)?;
+            }
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
+                SE_ASSIGN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(statement)]),
+            )?;
+        }
+        let mut order = Vec::new();
+        expression_postorder(&bus, root, &mut order)?;
+        for node in order {
+            run_expression_node(&mut bus, &workers, &mut trace, node, true)?;
+        }
         step(
             &mut bus,
             &workers,
             &mut trace,
             TaskKind::SEMANTIC_RETURN_STMT,
             SE_RET_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
+            Payload::from_refs(vec![RecordRef::Node(ret)]),
         )?;
+    } else {
+        // Canonical shaped path: literal facts, then the additive fold, then
+        // the return fact.
+        for node in nodes_of(&bus, NodeKind::IntLiteral) {
+            run_literal(&mut bus, &workers, &mut trace, node, false)?;
+        }
+        for node in nodes_of(&bus, NodeKind::BinaryAdd) {
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_BINARY_EXPR,
+                SE_BIN_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+        }
+        for node in nodes_of(&bus, NodeKind::Return) {
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::SEMANTIC_RETURN_STMT,
+                SE_RET_CHIP,
+                Payload::from_refs(vec![RecordRef::Node(node)]),
+            )?;
+        }
     }
-    // Typed-invariant gate, lowering, symbolic model, store check.
+    // SE29 function-definition fact: exactly one M1 definition. The
+    // committed SemRecord is the signature fact IR lowering consumes below;
+    // the node is found once and threaded onward.
+    let funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
+    if funcdefs.len() != 1 {
+        return Err("expected exactly one function definition".to_string());
+    }
+    let funcdef = funcdefs[0];
+    match step(
+        &mut bus,
+        &workers,
+        &mut trace,
+        TaskKind::SEMANTIC_FUNCTION_DEF,
+        SE_FUNC_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(funcdef)]),
+    )? {
+        ResultValue::Record(RecordRef::Sem(_)) => {}
+        other => return Err(format!("expected sem ref, got {other:?}")),
+    }
+    // Typed-invariant gate, lowering (consuming the SE29 fact), symbolic
+    // model, store check.
     step(
         &mut bus,
         &workers,
@@ -839,22 +2034,18 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF06_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
-    let funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
-    if funcdefs.len() != 1 {
-        return Err("expected exactly one function definition".to_string());
-    }
     let function = match step(
         &mut bus,
         &workers,
         &mut trace,
         TaskKind::IR_FUNCTION,
         IR_FUNCTION_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(funcdefs[0])]),
+        Payload::from_refs(vec![RecordRef::Node(funcdef)]),
     )? {
         ResultValue::Record(RecordRef::Function(id)) => id,
         other => return Err(format!("expected function ref, got {other:?}")),
     };
-    let modeled = match step(
+    let (modeled_value, modeled_negative) = match step(
         &mut bus,
         &workers,
         &mut trace,
@@ -862,8 +2053,20 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF12_CHIP,
         Payload::from_refs(vec![RecordRef::Function(function)]),
     )? {
-        ResultValue::Record(RecordRef::Const(id)) => id,
-        other => return Err(format!("expected const ref, got {other:?}")),
+        ResultValue::Record(RecordRef::Const(id)) => {
+            let body = bus
+                .arenas
+                .consts
+                .get(id)
+                .map_err(|_| "modeled const vanished".to_string())?;
+            let integer = body
+                .value
+                .as_integer()
+                .ok_or_else(|| "modeled const is not an integer".to_string())?;
+            (integer.magnitude.clone(), integer.negative)
+        }
+        ResultValue::Integer(integer) => (integer.magnitude, integer.negative),
+        other => return Err(format!("expected modeled integer, got {other:?}")),
     };
     step(
         &mut bus,
@@ -873,17 +2076,17 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         VF01_CHIP,
         Payload::empty(),
     )?;
+    if let Some(path) = asm_output {
+        let assembly = target_m1::emit_m1_assembly(&bus)?;
+        std::fs::write(path, assembly)
+            .map_err(|error| format!("cannot write assembly {path}: {error}"))?;
+    }
     let snapshot = Snapshot::capture(&bus);
-    let modeled_body = bus
-        .arenas
-        .consts
-        .get(modeled)
-        .map_err(|_| "modeled const vanished".to_string())?;
     Ok(Evidence {
         snapshot,
         trace,
-        value: modeled_body.value.clone(),
-        negative: modeled_body.negative,
+        value: modeled_value,
+        negative: modeled_negative,
         input: input.to_string(),
     })
 }
@@ -898,7 +2101,25 @@ struct Evidence {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Collect argv explicitly: `std::env::args()` panics on a non-UTF-8
+    // element. Reject the element by position so invalid bytes are never
+    // copied into the diagnostic.
+    let mut args = Vec::new();
+    for (position, argument) in std::env::args_os().enumerate() {
+        match argument.into_string() {
+            Ok(argument) => {
+                if position > 0 {
+                    args.push(argument);
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "candidate: argv[{position}] is not valid UTF-8; arguments must be valid UTF-8"
+                );
+                std::process::exit(2);
+            }
+        }
+    }
     let invocation = match parse_args(&args) {
         Ok(invocation) => invocation,
         Err(message) => {
@@ -934,7 +2155,11 @@ fn main() {
         }
         return;
     }
-    match run(&invocation.input, &invocation.macro_flags) {
+    match run(
+        &invocation.input,
+        &invocation.macro_flags,
+        invocation.asm_output.as_deref(),
+    ) {
         Ok(evidence) => {
             let mut report = format!("candidate evidence ({CONTRACT_VERSION})\n");
             report.push_str(&format!("input: {}\n", evidence.input));

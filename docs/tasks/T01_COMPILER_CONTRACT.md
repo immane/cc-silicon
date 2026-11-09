@@ -75,7 +75,7 @@ Proposal = Enqueue | Complete | Fail | AwaitHost | StorePatch (including owner/v
 - Each worker reads `tasks.active` + the exact fields pointed to by the payload's IDs; it writes its own output slot/records first, then proposes completion. All proposals for the current tick are recorded with wires; the commit chip writes persistent queues/results in the last layer before latching.
 - `Bus::latch` only handles edges, the post-commit control snapshot, and the tick count; it does not covertly perform type checking, AST construction, or optimization.
 - A continuation must record the production state, cursor, operands, scope, and awaited child IDs. C recursive expressions use explicit frames; the entire parser must not be hidden behind a "recursive pure helper".
-- A task newly enqueued in the current tick is by default executable in the next tick, avoiding dynamic same-tick re-entry. The ordering rule is fixed as `(phase priority, enqueue ordinal, TaskId)`; results are consumed exactly-once. Callbacks are prohibited.
+- A task newly enqueued in the current tick is by default executable in the next tick, avoiding dynamic same-tick re-entry. The ordering rule is fixed as `(stage ordinal, group/phase priority, enqueue ordinal, TaskId)`; `STAGE_ASSIGNMENT` is the scheduler authority. Results are consumed exactly-once. Callbacks are prohibited.
 - Service requests such as scope lookup, type conversion, and layout share a typed protocol rather than thread RPC. A worker that is not complete and has no Wait/Progress/Fault is a protocol error.
 - The single runtime is sequential CPU first and does not write the bus concurrently. Parallel LLM development ≠ parallel compiler runtime. Future parallelism requires conflict checking and a deterministic commit order.
 
@@ -119,13 +119,14 @@ All workers: `phase=propagation`, `deterministic=true`. Language-independent/fro
 - Provide a reproducible target probe fixture, but compile chips do not dynamically read the host ABI.
 
 Frozen identity (2026-10-04): `aarch64-unknown-linux-gnu`, ELF, LP64,
-little-endian, AAPCS64. Only the identity is frozen; every concrete scalar,
-`long double`, and ABI value remains **UNVERIFIED** until an actual probe runs
-on the planned (not yet provisioned) Linux CI/VM substrate. The corpus is
-fetched on demand with a hash lock. A reference-only DejaGnu baseline is
-authorized as an oracle but is not available and is never candidate compiler
-evidence. The probe fixture and its unverified status are recorded in
-`compiler/contracts/target/aarch64-linux-probe.txt`.
+little-endian, AAPCS64. The concrete scalar/`long double`/ABI values are now
+**probe-attested for the pinned 2026-11-09 containerized Debian 12 arm64
+baseline** (`target_verification=probe-attested`); the official T00
+CI/bare-metal reference baseline is still open. The corpus is fetched on demand
+with a hash lock. A reference-only DejaGnu baseline is authorized as an oracle
+but is not available and is never candidate compiler evidence. The probe
+fixture and the H07-classified report are pinned by
+`compiler/tests/fixtures/target-probe/`.
 
 ## 7. Work Items and Acceptance
 
@@ -135,7 +136,7 @@ evidence. The probe fixture and its unverified status are recorded in
 | C02 | target/dialect/config schema | Linux target probe comparison; macOS values are not mixed in |
 | C03 | task/result enums for all groups, error protocol | multi-package independent compilation fixtures; no same name with different semantics |
 | C04 | SFL manifest extension: task guards, store/field paths, routing, capabilities | lint judges undeclared fields/wrong phase/missing tests; the draft must not claim to already be a parser implementation |
-| C05 | snapshot/trace and deterministic serializer | replay with identical input/configuration/initial state is consistent per tick |
+| C05 | snapshot/trace and deterministic serializer | replay with identical input/configuration/initial state is consistent per tick; `/41` narrows the model to recorded-input re-execution over a canonical state fingerprint (not a restorable bus image), records pin digests, and provides a bounded trace decoder plus first-divergence diff |
 | C06 | minimal routing integration shell/registration generation | no-op tasks terminate normally and not-implemented tasks fail explicitly; carries no language logic |
 
 Frozen artifacts carry a version/hash; protocol changes are published in one place through the integrator, and all dependent tasks are retested accordingly.
@@ -871,14 +872,361 @@ New hashed rules `se.function-signature`,
 (`07f4eade…f224`); acceptance `compiler/tests/c39_sefunc.rs`
 (8 tests); item list in [SE_FUNC_SLICE.md](SE_FUNC_SLICE.md).
 
+`/40` amendment — B2-01 minimal M1 Part A A3 closure (2026-11-09;
+[B2-01](CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md) accepted by the T01
+integrator; R1 auto-bump; `/39` preserved as history): the candidate now
+dispatches `SeFuncChip` (SE29, chip 57, stage 4) after the SE return check
+and before VF06; the SE29 chip logic is unchanged from `/39` (no new kind,
+chip ID, stage, or allowlist row). VF06's checked set extends from three to
+four M1 kinds with a per-kind typed-fact table (`IntLiteral`, `BinaryAdd`,
+`Return`, `FunctionDefinition`); the `FunctionDefinition` fact expects the
+committed `int(void)` signature `TypeId`, and the TU must contain exactly
+one `FunctionDefinition` node. T09 consumes the committed
+`FunctionDefinition` `SemRecord.ty` as `FunctionRecord.signature` through
+the node-keyed link (`SemRecord.node == FunctionDefinition`), cross-checks
+the declarator-linked `symbol.ty`, and has no `symbol.ty` fallback. New
+hashed rules `vf06.function-signature-fact`,
+`ir.function-consumes-committed-sem`,
+`ir.constant-result-type-from-sem`; `vf06.checked-set-complete` retains its
+name (now covering the four M1 kinds) and
+`ir.constant-no-refold`/`ir.return-single-terminator`/`ir.function-single-entry`
+retain their names. No new task kind, chip, stage, allowlist row, store,
+field, record family, `ResultValue`, or `Proposal` is introduced; the
+allowlist remains 33 rows and `SemRecord` remains
+`{node, ty, category, effects}`. D-09 remains open: `ConstRecord.ty` and
+`ir.op-immediate-type` are deferred to B2-02, and M1 Part A IR-4(b) must
+not be claimed at `/40`. New artifact `t01-c01-c06/40`
+(`c6961ac6…10c14`), hash recorded in
+`compiler/contracts/CONTRACT_VERSION`; acceptance
+`compiler/tests/c14_se.rs` (16 tests), `c15_ir.rs` (13), `c43_a3.rs` (5),
+`h04_candidate.rs` (18), with the exact chain in `c43_a3` proving the
+4→5 `SemRecord` transition, the `Ack` verifier result, and the
+`FunctionRecord.signature` consumption. `/39` remains preserved as history.
+No target/probe/torture result is claimed by this amendment.
+
+`/41` amendment — B2-00 determinism/limits/replay closure (2026-11-09;
+[B2-00](CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md) accepted by the
+T01 integrator with the OD-1..OD-10 defaults; R1 auto-bump; `/40` preserved
+as history): D-12 encodes every `AppendRecords` handle and typed body in
+stored order (new hashed tables `G1_DRAFT_BODY_NAMES`,
+`APPEND_BATCH_FIELDS`, `APPEND_BODY_STORE_NAMES`); D-13 makes selection
+stage-first `(stage, group/phase, enqueue ordinal, TaskId)` with
+`STAGE_ASSIGNMENT` authoritative and `stage_of` a bounded binary search;
+D-14 corrects macro total accounting, bumps each typed-append owning store
+once per successful batch, bumps `Names` only for genuinely new names, makes
+zero quota a typed fail-closed `propagate` error, and defines
+`ResultRecord.version` as a 1-based global commit ordinal stored in
+`Control.next_commit_ordinal` (`stage_queue_bound` is explicitly reserved);
+D-15 adds `TraceRecord.pins_digest`, canonical ID lists, a bounded trace
+decoder and first-divergence diff, encodes `Task.id`, and adds the Host-owned
+`ReplayEvidence` envelope. Replay is narrowed to **recorded-input
+re-execution over a canonical state fingerprint**, not bus restoration; full
+`Snapshot::from_bytes`/restore, VF13 projections, quota>1 order, per-stage
+queues, and `StorePatch` materialization are deferred to `/43`. New hashed
+rules `snapshot.append-batch-handles-encoded`,
+`snapshot.append-batch-bodies-encoded`, `snapshot.append-batch-order-preserved`,
+`snapshot.task-self-id-encoded`, `trace.pins-digest-recorded`,
+`trace.canonical-ids-recorded`, `trace.decoder-round-trip`,
+`trace.first-divergence`, `replay.recorded-input-model`,
+`task.select.stage-phase-enqueue-taskid`,
+`dispatch.stage-assignment-authoritative`, `limits.declared-bounds-enforced`,
+`limits.stage-queue-bound-reserved`, `limits.total-records-includes-macros`,
+`limits.zero-quota-fail-closed`, `commit.append-bumps-store-version`,
+`commit.names-bump-on-new-only`, `commit.result-version-meaningful`;
+`task.select.phase-enqueue-taskid` and
+`limits.every-configured-bound-enforced` are removed. No new task kind,
+chip, stage row, allowlist row, arena, store, or record family is introduced;
+chip logic and manifests are unchanged. New artifact `t01-c01-c06/41`
+(`500abb52…832966`), hash recorded in
+`compiler/contracts/CONTRACT_VERSION`; acceptance `c05_codec` (29),
+`c06_routing` (19), `c07_limits` (20), `c03_task` (48), `c08_gate1` (22),
+`c11_lex` (11), `freeze` (15), `c20_ppscan` (8), `h04_candidate` (18), with
+the full compiler suite at 723 tests across 50 suites; root 21, torture 73,
+chip-lint 16. D-09/B2-02 remains open; no target/probe/torture result is
+claimed.
+
+`/42` amendment — B2-02 tagged, typed constants (2026-11-09;
+[B2-02](CONTRACT_CHANGE_REQUEST_B2_TAGGED_CONSTANTS.md) accepted by the T01
+integrator; R1 auto-bump; `/41` preserved as history): D-09 is closed by
+replacing the flat `ConstRecord { value, negative }` body with
+`ConstRecord { ty: TypeId, value: ConstValue }`, where `/42` freezes exactly
+`ConstValue::Integer(IntegerConst { magnitude, negative })`. Float and
+address payloads are append-only future tags: no committed canonical type or
+producer exists at `/42`, so no empty variants are added. New hashed tables
+`CONST_RECORD_FIELDS = ["ty", "value"]`, `CONST_VALUE_NAMES = ["integer"]`,
+and `INTEGER_CONST_FIELDS = ["magnitude", "negative"]`; new rules
+`const.record-type-committed`, `const.record-type-from-sem`,
+`const.integer-payload-type-int`, `const.zero-canonical`,
+`ir.op-immediate-type`, and `snapshot.const-record-typed-body`. `FoldChip`
+resolves a binary request's type from the committed `SemRecord.ty` of its
+`BinaryExpression` node and a literal request's type from the unique committed
+canonical `int` type (the frozen literal wire shape has no node); missing,
+ambiguous, or non-integer types fail closed. T09 enforces
+`ConstRecord.ty == ValueRecord.ty` for the IR immediate in addition to the
+retained `/40` `ir.constant-result-type-from-sem` check; VF12 checks the same
+immediate type; VF14 decodes only the integer tag. No new task kind, chip,
+stage, allowlist row, arena, store, or record family is introduced; the
+constant body, snapshot body, face tables, and hash change. New artifact
+`t01-c01-c06/42` (`a9a1da92…abf1a5`), hash recorded in
+`compiler/contracts/CONTRACT_VERSION`; acceptance `c45_const_ty` (8),
+`c08_gate1` (22), `c15_ir` (13), `c17_vf12` (6), `c38_vf14` (10),
+`c05_codec` (29), and `freeze` (15), with the full compiler suite at 684
+tests across 51 suites after the B-INT-00 draft parking. No target ABI,
+probe, target execution, GCC torture rate, or full M1 acceptance is claimed.
+
+`/43` amendment — parser architecture and V1 AST common base (2026-11-09;
+[ADR-0003](../architecture/ADR-0003-PARSER-ARCHITECTURE-AND-V1-AST.md) accepted
+by the T01 integrator; R1 auto-bump; `/42` preserved as history): V1 uses one
+atomic `PARSE_TU` batch parser, with `NodeRecord.children` authoritative and no
+`NodeLinkRecord`, parser `SetFrame`, taskified parser, or extended
+`ParseContext` in V1. V2 may extend the single parser or adopt the A07
+taskified parser only after a separate freeze; two AST producers must never
+run. `NodeKind` keeps the `/39` order and appends `Declaration`, `Identifier`,
+`ExpressionStatement`, `Assignment`, `BinarySub`, `BinaryMul`, `BinaryDiv`,
+`BinaryRem`, `UnaryPlus`, and `UnaryMinus`; `NodeRecord` and `NODE_KIND_NAMES`
+are otherwise unchanged. New hashed names `declaration`, `identifier`,
+`expression_statement`, `assignment`, `binary_sub`, `binary_mul`, `binary_div`,
+`binary_rem`, `unary_plus`, `unary_minus`. `VF05` explicitly fails closed on
+the appended kinds until the V1 parser/shape table lands; this is a recorded
+gap, not a pass. No new task kind, chip, stage, allowlist, arena, store, or
+record family is introduced. New artifact `t01-c01-c06/43`
+(`637a0484…8df30`), hash recorded in `compiler/contracts/CONTRACT_VERSION`;
+acceptance `c49_ast_schema` (2 tests) plus the full compiler suite at 710 tests
+across 55 suites. No V1 parser producer, full C AST, target codegen, probe
+result, or torture rate is claimed.
+
+`/44` amendment — IR/CFG common-base schema (2026-11-09;
+[ADR-0004](../architecture/ADR-0004-IR-CFG-SCHEMA.md) accepted by the T01
+integrator; R1 auto-bump; `/43` preserved as history): `InstructionRecord`
+appends `local: Option<SymbolId>` and `successors: Vec<BlockId>`. `local` is
+used only by `LocalLoad`/`LocalStore`; `successors` is the ordered authoritative
+branch target list for `Branch`/`CondBranch`, with no separate `CfgEdgeRecord`
+family. `IrOp` keeps `constant`/`return` and appends `local_load`,
+`local_store`, `add`, `sub`, `mul`, `div`, `rem`, `neg`, `branch`,
+`cond_branch`; the V1/V2 op table is closed for this freeze. `EFFECT_WRITES_LOCAL`
+(`1 << 0`) is added for V1 local writes. New hashed rules `ir.op-table-v1`,
+`ir.local-symbol-link`, `ir.cfg-successors-ordered`; new hashed field list
+`INSTRUCTION_RECORD_FIELDS = [op, block, operands, immediate, result, local,
+successors]`. VF07/VF08 CFG/local verification and all new producers remain
+future; M1 instructions use `local: None, successors: vec![]`. No new task kind,
+chip, stage, allowlist, arena, store, or record family is introduced. New
+artifact `t01-c01-c06/44` (`73131cdf…ae0f7`); acceptance `c50_ir_schema`
+(2 tests) plus the full compiler suite at 712 tests across 56 suites. No target
+codegen or torture result is claimed.
+
+`/45` amendment — constant v3 float/address append (2026-11-09;
+[ADR-0005](../architecture/ADR-0005-CONSTANT-V3.md) accepted by the T01
+integrator; R1 auto-bump; `/44` preserved as history): `ConstValue` appends
+`Float(FloatConst)` and `Address(AddressConst)` after `Integer`. `FloatConst`
+carries a target `FloatFormat` plus big-endian raw bits whose length must match
+the format (`IeeeBinary16/32/64/128` = 2/4/8/16 bytes, `X87Extended` = 10);
+`AddressConst` carries an optional committed `SymbolId` base and a canonical
+integer addend, never a host pointer. Snapshot tags append as integer `0`,
+float `1`, address `2`; new hashed tables `FLOAT_CONST_FIELDS = [format,
+bits]` and `ADDRESS_CONST_FIELDS = [base, addend]`; new hashed rules
+`const.float-format-bits`, `const.address-symbolic`, `snapshot.const-v3-tags`.
+VF14 gates accept only `Integer`; float/address gate constants are invalid
+gates. Type compatibility for the new tags waits on the T06 pointer/float type
+extension; no producer is added. New artifact `t01-c01-c06/45`
+(`c4e84ccb…0bac8`); acceptance `c51_const_v3` (3 tests) plus the full compiler
+suite at 715 tests across 57 suites. No layout/init record, float/address
+producer, target width, codegen, or torture result is claimed.
+
+`/46` amendment — type, layout, and initialization common base (2026-11-09;
+[ADR-0006](../architecture/ADR-0006-TYPE-LAYOUT-INIT-SCHEMA.md) accepted by the
+T01 integrator; R1 auto-bump; `/45` preserved as history): `TypeKind` appends
+`Pointer { pointee, qualifiers }`, `Array { element, bound }`,
+`Aggregate { kind, members }`, and `Enum { underlying, enumerators }`, with
+`TypeQualifiers`, `ArrayBound` (constant/incomplete/VLA), `AggregateKind`,
+`AggregateMember`, and `Enumerator` carriers. `layouts`/`inits` become
+`TypedArena<LayoutId, LayoutRecord>` / `TypedArena<InitId, InitRecord>` with
+symbolic-or-bit extents, ordered members/VLA descriptors, and plan/static-image/
+runtime-op initialization forms. `G1DraftBody` appends `Layout`/`Init`, and
+snapshot bodies replace the reserved counts. New hashed tables
+`TYPE_QUALIFIER_FIELDS`, `ARRAY_BOUND_NAMES`, `AGGREGATE_KIND_NAMES`,
+`AGGREGATE_MEMBER_FIELDS`, `ENUMERATOR_FIELDS`; new rules
+`ty.pointer-qualifiers`, `ty.array-bound`, `ty.aggregate-members`,
+`ty.enum-underlying`. No type/layout/init producer, allowlist row, target byte
+layout, codegen, or torture result is added. New artifact `t01-c01-c06/46`
+(`3416b176…972f`); acceptance `c52_type_schema` (3) and
+`c53_layout_init_schema` (2) plus the full compiler suite at 720 tests across
+59 suites.
+
+`/47` amendment — stable diagnostic taxonomy (2026-11-09;
+[ADR-0007](../architecture/ADR-0007-DIAGNOSTIC-TAXONOMY.md) accepted by the T01
+integrator; R1 auto-bump; `/46` preserved as history): `DiagGroup` appends
+`lex`, `parse`, `type`, `const`, `ir`, `codegen`, and `host`, preserving the
+existing group order. New named code registry `DIAGNOSTIC_CODES` includes the
+legacy `Task:4`/`Task:3`/`Unsupported:1` entries and new lex/parse/type/
+semantic/const/IR/codegen/Host codes; names and `(group, code)` pairs are
+unique. New helpers `missing_record`, `parse_unexpected`, `type_mismatch`,
+`ir_invalid`, and `host_io` use named codes. Existing call sites may keep
+legacy codes until their owner migrates them; no silent reclassification is
+allowed. New hashed rules `diag.taxonomy-stable`, `diag.code-unique`,
+`diag.span-task-attribution`; the registry hashes name + group name + code.
+New artifact `t01-c01-c06/47` (`3c3d722d…f593`); acceptance
+`c54_diag_taxonomy` (3 tests) plus the full compiler suite at 723 tests across
+60 suites. No full `Task:4` migration, new panic path, target codegen, or
+torture result is claimed.
+
+`/48` amendment — probe-attested target baseline (2026-11-09; T01 integrator
+acceptance; R1 auto-bump; `/47` preserved as history): the pinned
+2026-11-09 containerized Debian 12 arm64 probe (GCC 12.2.0, binutils 2.40,
+image digest `sha256:268fb24c…3ff8`) is H07-classified by
+`tools/torture/probe/classify.py`, and its attested report is pinned by
+`compiler/tests/fixtures/target-probe/aarch64-debian12-gcc12.2.0-attested.txt`.
+`FrozenSchema` uses `TargetSpec::aarch64_unknown_linux_gnu_probe_attested()`
+with report hash `57eadb28…c4f90`; `target_verification=probe-attested` and
+`probe_substrate=docker-linux-arm64` are recorded. This is a **probe baseline**
+for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
+not a target codegen implementation, and not a torture result. New artifact
+`t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
+the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
+moves to `/54`.
+
+`/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
+auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts
+two closed token shapes — canonical `int main(void){return 2+3;}` and
+`int main(void){int x=2;return x;}`. The latter commits an 11-node tree using
+the existing `/43` `Declaration`/`Identifier` kinds. `TySymbolChip` may declare
+an automatic `int` object in a committed block scope. A new
+`semantic.identifier_expr` kind (`SEMANTIC` local 22, `SE_ID_CHIP = ChipId(58)`,
+stage 4, one `sem.records` allowlist row) checks the binding and appends one
+`NonLvalue`/zero-effect `SemRecord`. `SE_RETURN` accepts an identifier operand;
+`SE_FUNCTION` accepts the one-declaration-plus-return body; VF05 and VF06 cover
+the new shapes; T09 lowers `Constant`, `LocalStore`, `LocalLoad`, `Return`; VF12
+models the stored/loaded initializer. The canonical constant-return path is
+unchanged. New hashed rules `parse.tu-shape-gated-tree` (replacing
+`parse.tu-fixed-nine-node-tree`), `symbol.declare-block-object`,
+`se.identifier-checked-nonlvalue`, `ir.local-load-store-return`, and
+`vf12.local-load-store-return`. New artifact `t01-c01-c06/49`
+(`ecf40bd3…62bd9`); acceptance `c56_source_locals` 5 macOS / 6 native AArch64
+Linux tests plus the full compiler suite. No source arithmetic, calls, memory,
+branch, ABI, object-emission, or torture result is claimed.
+
+`/50` amendment — modeled integer result and local add (2026-11-10; T01
+integrator acceptance; R1 auto-bump; `/49` preserved as history):
+`ResultValue` appends `Integer(IntegerConst)` at wire tag 5 so verification can
+return a computed scalar without materializing a `ConstRecord`. The shape-gated
+TU parser adds `int main(void){int x=2;return x+3;}`; `SE_BIN` accepts an
+identifier operand with a committed `int` fact and skips constant folding when a
+non-literal is present; T09 emits `Constant`/`LocalStore`/`LocalLoad`/
+`Constant`/`Add`/`Return`; VF12 checks the six-instruction shape and returns the
+modeled integer 5. The canonical constant-return and `/49` local-return paths
+remain unchanged. New hashed rules `se.binary-identifier-operand`,
+`ir.local-add-return`, `vf12.local-add-modeled-integer`, and
+`result.integer-modeled`. New artifact `t01-c01-c06/50`
+(`ff7177a9…006c`); acceptance `c56_source_locals` 6 macOS / 8 native AArch64
+Linux tests plus the full compiler suite. No calls, memory, branches, general
+ABI, object emission, or torture result is claimed.
+
+`/51` amendment — local binary operators (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/50` preserved as history): the local-binary TU
+shape now accepts `+`, `-`, `*`, `/`, and `%` at the fixed operator position,
+committing the matching `BinaryAdd`/`BinarySub`/`BinaryMul`/`BinaryDiv`/
+`BinaryRem` node. `SEMANTIC_BINARY_EXPR` covers all five kinds; constant folding
+still applies only to literal/literal `+`, while identifier/literal forms append
+the checked fact directly. `SE_RETURN`, VF05, and VF06 cover the new binary
+kinds. T09 emits the matching `IrOp`, and VF12 evaluates the six-instruction
+shape with checked canonical-`int` arithmetic; division/remainder by zero and
+out-of-range results fail closed. The canonical and `/49`/`/50` paths remain
+unchanged. New hashed rules `parse.tu-local-binary-operators`,
+`se.local-binary-operators`, `ir.local-binary-operators`, and
+`vf12.local-binary-operators`. New artifact `t01-c01-c06/51`
+(`4f110d09…a6ce`); acceptance `c56_source_locals` 7 macOS / 10 native AArch64
+Linux tests plus the full compiler suite. No calls, memory, branches, general
+ABI, object emission, or torture result is claimed.
+
+`/52` amendment — local expression trees (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/51` preserved as history): the locals source shape
+now parses a closed expression tree over the single automatic `int` and integer
+literals, with `+ - * / %` precedence, parentheses, and unary `+`/`-`. The
+parser commits pre-order AST nodes and leaves the bus untouched on failure.
+`SEMANTIC_UNARY_EXPR` (`SEMANTIC` local 23, `SE_UNARY_CHIP = ChipId(59)`, stage
+4, one `sem.records` allowlist row) checks unary operands; `SE_BIN`, `SE_RETURN`,
+VF05, and VF06 cover nested binary/unary nodes. T09 lowers the tree in
+post-order, and VF12 interprets the covered instruction program with value/local
+maps instead of fixed shapes. Literal constants are paired to literals in fold
+order, so repeated literal values are no longer ambiguous. The canonical and
+`/49`–`/51` paths remain unchanged. New hashed rules
+`parse.tu-local-expression-tree`, `se.unary-checked-nonlvalue`,
+`ir.local-expression-tree`, and `vf12.local-expression-program`. New artifact
+`t01-c01-c06/52` (`c9ed8129…ae23`); acceptance `c56_source_locals` 8 macOS / 12
+native AArch64 Linux tests plus the full compiler suite. No calls, memory,
+branches, general ABI, object emission, or torture result is claimed.
+
+`/53` amendment — local assignment statements (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/52` preserved as history): the locals source shape
+accepts zero or more `x = <expr>;` assignments between the initializer and the
+return. `SEMANTIC_ASSIGNMENT_EXPR` (`SEMANTIC` local 24,
+`SE_ASSIGN_CHIP = ChipId(60)`, stage 4, one `sem.records` allowlist row) checks
+the automatic-int lhs and checked rhs and appends a `NonLvalue` fact carrying
+`EFFECT_WRITES_LOCAL`. VF05/VF06 cover `Assignment`, allow the local-write
+effect only there, and skip the assignment-lhs identifier rvalue fact. T09
+lowers assignments in source order as `LocalStore` after the rhs, and VF12's
+program interpreter already models the store. New hashed rules
+`parse.tu-local-assignment`, `se.assignment-writes-local`,
+`ir.local-assignment-order`, and `vf12.local-assignment-model`. New artifact
+`t01-c01-c06/53` (`b3e6cd83…f72e`); acceptance `c56_source_locals` 10 macOS /
+13 native AArch64 Linux tests plus the full compiler suite. No calls, memory,
+branches, general ABI, object emission, or torture result is claimed.
+
+`/54` amendment — direct-call common schema (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/53` preserved as history): this is a **shape-only
+freeze** with no parser, semantic, lowering, interpreter, or emitter producer.
+`NodeKind` appends `ParameterList`, `Parameter`, and `Call`. A
+`FunctionDefinition` keeps its existing three children
+`[Specifiers, Declarator, Compound]`; a parameterized function `Declarator`
+appends one `ParameterList` child (the `(void)` and local forms keep zero
+children). A `ParameterList` owns 1–8 `Parameter` children (each an implicit
+`int` name), and a `Call` owns its callee `Identifier` followed by up to eight
+argument expressions in source order. `IrOp` appends `Call`. `FunctionRecord` appends `parameters:
+Vec<SymbolId>` in declaration order, and `InstructionRecord` appends `callee:
+Option<SymbolId>` for direct calls. `ConstRecord` appends `origins:
+Vec<LiteralId>` so literal and binary folds are selected by origin instead of
+value. Parser budgets are 32 functions, 8 parameters/arguments, 32 expression
+levels, and 4096 AST nodes per TU; interpreter budgets are 8 live frames and
+4096 instructions. `SEMANTIC_CALL_EXPR` (`SEMANTIC` local 25,
+`SE_CALL_CHIP = ChipId(61)`, stage 4) and its one `sem.records` allowlist row
+are reserved. Snapshot codecs append the parameter list and callee fields. New
+hashed rules `parse.call-ast-append`, `ty.function-parameter-list`,
+`symbol.parameter-block-object`, `se.call-checked-nonlvalue`,
+`ir.direct-call-callee`, `ir.function-parameter-order`,
+`vf12.direct-call-frames`, `codegen.aapcs64-int-call`, and
+`snapshot.call-record-fields` and `const.literal-origins`. New artifact
+`t01-c01-c06/54` (`850adb9a…e39`). Acceptance at this amendment is schema/codec/registry tests
+only; source calls and AAPCS64 execution remain unimplemented and are not
+claimed.
+
+`/55` amendment — direct-call implementation (2026-11-10; T01 integrator
+acceptance; R1 auto-bump; `/54` preserved as history): no shape or rule ID
+changes. The general parser emits the frozen parameter/call AST; `SYMBOL_FUNC_TYPE`
+builds parameterized `int` signatures; parameter declaration produces
+block-scope automatic `int` objects; `SE_CALL_CHIP` resolves earlier file-scope
+definitions, checks arity and argument facts, rejects `main`/self/forward calls,
+and appends a pure `int` call fact. T09 sets `FunctionRecord.parameters`, lowers
+`Call` with explicit callee identity, ordered arguments, and a result, and uses
+`ConstRecord.origins` for literals. VF05/VF06 cover multiple functions and call
+shapes; VF12 executes acyclic calls with fresh frames and 8-frame/4096-step
+budgets. The candidate discovers functions in source order, selects `main`, and
+the host-only AArch64 emitter supports 0–8 `w0`–`w7` arguments, `w0` results,
+leaf/non-leaf LR handling, aligned frames, and per-function labels. The
+canonical and `/49`–`/53` paths remain unchanged. New artifact
+`t01-c01-c06/55` (`e19cf5c1…652`). Acceptance: `call_source` 7 macOS / 8 native
+AArch64 Linux, `c55_target_m1` 24/25, `call_abi` 1 passing shape test with both
+two-way reference directions explicitly ignored/blocked; full compiler suite
+839 tests / 68 suites on macOS and 848 / 68 on native AArch64 Linux. Recursion,
+variadics, external/indirect calls, stack arguments, wider ABI, memory,
+control flow, object emission, corpus runs, and torture rates are not claimed.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
-| C02 | Frozen target identity; dialect/options/limits config (structurally immutable after init); unverified AArch64/Linux proposal; machine-readable probe fixture; private verified-state representation; attestation validates required fields (including `wchar_t.encoding`), identity, and report hash; macOS values rejected by test | The actual Linux probe has not run (no CI/VM substrate); all concrete values remain UNVERIFIED; `ensure_codegen_ready` fails closed. `attest` validates caller-supplied report data, not authenticity or physical provenance (TOCTOU). The H01 harness (not owned here) emits `wchar_t.encoding` as `utf32` only with positive ISO/IEC 10646/non-BMP evidence, otherwise `unresolved`, and leaves the four AAPCS64 fields `unresolved`; `attest` requires resolved numeric values, so H07 classification plus the T01 integrator's attest step must fill them first (T00 §4.1). Attestation performs no plausibility/consistency cross-checks beyond field presence, identity, and hash (for example, zero or oversized ABI register counts, or `align > size`, would be accepted); `c02_target::signed_report` recomputes the hash over a caller-built report and `attested_report_produces_a_verified_target` attests it, demonstrating the data-not-provenance boundary. The probe harness exists but has **never run** (no report), and the report→`attest` handoff — H07-owned classification of the report's `unresolved` ABI fields, then the T01-integrator-owned `attest`/`Probed` step — has not occurred |
+| C02 | Frozen target identity; dialect/options/limits config (structurally immutable after init); **probe-attested** AArch64/Linux baseline; machine-readable probe fixture; private verified-state representation; attestation validates required fields (including `wchar_t.encoding`), identity, and report hash; macOS values rejected by test | The pinned 2026-11-09 Debian-GCC-12.2.0 container probe ran; H07 `classify.py` resolved the four ABI fields, and `c48_target_probe` attests/tamper-checks the report. The global contract target state is `probe-attested`; the **official T00 CI/bare-metal reference baseline** and corpus freeze remain open. `ensure_codegen_ready` is not exercised by a target codegen path because no codegen exists. `attest` validates caller-supplied report data, not authenticity or physical provenance (TOCTOU), and does not add plausibility checks beyond field presence/identity/hash. HVA is not exercised; no HVA or mixed-linking claim is made. |
 | C03 | Task/TaskState/Result/Proposal/StorePatch envelope; next-tick enqueue; deterministic commit order; inner task IDs bound to the enclosing task; exactly one `Complete`/`Fail`/`AwaitHost` transition per task per batch; Enqueue parents resolved against existing or earlier predicted siblings; Enqueue destinations must be registered and accept the kind (bootstrap is integration-only); exactly-once completion and result consumption with an accurate `ResultAlreadyConsumed` error; lossless `usize` proposal-budget comparison; structured error protocol; unique kind registry with reserved local-code ranges | Per-group concrete task/result payload variants are not frozen (group owners add them; the envelope carries typed `RecordRef` payloads); patch `RecordRef`s are not existence-checked by the mechanical commit; the §4 reserved-ID/local-reference relocation protocol is absent (see C01); the frozen protocol enums are pinned by variant name only, not by numeric discriminant/wire tag (see C05) |
 | C04 | Manifest schema extension, foundation store schema, validator, fixture tests, validated registry (schema + kind checks on registration); commit-time per-chip field-scoped write manifests, owner/task-kind attribution, read-only `config` rejected both at registration and commit | The extension is a lint, not a parser; group store fields must be declared as each group freezes them. The `/6` hash-scope reconciliation between `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields` token is still open (see C05) |
-| C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs` |
-| C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; transition-free worker vectors fail per-task (`TaskNotTransitioned`); idle ticks drain await-all joins with closure (`Joined`); stage/layer enforced on the driver path; cancel clears stale selection; defined cancel/budget pin behavior | Wave 1 fold worker installed via `drive_task`/`handler_for`; no broader language pipeline yet |
+| C05 | Canonical writer, SHA-256, full deterministic snapshot/trace/config hash (foundation records, sources with byte-recomputed hashes, full wire proposal payloads, routing, manifests, registry, schema, patches, versions, reserved-store allocated count + live IDs), sensitivity tests, contract hash freeze test | Reserved language-store record bodies are not encoded (schema unfrozen); record bodies excluded, tombstone positions visible. Frozen hash excludes runtime registrations, routing content, and group-declared store fields (covered by the snapshot). Enumeration coverage is name-only: `contract.rs` hashes the `*_NAMES` variant lists and `RECORD_KINDS` names, while the numeric tags in `snapshot.rs` (`push_task_state`, `push_result_value`, `push_record_ref`, `push_wires`) are hardcoded and neither derived from nor cross-checked against those lists; numeric-value hashing remains a `/6` item (M1 proposal OB-14/OB-34). The `/6` hash-scope reconciliation is also still open: the accepted two-tier model (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed `StoreSchema::declare()` stays excluded) must be applied atomically to `COMPILER_SFL_MANIFEST.md` §4, the `hash_excludes=group-declared-store-fields` token, `FrozenSchema::encode`, and `freeze.rs`. `/41` closes the `AppendRecords` handle/body payload gap and narrows replay to recorded-input re-execution over a canonical state fingerprint; `/42` adds the typed constant body (`ty` + integer tag) and its hashed tables; full restore remains deferred; the package is currently allocated `/56` |
+| C06 | Routing table stored in the bus (replay-visible); deterministic selection; no-op terminates; unsupported/unregistered fails explicitly; commit failure transitions the task to `Failed` with the task attached to the diagnostic and without partial writes; transition-free worker vectors fail per-task (`TaskNotTransitioned`); idle ticks drain await-all joins with closure (`Joined`); stage/layer enforced on the driver path; `/41` makes selection stage-first and zero-quota fail-closed (typed error, no dispatch); cancel clears stale selection; defined cancel/budget pin behavior | Wave 1 fold worker installed via `drive_task`/`handler_for`; no broader language pipeline yet |
 
 Test evidence (`/9`): `c01_arena` 7, `c02_target` 11, `c03_task` 46, `c04_manifest` 15, `c05_codec` 21, `c06_routing` 15, `c07_limits` 18, `c08_gate1` 21, `c09_readiness` 14, `c10_pp01` 7, `freeze` 14, plus two compile-fail doctests. `c07_limits` exercises only the checked bus/commit entry points (`max_intern_bytes` is enforced but has no dedicated test); `c01_arena` covers arena-local capacity and ID stability; no test establishes global budgets for direct public-store mutation. `freeze.rs` verifies hash recomputation, version-file consistency, and rule-ID uniqueness, not semantic equivalence or numeric tag stability.
 

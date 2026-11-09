@@ -6,11 +6,13 @@
 // token in the same order, and completes with `Records` of the predicted
 // token refs. Identifier spellings resolve through the committed intern
 // table (the LX intern task runs first); a missing name fails loudly.
-// Non-M1 PP spellings (non-decimal pp-numbers, string/character literals)
-// are explicit `Unsupported`. Token spans reuse the committed PP spans;
-// T04 writes no spans.
+// Integer pp-numbers in decimal, leading-zero octal, or `0x` hexadecimal
+// form classify as `Integer`; unsupported pp-number forms and
+// string/character literals are explicit `Unsupported`. Token spans reuse the
+// committed PP spans; T04 writes no spans.
 // ============================================================================
 
+use super::lx_decode::integer_spelling_parts;
 use crate::bus::{PpTokenKind, TokenKind};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
@@ -23,6 +25,14 @@ use crate::task::{
     AppendBatch, DraftRef, Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState,
 };
 use std::collections::BTreeMap;
+
+/// Same-file audited entry point for the integer-spelling predicate.
+///
+/// The chip lint requires calls from `compute` to resolve to a same-file
+/// helper; the lexical decoder remains the single owner of the spelling rule.
+fn is_supported_integer_spelling(spelling: &[u8]) -> bool {
+    integer_spelling_parts(spelling).is_some()
+}
 
 /// The frozen C11 keyword table (membership-tested, order-free).
 pub const C11_KEYWORDS: &[&[u8]] = &[
@@ -236,13 +246,13 @@ impl LxClassifyChip {
                     }
                 }
                 PpTokenKind::PpNumber => {
-                    if projected.spelling.iter().all(|byte| byte.is_ascii_digit()) {
+                    if is_supported_integer_spelling(&projected.spelling) {
                         TokenKind::Integer
                     } else {
                         return vec![fail(
                             input.task,
                             DiagnosticDraft::unsupported(
-                                "non-decimal pp-number is outside the M1 exercised subset",
+                                "pp-number is outside the supported integer subset",
                             ),
                         )];
                     }

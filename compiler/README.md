@@ -4,10 +4,13 @@ This package owns the **compiler application contract foundation** on top of
 the domain-free [`cc-silicon`](../) framework. It is the frozen T01 artifact
 and the shared schema every compiler task package must obey.
 
-It is **not a C compiler** and contains **no C language chips**. It compiles
-and tests the storage profile, IDs, task/result protocol, target/config
-schema, manifest extension, deterministic serializer, and the minimal routing
-shell. Language work (T02–T13) builds on this foundation.
+It is **not a complete C compiler**. It compiles and tests the storage profile,
+IDs, task/result protocol, target/config schema, manifest extension,
+deterministic serializer, and the routing shell, and it contains partial
+PP/LX/PA/TY/SE/IR/VF language-worker slices plus a candidate evidence driver
+and a host-only AArch64 prototype for constant, local, and bounded direct-call
+programs. There is no general source-to-executable pipeline. Language work
+(T02–T13) continues on this foundation.
 
 ## Status
 
@@ -15,29 +18,46 @@ shell. Language work (T02–T13) builds on this foundation.
 |---|---|
 | CPU dynamic arena extension | Approved — see [ADR-0001](../docs/architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) |
 | Target identity | Frozen: `aarch64-unknown-linux-gnu`, ELF, LP64, little-endian, AAPCS64 |
-| Target concrete values | **UNVERIFIED**; codegen readiness fails closed |
+| Target concrete values | **Probe-attested** (Debian 12 arm64 / GCC 12.2.0); official T00 CI/bare-metal baseline open |
 | Verification | Private verified representation; `attest` validates caller-supplied report data (not authenticity) |
-| Probe substrate | Planned Linux CI/VM; **not provisioned** |
+| Probe substrate | Pinned `docker-linux-arm64` probe; official Linux CI/VM **not provisioned** |
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/39` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24` |
+| Contract version | `t01-c01-c06/55` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
+| M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
+| Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/56` |
+| Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
+| Parser/AST common base (`/43`) | Schema frozen: single-task V1 parser decision; append-only `NodeKind` V1 inventory; canonical node names/round-trip. V1 parser producer and VF05 V1 shapes remain future |
+| IR/CFG common base (`/44`) | Schema frozen: `InstructionRecord.local`/`successors`; local/arithmetic/branch `IrOp` append; `EFFECT_WRITES_LOCAL`; VF07/VF08 and V1/V2 producers remain future |
+| Constant v3 (`/45`) | Schema frozen: `ConstValue::Float`/`Address`; big-endian format-checked float bits; symbolic address base/addend; VF14 integer-only gates. Producers and T06 float/pointer compatibility remain future |
+| Type/layout/init (`/46`) | Schema frozen: pointer/array/aggregate/enum `TypeKind`; typed `LayoutRecord`/`InitRecord`; `G1DraftBody::Layout`/`Init`; symbolic-or-bit extents. Producers, target byte layout, and validation remain future |
+| Diagnostic taxonomy (`/47`) | Schema frozen: lex/parse/type/const/ir/codegen/host groups; named code registry and structured helpers. Full legacy `Task:4` migration remains future |
+| Probe-attested target baseline (`/48`) | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, pinned H07 report; `c48_target_probe` 3. Official CI/bare-metal baseline and general codegen remain future |
+| Source locals (`/49`) | Implemented and tested: shape-gated TU parser, block automatic `int`, identifier fact, `Constant`/`LocalStore`/`LocalLoad`/`Return` IR, VF12 local model; `c56_source_locals` 5 macOS / 6 native AArch64 Linux. Calls and general codegen remain future |
+| Local add and modeled integer (`/50`) | Implemented and tested: `ResultValue::Integer`, local-add shape, identifier/literal binary fact, six-instruction IR, VF12 modeled 5; `c56_source_locals` 6 macOS / 8 native AArch64 Linux. Calls and general codegen remain future |
+| Local binary operators (`/51`) | Implemented and tested: `+`, `-`, `*`, `/`, `%` over the local binary shape; VF05/VF06/SE/BIN/IR/VF12 coverage; `c56_source_locals` 7 macOS / 10 native AArch64 Linux; native exits 255/6/0/2 for the new operators. Calls and general codegen remain future |
+| Local expression trees (`/52`) | Implemented and tested: precedence, parentheses, literal-left forms, and unary `+`/`-`; pre-order AST commit, post-order semantic checks, recursive T09 lowering, general VF12 program interpreter; `c56_source_locals` 8 macOS / 12 native AArch64 Linux. Calls and general codegen remain future |
+| Local assignments (`/53`) | Implemented and tested: zero or more `x = <expr>;` statements, effect-carrying assignment facts, ordered `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 native AArch64 Linux. Memory, branches, loops, and general codegen remain future |
+| Direct-call schema (`/54`) | Shape-only freeze: `ParameterList`/`Parameter`/`Call`, `FunctionRecord.parameters`, `InstructionRecord.callee`, `IrOp::Call`, `ConstRecord.origins`, call task/chip reservation, and call/interpretation budgets. No producer was added by this amendment |
+| Direct calls (`/55`) | Implemented and tested: same-TU acyclic calls, 0–8 signed-`int` parameters/arguments, parameterized signatures, explicit callee identity, fresh VF12 frames, multi-function AArch64 emission with `w0`–`w7`/`w0`, LR/leaf handling, aligned frames; `call_source` 7 macOS / 8 native AArch64 Linux, `c55_target_m1` 24/25, `call_abi` shape test 1 with two reference directions blocked. Recursion, variadics, external/indirect calls, stack arguments, wider ABI, memory, control flow, and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return, `/49`–`/53` local, and `/55` same-TU direct-call AArch64 assembly; `c55_target_m1`/`c56_source_locals`/`call_source` verify native Linux assemble/link/run across expressions, ordered assignments, parameter passing, and nested calls. Memory, branches, loops, external/stack-passed calls, and general codegen remain absent. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/39
-hash=07f4eaded698c13d6a85071159c0833edc9ee2f81702eeaf778f8db346f2fa24
+version=t01-c01-c06/55
+hash=e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652
 target=aarch64-unknown-linux-gnu
-target_verification=unverified
-probe_substrate=linux-ci-vm (planned, not provisioned)
+target_verification=probe-attested
+probe_substrate=docker-linux-arm64 (pinned 2026-11-09; official T00 baseline open)
 corpus_fetch=on-demand hash-locked
 reference_baseline=authorized, not available, not candidate evidence
 hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)
-hash_excludes=runtime-registrations, routing-content, group-declared-store-fields, chip-logic
+hash_excludes=runtime-registrations, routing-content, post-seed-declarations, chip-logic
 verified_state=private-VerifiedState; attest validates caller-supplied report data and hash, not authenticity or physical provenance
 ```
 
@@ -53,7 +73,7 @@ schema. Enumerations are encoded by **variant name**, not by numeric
 discriminant or wire tag: the `*_NAMES` lists and `RECORD_KINDS` pin names and
 order, while the numeric snapshot tags (`snapshot.rs`) are hardcoded and are not
 derived from or cross-checked against those lists. A tag change does not change
-the frozen hash; numeric-value hashing remains a future `/6` item.
+the frozen hash; numeric-value hashing remains an open normalization item.
 
 It is **not a source-code hash and not a semantic-equivalence proof**. Logic
 inside a function can change without changing any identifier. The hash also
@@ -120,8 +140,11 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c07 + freeze
+  tests/           c01..c56 + freeze + h04_candidate + Stage B regression tests
 ```
+
+The test breakdown below is a dated 2026-10-04 record, not the current test
+inventory; see `compiler/tests/` for the current files.
 
 ## Commands and results (2026-10-04)
 
@@ -205,19 +228,21 @@ owner change. Root CI covers the compiler today.
 
 1. **Target probe not run.** C02 concrete ABI values are UNVERIFIED; target
    code chips (T11) must not start; `ensure_codegen_ready` fails closed.
-2. **Per-group schemas are proposals.** Concrete task/result payload variants
-   and language-store record fields are not frozen. Each group owner must
-   submit a freeze request (add kinds to `TaskKindRegistry`, fields to
-   `StoreSchema`, records to a reserved arena) before its chips can run.
-3. **T02 control chips are not implemented.** The routing shell has no worker
-   handlers; CT01–CT14 are pending.
-4. **No host/toolchain/runner.** H00–H03 (corpus lock, runner, DejaGnu
-   integration) do not exist, so no torture rate can be claimed.
+2. **Per-group schemas remain partial.** Frozen slices have kinds/records/stage
+   rows; broader group payload variants and language-store record fields are not
+   all frozen. Each group owner must submit a freeze request before new chips
+   can run.
+3. **T02 control chips are not implemented.** `WorkerRegistry`, `drive_task`,
+   and `handler_for` exist and selected workers are registered by the candidate,
+   but the CT01–CT14 topology is pending.
+4. **Host/toolchain/runner remains incomplete.** H00 is scaffold only, H01 has
+   never run, H02/H03 are absent, and no isolated runner or torture rate exists.
 
 ## Explicit limitations and deferred items
 
-- **No C compiler exists.** No language chips, no code generation, no corpus
-  run, no pass rate.
+- **No complete C compiler exists.** Partial language-worker slices and a
+  Part A evidence driver exist, but there is no code generation, target
+  execution, corpus run, or pass rate.
 - Attestation validates report data, not authenticity or physical provenance;
   TOCTOU applies to the report file (documented above and in `target.rs`). It
   also performs no plausibility cross-checks beyond field presence, frozen
@@ -233,12 +258,11 @@ owner change. Root CI covers the compiler today.
   `Enqueue`-parent IDs within one batch, store-patch `RecordRef`s are not
   existence-checked, and no reservation/apply-map protocol or normative rule
   exists yet (M1 proposal OB-49).
-- The `/6` hash-scope reconciliation is open: the accepted two-tier model
-  (frozen `foundation + M1AppendSchema` seed participates in the hash; post-seed
-  `StoreSchema::declare()` stays excluded) is not yet encoded, so
-  `COMPILER_SFL_MANIFEST.md` §4 and the `hash_excludes=group-declared-store-fields`
-  token must change atomically with `FrozenSchema::encode` and `freeze.rs` at
-  `/6` (M1 proposal OB-34).
+- The `/39` two-tier hash model is current: the frozen `foundation +
+  M1AppendSchema` seed participates in the hash, while post-seed
+  `StoreSchema::declare()` declarations remain excluded. The manifest text and
+  `CONTRACT_VERSION` use `post-seed-declarations`; any future scope change must
+  update `FrozenSchema::encode`, `freeze.rs`, and the version/hash atomically.
 - Integration gap (N1): the H01 normalizer emits the four AAPCS64 fields
   (`abi.gp_arg_regs`, `abi.fp_arg_regs`, `abi.stack_align`,
   `abi.variadic_register_save_area`) as `unresolved`, and `verified`/`report_hash`
@@ -257,7 +281,8 @@ owner change. Root CI covers the compiler today.
   mechanical commit; materialization is owned by each group's commit
   integration (documented in `commit.rs`).
 - The manifest validator is a lint, not a parser or proof.
-- Routing has no installed worker handlers; T02 installs them.
+- The routing shell and host-driver worker registry exist; the full T02
+  CT01–CT14 control topology is not installed.
 - `bootstrap_task` is integration/job-bootstrap only (CT01) and is documented
   as such; worker chips may only propose `Enqueue` through the commit path.
 - Global resource limits are guaranteed on the checked bus/commit entry points
@@ -271,7 +296,7 @@ owner change. Root CI covers the compiler today.
   `cancel` and `tick_budget_reached` pins have defined behavior in the shell
   (`Cancelled` and `BudgetExhausted` respectively).
 - Frozen hash coverage excludes runtime registrations, live routing content,
-  and group-declared store fields added after `StoreSchema::foundation`; those
+  and post-seed store declarations added after `StoreSchema::foundation`; those
   are covered by the snapshot instead.
 
 ## Dependency

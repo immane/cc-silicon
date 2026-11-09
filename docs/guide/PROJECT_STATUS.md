@@ -1,95 +1,120 @@
 # Project Status
 
-Last checked against the repository state at the time of writing. When
-this page and the code disagree, the code wins; the links below are the
-places to re-verify.
+Last checked against the repository state on 2026-11-10. When this page and
+the code disagree, the code wins; the links below are the places to
+re-verify. This page records observed state, not a new acceptance run.
 
 ## At a glance
 
 | Area | State | Evidence |
 |---|---|---|
-| Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 compile-fail doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`, C01–C06 + M1 Gate 1) | **Implemented, frozen `/7`** | 158 integration tests + doctests; identity and hash in `contracts/CONTRACT_VERSION` |
-| C language chips (T02–T13, 331 planned tasks) | **Not implemented, except the Gate 1 types are ready** | Task descriptions only; Wave 1 slice chips (T07 request, T08 fold) unblocked on the frozen `/7` const-fold types; no chip source exists yet |
-| AArch64 target values | **Unverified** | Identity frozen; probe never run |
-| ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
+| Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/55`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
+| M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
+| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/56` |
+| Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
+| Parser architecture + V1 AST (`/43`) | **Schema frozen; producer not implemented** | ADR-0003 single-task V1 parser decision; append-only `NodeKind` inventory; snapshot names/round-trip. V1 parser and VF05 V1 shape table remain future |
+| IR/CFG common base (`/44`) | **Schema frozen; producer/verifier not implemented** | ADR-0004 `InstructionRecord.local`/`successors`; local/arithmetic/branch op append; snapshot round-trip. V1/V2 lowering and VF07/VF08 remain future |
+| Constant v3 (`/45`) | **Schema frozen; producers not implemented** | ADR-0005 float/address tags, format-checked raw bits, symbolic addend; VF14 integer-only gate. T06 float/pointer compatibility remains future |
+| Type/layout/init (`/46`) | **Schema frozen; producers/verifier not implemented** | ADR-0006 pointer/array/aggregate/enum types; typed layout/init arenas and append handles; symbolic-or-bit extents. Target byte layout and VF07 remain future |
+| Diagnostic taxonomy (`/47`) | **Registry frozen; migration pending** | ADR-0007 groups/codes/helpers; legacy `Task:4` call sites remain until owner migration |
+| Probe-attested target baseline (`/48`) | **Probe-attested; official baseline open** | Pinned Debian 12 arm64 / GCC 12.2.0 report, `target_verification=probe-attested`; `c48_target_probe` 3 |
+| Source locals (`/49`) | **Implemented and tested** | `int main(void){int x=2;return x;}` parses, declares a block automatic, lowers `Constant`/`LocalStore`/`LocalLoad`/`Return`, models 2, and executes on native AArch64; `c56_source_locals` 5 macOS / 6 Linux |
+| Local add + modeled integer (`/50`) | **Implemented and tested** | `int main(void){int x=2;return x+3;}` lowers to six IR instructions, VF12 returns `ResultValue::Integer(5)`, and native AArch64 exits 5; `c56_source_locals` 6 macOS / 8 Linux |
+| Local binary operators (`/51`) | **Implemented and tested** | `-`, `*`, `/`, `%` lower to the matching IR and native AArch64 exits 255, 6, 0, 2; `c56_source_locals` 7 macOS / 10 Linux |
+| Local expression trees (`/52`) | **Implemented and tested** | Precedence, parentheses, literal-left forms, and unary `+`/`-` parse/check/lower/interpret; native AArch64 covers the tree cases; `c56_source_locals` 8 macOS / 12 Linux |
+| Local assignments (`/53`) | **Implemented and tested** | Ordered `x = <expr>;` statements, effect-carrying facts, `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 Linux |
+| Direct-call schema (`/54`) | **Schema frozen** | Parameter/call AST, `FunctionRecord.parameters`, explicit callee IR, `ConstRecord.origins`, call task/chip reservation, call budgets; no producer in `/54` |
+| Direct calls (`/55`) | **Implemented and tested** | Same-TU acyclic `int` calls, 0–8 parameters/arguments, multi-function VF12 frames and AArch64 emission; `call_source` 7 macOS / 8 native AArch64 Linux, `c55_target_m1` 24/25, `call_abi` 1 shape test with two reference directions blocked. No recursion, variadics, external/indirect calls, stack arguments, or wider ABI |
+| C source → executable | **M1 constant-return, local, and same-TU direct-call paths only** | `candidate --emit-asm` + native AArch64 assembler/linker/run covers `return 2+3`, local expression/assignment programs, and same-TU direct calls with up to eight `int` arguments. No general codegen, `-S`/`-c`, memory, control flow, recursion, or wider ABI |
+| AArch64 target values | **Probe-attested baseline; official CI/bare-metal baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=probe-attested`; candidate codegen gate remains |
+| ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
-| Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 8 tests; catches common violations only |
+| Static chip linter (`tools/chip-lint`) | Implemented aid, **not a proof** | 16 tests after Stage B; catches common violations only |
+| Test/CI coverage | Root, chip-lint, compiler, torture, H05 runner, chip scan | `.github/workflows/ci.yml`; real target probe remains manual-only |
 
-No compiler capability, target verification result, or GCC pass rate
-is claimed anywhere in this repository — and this page claims none
-either.
+No complete compiler capability, verified target ABI, or GCC pass rate is
+claimed by this repository or this page.
 
-## What "frozen /7" does and does not mean
+## What "frozen `/55`" means
 
-The frozen artifact is `t01-c01-c06/7` (`/6` preserved as history):
+The frozen artifact is `t01-c01-c06/55`:
 
 ```text
-version=t01-c01-c06/7
-hash=a56de65b153e0e5dc1bec24040f2bdfcb95ead76efd0fd1f5661e40524589d5c
+version=t01-c01-c06/55
+hash=e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652
 target=aarch64-unknown-linux-gnu
-target_verification=unverified
+target_verification=probe-attested
 ```
 
 **It does mean:**
 
-- The shared vocabulary is fixed: record families, task states, the
-  five result variants, proposal names and wire tags, store and group
-  inventories, limits, target identity, and the normative rule IDs.
-- Changing any of them requires a contract amendment and a new
-  version — silent redefinition is a breach, not a refactor.
+- Shared vocabulary is fixed: record families, task states, result variants,
+  proposal names/wire tags, stores, limits, target identity, stage rows,
+  allowlist rows, and normative rule IDs.
+- Changing them requires a contract amendment and a new version; silent
+  redefinition is a breach.
 - Consistency tests pin these inventories to their implementations
-  (`compiler/tests/freeze.rs`, currently 14 tests).
+  (`compiler/tests/freeze.rs`).
 
 **It does not mean:**
 
-- That any C code can be compiled. No language chip exists.
-- That the frozen shapes are proven correct. The hash is a fingerprint
-  of names and shapes, not a semantic proof; chip logic can change
-  without changing the hash.
-- That every future chip interface is frozen. The `/7` addition covers
-  only the Gate 1 const-fold slice (literal/const schemas, three task
-  kinds, chain-order stages, one allowlist row); all other
-  per-language record schemas, group task kinds, worker routing, and
-  stage queues are still ahead (see [Roadmap](ROADMAP.md)).
+- That any C source can be compiled to an executable. Only partial language
+  slices and a Part A evidence path exist.
+- That the hash proves semantic correctness. It fingerprints names and shapes,
+  not chip logic.
+- That all future chip interfaces are frozen. Broad per-language record/task
+  schemas, most handlers, stage queues, general target codegen, and the
+  official T00 ABI/CI baseline remain ahead.
 
-## Test inventory (so numbers are checkable, not slogans)
+## Observed test inventory
 
-Compiler foundation integration tests by file:
+The following counts were observed during the 2026-11-09 `/43` integration
+run (and, for the non-compiler packages, the 2026-11-07 dispatch audit). They
+are discovery/run observations, not a permanent promise; the source tree and
+`compiler/tests/` are authoritative.
 
-| File | Tests | Covers |
-|---|---|---|
-| `c01_arena.rs` | 7 | Storage arenas and stable IDs |
-| `c02_target.rs` | 11 | Target model (identity frozen, values unverified) |
-| `c03_task.rs` | 46 | Task/result/proposal protocol |
-| `c04_manifest.rs` | 15 | Manifest declarations and validation |
-| `c05_codec.rs` | 21 | Canonical snapshot/trace encoding |
-| `c06_routing.rs` | 15 | Dispatcher, budgets, recovery |
-| `c07_limits.rs` | 18 | Configuration limits |
-| `c08_gate1.rs` | 11 | M1 Gate 1 const-fold slice (G1-CL-01 chain + gates) |
-| `freeze.rs` | 14 | Hash recomputation + inventory consistency |
+| Package | Observed |
+|---|---|
+| Root framework | 21 tests (15 integration + 6 doctests) |
+| Compiler | **740 tests across 62 suites (746 on native AArch64 Linux) passed** after the `/53` assignment slice (adds ordered-statement and native assignment coverage) |
+| Chip-lint | 12 tests at audit; 16 after B1-05 |
+| Torture verifier | 73 tests |
+| Probe self-tests | 57 tests; one containerized real probe report + H07 classification |
 
-Framework: `tests/paradigm.rs` (15 tests) plus 6 doctests, including
-compile-fail checks on the `silicon_chip!` macro.
+## Known limitations
 
-## Known limitations, stated plainly
-
-- The ownership allowlist is an empty skeleton; stage assignment
-  accepts everything; canonical stage queues do not exist yet.
-- `AppendRecords` proposals are rejected pending the records track;
-  store patches record intent in a patch log.
-- Language record arenas are reserved but schemaless — only live IDs
-  are snapshotted, not record bodies.
-- The join behavior differs in one documented edge from the await-all
-  direction in an early draft; this needs a ruling before it is
-  frozen (see [Roadmap](ROADMAP.md)).
-- Adapters, host code, and custom backends remain trusted boundaries:
+- No complete PP→LX→PA→TY→SE→CL→IR→target pipeline.
+- Integrated preprocessing/lexing is narrow: source `#define`/`#undef` and
+  quoted single-level `#include "..."` beside the including file are
+  orchestrated by B3-03a/B3-03b, but `-I`, angle/system headers, nested
+  includes, guards/`once`, and `#line`/`#pragma` remain fail-closed;
+  post-conditional source macro mutation is rejected, and the integrated
+  lexer is M1-integer-only.
+- Many parse/type/semantic/IR/verification catalog rows are absent. Unregistered
+  parse drafts are explicitly parked by B-INT-00; their candidate IDs are not
+  frozen, and canonical PA15 selection remains future work.
+- `ConstRecord.ty`/`ir.op-immediate-type` are implemented at `/42`, but this is
+  not full M1 acceptance or target execution.
+- A pinned Debian-GCC-12.2.0 containerized probe has run and its report is
+  attested in `c48_target_probe`; the global target state is
+  `probe-attested`. The official T00 reference baseline/CI substrate is still
+  open, and target codegen is only the M1 constant-return and local expression/assignment source paths plus an IR-shape arithmetic emitter.
+- H05 process supervision is implemented in `tools/runner` (timeout/output
+  caps/cancellation/Linux process-group+prlimit). It is not a kernel namespace
+  sandbox, and H02/H03 target orchestration remains absent.
+- Replay is recorded-input re-execution over a canonical fingerprint, not bus
+  restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
+  projections, and per-stage queues remain deferred to `/56`.
+- Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 
 ## Sources
 
 - Root status table: [README.md](../../README.md) § Project status
 - Task master plan: [tasks/README.md](../tasks/README.md)
+- Dispatch ledger: [tasks/DISPATCH_LEDGER.md](../tasks/DISPATCH_LEDGER.md)
 - Frozen identity: [compiler/contracts/CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION)
 - Guardrails (accepted policy, not a freeze):
   [tasks/COMPILER_DEVELOPMENT_GUARDRAILS.md](../tasks/COMPILER_DEVELOPMENT_GUARDRAILS.md)

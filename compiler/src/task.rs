@@ -15,6 +15,7 @@
 // scheduler by the commit path (see `commit.rs`).
 // ============================================================================
 
+use crate::bus::IntegerConst;
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{
     ChipId, ContinuationId, DiagnosticId, HostRequestId, LiteralId, NodeId, RecordRef, ResultId,
@@ -271,6 +272,26 @@ impl TaskKind {
     /// `SemRecord` or reuses the committed one; completes `Record`).
     pub const SEMANTIC_FUNCTION_DEF: Self =
         Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 21);
+    /// `/49` M1-source-locals kind: identifier-expression check (payload:
+    /// exactly one `Identifier` node; resolves the automatic object in the
+    /// active block scope, appends one `SemRecord`, completes `Record`).
+    pub const SEMANTIC_IDENTIFIER_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 22);
+    /// `/52` local-expression kind: unary-expression check (payload: exactly
+    /// one `UnaryPlus`/`UnaryMinus` node; requires one checked `int` operand,
+    /// appends one `SemRecord`, completes `Record`).
+    pub const SEMANTIC_UNARY_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 23);
+    /// `/53` local-statement kind: assignment check (payload: exactly one
+    /// `Assignment` node; checks the automatic-int lhs and checked rhs,
+    /// appends one effect-carrying `SemRecord`, completes `Record`).
+    pub const SEMANTIC_ASSIGNMENT_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// `/54` direct-call kind: call-expression check (payload: exactly one
+    /// `Call` node; checks the file-scope callee and ordered `int` arguments,
+    /// appends one `SemRecord`, completes `Record`).
+    pub const SEMANTIC_CALL_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 25);
     /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
@@ -719,13 +740,24 @@ impl TaskKindRegistry {
         registry
     }
 
-    /// The Wave 3 (`/39`) SE-function-slice registry: the VF14
-    /// evidence slice plus the frozen function-definition kind (all
-    /// `Frozen`; `SEMANTIC` owners start new codes at local 22).
+    /// The Wave 3 (`/39`) SE-function-slice registry plus the `/49`
+    /// identifier, `/52` unary, `/53` assignment, and `/54` call kinds (all
+    /// `Frozen`; `SEMANTIC` owners start new codes at local 26).
     pub fn se_function_slice() -> Self {
         let mut registry = Self::vf_evidence_slice();
-        let slice: &[(TaskKind, &str)] =
-            &[(TaskKind::SEMANTIC_FUNCTION_DEF, "semantic.function_def")];
+        let slice: &[(TaskKind, &str)] = &[
+            (TaskKind::SEMANTIC_FUNCTION_DEF, "semantic.function_def"),
+            (
+                TaskKind::SEMANTIC_IDENTIFIER_EXPR,
+                "semantic.identifier_expr",
+            ),
+            (TaskKind::SEMANTIC_UNARY_EXPR, "semantic.unary_expr"),
+            (
+                TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
+                "semantic.assignment_expr",
+            ),
+            (TaskKind::SEMANTIC_CALL_EXPR, "semantic.call_expr"),
+        ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.
             let _ = registry.register(kind, name, kind.group(), KindStatus::Frozen);
@@ -1716,13 +1748,14 @@ pub struct WaitSet {
 }
 
 /// A result payload. Concrete variants are extended by each group; the
-/// foundation variants cover no-op, acknowledgement, record references, and
-/// committed diagnostics.
+/// foundation variants cover no-op, acknowledgement, record references,
+/// committed diagnostics, and a modeled integer value.
 ///
-/// Frozen: this set is unchanged (no `DraftRecords` variant). A legal
-/// constant result completes with `Record(RecordRef::Const)`; multi-record
-/// results use `Records`; non-legal constant outcomes fail through the chip
-/// diagnostic path instead of materializing a value; a parse cursor reuses
+/// `/50` appends `Integer` for verification results that compute a scalar but
+/// intentionally do not materialize a `ConstRecord`. A legal constant result
+/// still completes with `Record(RecordRef::Const)`; multi-record results use
+/// `Records`; non-legal constant outcomes fail through the chip diagnostic
+/// path instead of materializing a value; a parse cursor reuses
 /// `ContinuationDraft.cursor`, not a new result variant.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResultValue {
@@ -1736,6 +1769,8 @@ pub enum ResultValue {
     Records(Vec<RecordRef>),
     /// A committed diagnostic reference.
     Diagnostic(DiagnosticId),
+    /// A modeled integer value not backed by a committed `ConstRecord`.
+    Integer(IntegerConst),
 }
 
 /// A committed result record.
@@ -1781,10 +1816,14 @@ pub struct Task {
 }
 
 impl Task {
-    /// The deterministic scheduling key: `(phase priority, enqueue ordinal,
-    /// TaskId)`.
-    pub fn schedule_key(&self, phase_priority: u16) -> (u16, u64, u32) {
-        (phase_priority, self.enqueue_ordinal, self.id.index())
+    /// The deterministic scheduling key:
+    /// `(stage priority, group/phase priority, enqueue ordinal, TaskId)`.
+    ///
+    /// `stage` is the [`crate::manifest::stage_of`] ordinal (or the unassigned
+    /// sentinel); `phase_priority` is the task-group ordinal and is therefore
+    /// the secondary key, not the primary one.
+    pub fn schedule_key(&self, stage: u8, phase_priority: u16) -> (u8, u16, u64, u32) {
+        (stage, phase_priority, self.enqueue_ordinal, self.id.index())
     }
 }
 

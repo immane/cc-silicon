@@ -265,7 +265,9 @@ pub fn decode_result_value(value: &ResultValue) -> StageEvidence {
         ResultValue::Empty => StageEvidence::Missing,
         ResultValue::Ack => StageEvidence::Pass,
         ResultValue::Diagnostic(_) => StageEvidence::Fail,
-        ResultValue::Record(_) | ResultValue::Records(_) => StageEvidence::Undecodable,
+        ResultValue::Record(_) | ResultValue::Records(_) | ResultValue::Integer(_) => {
+            StageEvidence::Undecodable
+        }
     }
 }
 
@@ -374,7 +376,12 @@ pub fn project_vf14_input(
             format!("vf14 reads missing gate const {}", gate_id.index()),
         )
     })?;
-    let (stage_raw, stage) = decode_gate_raw(gate_body.negative, &gate_body.value);
+    let (stage_raw, stage) = match &gate_body.value {
+        crate::bus::ConstValue::Integer(value) => {
+            decode_gate_raw(value.negative, value.magnitude.as_slice())
+        }
+        crate::bus::ConstValue::Float(_) | crate::bus::ConstValue::Address(_) => (0xFF, None),
+    };
     let mut evidence = [StageEvidence::Missing; 4];
     let mut slot = 0;
     while slot < 4 {

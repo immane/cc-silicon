@@ -246,7 +246,7 @@ fn branch_kinds_stage_registry_manifest_frozen() {
     assert_eq!(CL04_OR_CHIP, ChipId(53));
     assert_eq!(CL04_COND_CHIP, ChipId(54));
     assert_eq!(CL07_ASSERT_CHIP, ChipId(55));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     for chip in [
         CL04_AND_CHIP,
         CL04_OR_CHIP,

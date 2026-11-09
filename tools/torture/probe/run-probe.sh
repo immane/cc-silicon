@@ -121,6 +121,15 @@ guard_triple_consistent "$gcc_triple" "$T00_TARGET_TRIPLE"
 
 as_path="$("$gcc_path" -print-prog-name=as)"
 ld_path="$("$gcc_path" -print-prog-name=ld)"
+# Some native GCC installations print a bare `as`/`ld` when the tool is on
+# PATH instead of an absolute path. Resolve the command name before the
+# executable check; the recorded tool identity stays the resolved binary.
+if command -v "$as_path" >/dev/null 2>&1; then
+    as_path="$(command -v "$as_path")"
+fi
+if command -v "$ld_path" >/dev/null 2>&1; then
+    ld_path="$(command -v "$ld_path")"
+fi
 [ -x "$as_path" ] || guard_fail "reference assembler '${as_path}' is not executable"
 [ -x "$ld_path" ] || guard_fail "reference linker '${ld_path}' is not executable"
 

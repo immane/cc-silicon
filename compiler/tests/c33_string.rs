@@ -251,7 +251,7 @@ fn string_kinds_stage_registry_manifest_frozen() {
     assert_eq!(LX11_CHIP, ChipId(41));
     assert_eq!(LX12_CHIP, ChipId(42));
     assert_eq!(LX13_CHIP, ChipId(43));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     assert!(
         STORE_OWNER_ALLOWLIST
             .iter()

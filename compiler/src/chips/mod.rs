@@ -51,7 +51,7 @@ pub use self::constant_layout_init::{
     BranchOp, BranchOperand, BranchOrChip, BranchValue, FoldChip, FoldInput, StaticAssertChip,
     CL04_AND_TASK_KIND, CL04_COND_TASK_KIND, CL04_OR_TASK_KIND, CL07_ASSERT_TASK_KIND,
 };
-pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput};
+pub use self::ir_lower::{project_ir_function_input, IrFunctionChip, IrFunctionInput, LocalExpr};
 pub use self::lex::{
     convert_float_parts, decimal_magnitude, decode_char_units, decode_escape_body,
     decode_string_body, element_for_prefix, encode_units_le, fold_char_value, is_keyword,
@@ -106,9 +106,12 @@ pub use self::preprocess::{
     PP23_TASK_KIND, PP25_TASK_KIND, PP27_TASK_KIND, PP28_TASK_KIND, PP_LINE_MAX,
 };
 pub use self::semantic::{
-    project_se_binary_input, project_se_function_input, project_se_literal_input,
-    project_se_return_input, SeBinChip, SeBinaryInput, SeFuncChip, SeFunctionInput, SeLitChip,
-    SeLiteralInput, SeRetChip, SeReturnInput, SE_FUNC_TASK_KIND,
+    project_se_assignment_input, project_se_binary_input, project_se_call_input,
+    project_se_function_input, project_se_identifier_input, project_se_literal_input,
+    project_se_return_input, project_se_unary_input, SeAssignmentChip, SeAssignmentInput,
+    SeBinChip, SeBinaryInput, SeCallChip, SeCallInput, SeFuncChip, SeFunctionInput,
+    SeIdentifierChip, SeIdentifierInput, SeLitChip, SeLiteralInput, SeRetChip, SeReturnInput,
+    SeUnaryChip, SeUnaryInput, SE_FUNC_TASK_KIND,
 };
 pub use self::symbols::{
     in_ordinary_namespace, project_ty_declare_input, project_ty_lookup_input,

@@ -1,10 +1,13 @@
 # T00 / H00 Implementation Status
 
 Status: **H00 tooling scaffold only — H00 is not complete.** The H01 probe
-harness under `tools/torture/probe/**` is a separate area that exists but has
-never run; no probe report or report hash exists (see
-[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4.1 and the
-[probe README](../../tools/torture/probe/README.md)).
+harness under `tools/torture/probe/**` has now produced one containerized
+AArch64 Linux report, and H07 classification/attestation pass for that report
+(see [the probe run record](../reviews/target-probe/2026-11-09_DOCKER_AARCH64_PROBE.md),
+[T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4.1, and the
+[probe README](../../tools/torture/probe/README.md)). The official T00
+reference baseline/substrate and the corpus remain unfrozen; no GCC pass rate
+exists.
 Owner path: the verifier crate (`tools/torture/src/**`, `tools/torture/tests/**`,
 `tools/torture/Cargo.toml`, `tools/torture/Cargo.lock`) and
 `tools/torture/README.md` (plus this note). `tools/torture/probe/**` and
@@ -128,8 +131,9 @@ still out of scope.
   lock; it does not produce one and never touches the network.
 - **No GCC/Clang/DejaGnu execution and no pass-rate output.** Reference-baseline
   orchestration is future H02 work.
-- **Not wired into CI.** `.github/workflows/ci.yml` is out of scope for this task
-  and was not modified. The package is standalone like `tools/chip-lint`.
+- **CI wiring exists.** `.github/workflows/ci.yml` now runs `tools/torture`
+  formatting, Clippy, and tests in addition to the other packages. This note's
+  original H00 change did not modify CI; that historical scope is superseded.
 
 ## Validation evidence
 
@@ -151,8 +155,7 @@ Results are recorded in the handoff message for this change.
    freeze the lock — or leave it draft.
 2. H01 owner: fill `substrate.*` with the real Linux CI/VM runner, toolchain,
    sysroot, assembler, and linker.
-3. Integration owner: decide whether to add the package to CI and whether the
-   lock schema needs a shared contract entry. This scaffold does not claim that
-   decision.
+3. Integration owner: decide whether the lock schema needs a shared contract
+   entry. CI wiring already exists; it is not an open decision.
 4. Legal review: confirm the recorded license/provenance per asset and that no
    GPL material is redistributed in the MIT tree. The tool cannot do this.

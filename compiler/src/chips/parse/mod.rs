@@ -6,6 +6,8 @@
 //! Group directory per `docs/tasks/PARALLEL_EXECUTION.md` §2: one file per
 //! chip (`<group>/<snake_name>.rs`); the integrator owns this `mod.rs`.
 
+// Unregistered parse drafts (`pa_cast`, `pa_decl_spec`, `pa_ext_dispatch`,
+// `pa_init`, `pa_stmt`) are parked; see docs/tasks/B_INT_00_DRAFT_DISPOSITION.md.
 mod pa_binary;
 mod pa_block;
 mod pa_declarator;

@@ -1,5 +1,11 @@
 # CI Gating Audit — 2026-10-05
 
+> **Superseded for current CI status (2026-11-07).** This is a historical audit of
+> the workflows as they existed on 2026-10-05. Current
+> `.github/workflows/ci.yml` also gates `tools/torture` formatting, Clippy, and
+> tests and runs the chip-lint scan over `compiler/src/chips`; the test counts
+> below are historical. The findings are retained unchanged for provenance.
+
 ## Status and scope
 
 - Status: **read-only audit record**. This document is not an ADR, contract

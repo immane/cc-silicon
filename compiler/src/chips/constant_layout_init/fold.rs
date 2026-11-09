@@ -2,9 +2,10 @@
 // chips/fold.rs — T08 const-fold worker (Wave 1 template chip, CL02/CL03
 // integer subset)
 //
-// Reads committed literals, folds with checked addition, appends exactly
-// one `ConstRecord`, and completes with its predicted reference. Only the
-// M1 exercised subset is produced: decimal `Integer` literals, `None`
+// Reads committed literals and the committed constant type, folds with
+// checked addition, appends exactly one typed `ConstRecord`, and completes
+// with its predicted reference. Only the M1 exercised subset is produced:
+// decimal `Integer` literals, `None`
 // suffix, `Int` candidate, unsigned operands, `Add` operator. Anything else
 // fails with an explicit `Unsupported` diagnostic — never a silent default,
 // never a fabricated value.
@@ -15,10 +16,12 @@
 // adapter below owns the narrow projection.
 // ============================================================================
 
-use crate::bus::{ConstRecord, LiteralRecord};
+use crate::bus::{
+    ConstRecord, ConstValue, IntRank, IntegerConst, LiteralRecord, TypeKind, TypeRecord,
+};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
-use crate::ids::{LiteralId, NodeId, RecordRef, TaskId};
+use crate::ids::{LiteralId, NodeId, RecordRef, TaskId, TypeId};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, G1_FOLD_CHIP};
 use crate::records::{G1DraftBody, RecordDraft};
 use crate::snapshot::{LiteralKind, LiteralSuffix, Lx08CandidateType};
@@ -32,9 +35,10 @@ use std::collections::BTreeMap;
 /// logic may observe.
 ///
 /// Built by the adapter from manifest-declared reads (`lex.literals` for
-/// operand bodies) plus mechanical dispatch facts (task header, const-arena
-/// count, configured bit budget). No other arena, queue, or config field is
-/// visible here by construction.
+/// operand bodies, `sem.records`/`types.records` for the committed constant
+/// type) plus mechanical dispatch facts (task header, const-arena count,
+/// configured bit budget). No other arena, queue, or config field is visible
+/// here by construction.
 #[derive(Clone, Debug)]
 pub struct FoldInput {
     /// Dispatched task.
@@ -54,8 +58,62 @@ pub struct FoldInput {
     pub nodes_present: std::collections::BTreeSet<NodeId>,
     /// `consts` arena count at dispatch (single-append prediction base).
     pub consts_allocated: u32,
+    /// Resolved committed constant type and body, if the request's type
+    /// facts are present (`/42`). Missing/ambiguous facts stay `None` and
+    /// fail loudly in `compute`.
+    pub constant_type: Option<(TypeId, TypeRecord)>,
     /// Configured constant bit budget (`limits.max_const_bits`).
     pub max_const_bits: u32,
+}
+
+/// Resolve the committed constant type for one decoded request.
+///
+/// Binary requests use the committed `SemRecord.ty` of their
+/// `BinaryExpression` node. Literal requests use the unique committed
+/// canonical `int` type because the frozen literal-form wire payload carries
+/// no node. Missing or ambiguous facts yield `None`.
+fn resolve_constant_type(
+    bus: &crate::bus::CompilerBus,
+    request: &ConstantRequest,
+) -> Option<(TypeId, TypeRecord)> {
+    match request {
+        ConstantRequest::Binary { node, .. } => {
+            let mut found = None;
+            for (_, sem) in bus.arenas.sem.iter() {
+                if sem.node == *node {
+                    if found.is_some() {
+                        return None;
+                    }
+                    found = Some(sem.ty);
+                }
+            }
+            let ty = found?;
+            bus.arenas
+                .types
+                .get(ty)
+                .ok()
+                .cloned()
+                .map(|body| (ty, body))
+        }
+        ConstantRequest::Literal { .. } => {
+            let mut found = None;
+            for (id, body) in bus.arenas.types.iter() {
+                if matches!(
+                    body.kind,
+                    TypeKind::Int {
+                        rank: IntRank::Int,
+                        signed: true
+                    }
+                ) {
+                    if found.is_some() {
+                        return None;
+                    }
+                    found = Some((id, body.clone()));
+                }
+            }
+            found
+        }
+    }
 }
 
 /// Build the narrow projection for one dispatched task.
@@ -87,6 +145,9 @@ pub fn project_fold_input(
             }
         }
     }
+    let constant_type = ConstantRequest::decode(record.kind, &record.payload)
+        .ok()
+        .and_then(|request| resolve_constant_type(bus, &request));
     Ok(FoldInput {
         task,
         kind: record.kind,
@@ -95,6 +156,7 @@ pub fn project_fold_input(
         literals,
         nodes_present,
         consts_allocated: bus.arenas.consts.allocated(),
+        constant_type,
         max_const_bits: bus.limits().max_const_bits,
     })
 }
@@ -127,6 +189,8 @@ impl Worker for FoldChip {
                 FieldPath::new(StoreId::Tasks, "active.owner"),
                 FieldPath::new(StoreId::Lex, "literals"),
                 FieldPath::new(StoreId::Constants, "records"),
+                FieldPath::new(StoreId::Sem, "records"),
+                FieldPath::new(StoreId::Types, "records"),
                 FieldPath::new(StoreId::Config, "limits"),
             ],
             writes: vec![FieldPath::new(StoreId::Constants, "records")],
@@ -202,6 +266,15 @@ impl FoldChip {
         input: &FoldInput,
         request: &ConstantRequest,
     ) -> Result<ConstRecord, DiagnosticDraft> {
+        let (constant_ty, constant_type) = input
+            .constant_type
+            .as_ref()
+            .ok_or_else(|| missing("constant type", 0))?;
+        if !matches!(constant_type.kind, TypeKind::Int { .. }) {
+            return Err(DiagnosticDraft::unsupported(
+                "integer constant does not have an integer type",
+            ));
+        }
         match request {
             ConstantRequest::Literal { literal, .. } => {
                 let record = input
@@ -209,12 +282,13 @@ impl FoldChip {
                     .get(literal)
                     .ok_or_else(|| missing("literal", literal.index()))?;
                 check_subset(record)?;
-                let folded = ConstRecord {
-                    value: record.value.clone(),
-                    negative: record.negative,
-                };
-                check_budget(input.max_const_bits, &folded.value)?;
-                Ok(folded)
+                let value = IntegerConst::new(record.value.clone(), record.negative);
+                check_budget(input.max_const_bits, &value.magnitude)?;
+                Ok(ConstRecord {
+                    ty: *constant_ty,
+                    value: ConstValue::Integer(value),
+                    origins: vec![*literal],
+                })
             }
             ConstantRequest::Binary { node, lhs, rhs, .. } => {
                 // `/9` PCR-08: the binary node must be a live committed node.
@@ -238,11 +312,15 @@ impl FoldChip {
                         "signed literals are outside the M1 exercised subset",
                     ));
                 }
-                let value = add_magnitudes(&left.value, &right.value);
-                check_budget(input.max_const_bits, &value)?;
+                let magnitude = add_magnitudes(&left.value, &right.value);
+                check_budget(input.max_const_bits, &magnitude)?;
                 Ok(ConstRecord {
-                    value,
-                    negative: false,
+                    ty: *constant_ty,
+                    value: ConstValue::Integer(IntegerConst {
+                        magnitude,
+                        negative: false,
+                    }),
+                    origins: vec![*lhs, *rhs],
                 })
             }
         }

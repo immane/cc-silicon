@@ -2,11 +2,12 @@
 // chips/semantic/se_return.rs — T07 SE21 return-statement worker
 // (Wave 2 slice 5, `/14`)
 //
-// Reads one committed `Return` node, checks its single `BinaryAdd` operand
+// Reads one committed `Return` node, checks its single covered operand
 // (which needs a committed `int`-typed `SemRecord`), and appends one
-// `SemRecord` carrying the function return type. M1 is the `int`-to-`int`
-// identity corner: a type mismatch fails loudly instead of recording a
-// conversion plan (plans arrive with non-identity conversions).
+// `SemRecord` carrying the function return type. All covered functions
+// return canonical `int`: the identity corner applies globally, so no
+// unique-function-type scan is performed. A type mismatch fails loudly
+// instead of recording a conversion plan.
 // ============================================================================
 
 use super::se_literal::{find_m1_int, sem_for_node};
@@ -93,15 +94,29 @@ pub fn project_se_return_input(
             format!("se-return reads missing operand {}", operand.index()),
         )
     })?;
-    if operand_body.kind != NodeKind::BinaryAdd {
+    if !matches!(
+        operand_body.kind,
+        NodeKind::IntLiteral
+            | NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+            | NodeKind::UnaryPlus
+            | NodeKind::UnaryMinus
+            | NodeKind::Identifier
+            | NodeKind::Call
+    ) {
         return Err(DiagnosticDraft::unsupported(
-            "se-return of a non-additive operand",
+            "se-return of a non-covered operand",
         ));
     }
-    // The operand needs its committed `int`-typed `SemRecord`.
+    // All covered functions return canonical `int`; the operand fact is the
+    // identity check. No global "single function type" scan is applied:
+    // several direct-call signatures may be committed in one TU.
     let int = find_m1_int(bus)?;
-    let operand_ty = match sem_for_node(bus, operand) {
-        Some((_, sem)) if sem.ty == int => sem.ty,
+    match sem_for_node(bus, operand) {
+        Some((_, sem)) if sem.ty == int => {}
         Some(_) => {
             return Err(DiagnosticDraft::unsupported(
                 "se-return of a non-int operand",
@@ -113,37 +128,12 @@ pub fn project_se_return_input(
                 format!("se-return reads unchecked operand {}", operand.index()),
             ));
         }
-    };
-    // The M1 function return type: the single committed `Function` type;
-    // the M1 identity corner requires it to be `int`, matching the operand.
-    let mut func_result = None;
-    for (_, record) in bus.arenas.types.iter() {
-        if let crate::bus::TypeKind::Function { result, .. } = &record.kind {
-            if func_result.is_some() {
-                return Err(DiagnosticDraft::error(
-                    DiagnosticCode::new(DiagGroup::Task, 4),
-                    "duplicate function type",
-                ));
-            }
-            func_result = Some(*result);
-        }
-    }
-    let Some(func_result) = func_result else {
-        return Err(DiagnosticDraft::error(
-            DiagnosticCode::new(DiagGroup::Task, 4),
-            "function type is not committed",
-        ));
-    };
-    if operand_ty != func_result {
-        return Err(DiagnosticDraft::unsupported(
-            "se-return with a non-identity conversion",
-        ));
     }
     Ok(SeReturnInput {
         task,
         state: record.state.clone(),
         node,
-        return_ty: operand_ty,
+        return_ty: int,
         existing: sem_for_node(bus, node),
         sem_allocated: bus.arenas.sem.allocated(),
     })

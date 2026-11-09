@@ -5,8 +5,11 @@
 // Reads one committed C token plus its committed PP token
 // (payload: exactly `[Token, PpToken]`), appends one `LiteralRecord` with
 // `token: Some(committed TokenId)`, and completes with its predicted
-// reference. M1 exercised scope only: decimal digits, no suffix, `Int`
-// candidate, unsigned. Anything else fails with explicit `Unsupported`.
+// reference. Integer scope: decimal, leading-zero octal, and `0x` hexadecimal,
+// no suffix, `Int` candidate, unsigned. Unsuffixed zero-valued spellings keep
+// their original spelling but normalize to radix 10, so the decimal-only
+// commit/fold subset accepts them; nonzero octal/hex stays outside that subset.
+// Anything else fails with explicit `Unsupported`.
 // The decode input is the committed PP spelling/kind (DOC-10 resolution);
 // the C-token relation is the output-side publish-time back-link.
 // ============================================================================
@@ -164,15 +167,24 @@ impl LxDecodeLiteralChip {
                 DiagnosticDraft::unsupported("decode of a non-integer token"),
             )];
         }
-        if input.spelling.is_empty() || !input.spelling.iter().all(|byte| byte.is_ascii_digit()) {
+        let Some((radix, digits)) = integer_spelling_parts(&input.spelling) else {
             return vec![fail(
                 input.task,
                 DiagnosticDraft::unsupported(
-                    "literal outside the M1 exercised subset (decimal digits only)",
+                    "literal outside the supported integer subset (decimal/octal/hex, no suffix)",
                 ),
             )];
-        }
-        let value = decimal_magnitude(&input.spelling);
+        };
+        let value = radix_magnitude(digits, radix);
+        // Accepted zero-literal contract: a zero magnitude is emitted as
+        // radix 10 regardless of its octal/hex spelling, while `spelling`
+        // preserves the source text. Nonzero octal/hex keeps its lexical
+        // radix and is rejected by the decimal-only T08 subset gate.
+        let radix = if value.len() == 1 && value[0] == 0 {
+            10
+        } else {
+            radix
+        };
         let predicted = LiteralId::from_index(input.literals_allocated);
         vec![
             Proposal::AppendRecords {
@@ -185,7 +197,7 @@ impl LxDecodeLiteralChip {
                     bodies: vec![G1DraftBody::Literal(crate::bus::LiteralRecord {
                         token: Some(input.token),
                         kind: LiteralKind::Integer,
-                        radix: 10,
+                        radix,
                         suffix: LiteralSuffix::None,
                         value,
                         negative: false,
@@ -202,15 +214,53 @@ impl LxDecodeLiteralChip {
     }
 }
 
-/// Decimal digit string to minimal big-endian magnitude bytes (at least one
-/// byte). Mechanical base-10 accumulation with no host-width overflow: an
-/// `n`-digit input always fits, digit by digit.
-pub fn decimal_magnitude(digits: &[u8]) -> Vec<u8> {
+/// Classify an integer spelling into `(radix, digits)`.
+///
+/// Supported: decimal (`10`), leading-zero octal (`010`), and `0x`/`0X`
+/// hexadecimal (`0x10`). Suffixes, digit separators, floats, and malformed
+/// digit sequences are rejected. The empty digit slice is valid only for the
+/// octal spelling `0` and denotes magnitude zero. The returned radix is
+/// lexical; `compute` normalizes zero-valued magnitudes to radix 10.
+pub fn integer_spelling_parts(spelling: &[u8]) -> Option<(u8, &[u8])> {
+    if spelling.is_empty() {
+        return None;
+    }
+    if spelling.len() >= 2 && spelling[0] == b'0' && matches!(spelling[1], b'x' | b'X') {
+        let digits = &spelling[2..];
+        if digits.is_empty() || !digits.iter().all(u8::is_ascii_hexdigit) {
+            return None;
+        }
+        return Some((16, digits));
+    }
+    if spelling[0] == b'0' {
+        let digits = &spelling[1..];
+        if digits.iter().all(|byte| matches!(byte, b'0'..=b'7')) {
+            return Some((8, digits));
+        }
+        return None;
+    }
+    if spelling.iter().all(u8::is_ascii_digit) {
+        return Some((10, spelling));
+    }
+    None
+}
+
+/// Digit string in `radix` to minimal big-endian magnitude bytes (at least one
+/// byte). Mechanical accumulation with no host-width overflow: an `n`-digit
+/// input always fits, digit by digit.
+pub fn radix_magnitude(digits: &[u8], radix: u8) -> Vec<u8> {
+    debug_assert!(matches!(radix, 8 | 10 | 16));
     let mut little: Vec<u8> = vec![0];
     for digit in digits {
-        let mut carry = (digit - b'0') as u16;
+        let digit = match digit {
+            b'0'..=b'9' => (digit - b'0') as u16,
+            b'a'..=b'f' => (digit - b'a' + 10) as u16,
+            b'A'..=b'F' => (digit - b'A' + 10) as u16,
+            _ => continue,
+        };
+        let mut carry = digit;
         for byte in little.iter_mut() {
-            let value = (*byte as u16) * 10 + carry;
+            let value = (*byte as u16) * u16::from(radix) + carry;
             *byte = (value & 0xff) as u8;
             carry = value >> 8;
         }
@@ -223,4 +273,9 @@ pub fn decimal_magnitude(digits: &[u8]) -> Vec<u8> {
         little.pop();
     }
     little.iter().rev().copied().collect()
+}
+
+/// Decimal digit string to minimal big-endian magnitude bytes.
+pub fn decimal_magnitude(digits: &[u8]) -> Vec<u8> {
+    radix_magnitude(digits, 10)
 }

@@ -1,15 +1,15 @@
 // ============================================================================
 // chips/semantic/se_function.rs — T07 SE29 function-definition worker
-// (Wave 3 slice 14, `/39`)
+// (Wave 3 slice 14, `/39`; `/54` parameterized direct-call definitions)
 //
-// Reads one committed `FunctionDefinition` node (`int main(void){...}`),
-// checks the M1 `(void)`-only declarator shape (no K&R identifier list),
-// the single committed TY17 `int(void)` signature, the declared `main`
-// symbol, and the committed `Return` child fact, then appends one
-// `SemRecord` carrying the signature only (no `Return`-role plan; the
-// `Return` node owns that). Reuses a committed `SemRecord` when one
-// already exists for the node (preserves exactly-one per node). Anything
-// outside the M1 checked shape fails explicitly, never a fabricated plan.
+// Reads one committed `FunctionDefinition` node, checks its declarator
+// shape (no child for `(void)`, or one `ParameterList` with 1..8 implicit
+// `int` `Parameter` leaves), selects the unique committed function type
+// matching that parameter count, requires the declared function symbol to
+// carry that type, and checks the committed `Return` child fact. Appends
+// one `SemRecord` carrying the signature only (the `Return` node owns its
+// own fact), or reuses a committed one. Anything outside the checked shape
+// fails explicitly, never a fabricated plan.
 // ============================================================================
 
 use super::se_literal::{find_m1_int, sem_for_node};
@@ -36,7 +36,7 @@ pub struct SeFunctionInput {
     pub state: TaskState,
     /// Checked node.
     pub node: NodeId,
-    /// Committed TY17 `int(void)` signature carried by the record.
+    /// Committed function signature carried by the record.
     pub signature: TypeId,
     /// Committed `SemRecord` for the node, if any.
     pub existing: Option<(SemId, SemRecord)>,
@@ -122,56 +122,112 @@ pub fn project_se_function_input(
             "se-function of a non-declarator definition",
         ));
     }
-    // M1 is `(void)`-only: the declarator carries no identifier list, so
-    // any child is an old-style (K&R) parameter list, explicitly
-    // unsupported rather than silently accepted.
-    if !declarator_body.children.is_empty() {
-        return Err(DiagnosticDraft::unsupported(
-            "se-function of an old-style (K&R) parameter list",
-        ));
-    }
-    // Canonical `int`, then the single committed TY17 `int(void)`
-    // signature: `Function { result: int, params: [], prototype: true,
-    // variadic: false }`. Zero signatures is missing input; more than one
-    // is an ambiguous handoff (DEFECT); a non-`(void)` shape is unsupported.
-    let int = find_m1_int(bus)?;
-    let mut signature = None;
-    for (id, record) in bus.arenas.types.iter() {
-        if let crate::bus::TypeKind::Function { .. } = &record.kind {
-            if signature.is_some() {
-                return Err(DiagnosticDraft::error(
-                    DiagnosticCode::new(DiagGroup::Task, 4),
-                    "duplicate function type",
+    // Declarator shape: no child is `(void)`; one `ParameterList` child
+    // carries 1..8 implicit-`int` `Parameter` leaves. Anything else is an
+    // old-style or malformed parameter list, explicitly unsupported.
+    let param_count = if declarator_body.children.is_empty() {
+        0
+    } else if declarator_body.children.len() == 1 {
+        let list = declarator_body.children[0];
+        let list_body = bus
+            .arenas
+            .nodes
+            .get(list)
+            .map_err(|_| missing("node", list.index()))?;
+        if list_body.kind != NodeKind::ParameterList {
+            return Err(DiagnosticDraft::unsupported(
+                "se-function of an old-style (K&R) parameter list",
+            ));
+        }
+        if !(1..=8).contains(&list_body.children.len()) {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!(
+                    "se-function parameter list must carry 1..8 parameters, found {}",
+                    list_body.children.len()
+                ),
+            ));
+        }
+        let mut names = Vec::new();
+        for parameter in &list_body.children {
+            let parameter_body = bus
+                .arenas
+                .nodes
+                .get(*parameter)
+                .map_err(|_| missing("node", parameter.index()))?;
+            if parameter_body.kind != NodeKind::Parameter || !parameter_body.children.is_empty() {
+                return Err(DiagnosticDraft::unsupported(
+                    "se-function of a non-parameter parameter-list child",
                 ));
             }
-            signature = Some(id);
+            let Some(name) = parameter_body.name else {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!("se-function reads nameless parameter {}", parameter.index()),
+                ));
+            };
+            if names.contains(&name) {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Semantic, 1),
+                    "duplicate parameter name in function definition",
+                ));
+            }
+            names.push(name);
         }
-    }
-    let Some(signature) = signature else {
-        return Err(DiagnosticDraft::error(
-            DiagnosticCode::new(DiagGroup::Task, 4),
-            "function type is not committed",
+        list_body.children.len()
+    } else {
+        return Err(DiagnosticDraft::unsupported(
+            "se-function of a malformed declarator child list",
         ));
     };
-    let signature_body = bus
-        .arenas
-        .types
-        .get(signature)
-        .map_err(|_| missing("type", signature.index()))?;
-    match &signature_body.kind {
-        crate::bus::TypeKind::Function {
+    // Canonical `int`, then the unique committed function type matching this
+    // declarator's parameter count. All parameter and result types are
+    // canonical `int`; several signatures may be committed in one TU.
+    let int = find_m1_int(bus)?;
+    let mut signature = None;
+    let mut count_matches = 0usize;
+    for (id, record) in bus.arenas.types.iter() {
+        if let crate::bus::TypeKind::Function {
             result,
             params,
             prototype,
             variadic,
-        } if *result == int && params.is_empty() && *prototype && !*variadic => {}
-        _ => {
-            return Err(DiagnosticDraft::unsupported(
-                "se-function of a non-M1 signature: exactly `int(void)` required",
-            ));
+        } = &record.kind
+        {
+            if params.len() != param_count {
+                continue;
+            }
+            count_matches += 1;
+            if *result == int
+                && params.iter().all(|param| *param == int)
+                && *prototype
+                && !*variadic
+            {
+                if signature.is_some() {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        "duplicate function type for this parameter count",
+                    ));
+                }
+                signature = Some(id);
+            }
         }
     }
-    // The declared `main` symbol: exactly one symbol declared at this
+    let signature = match signature {
+        Some(signature) => signature,
+        None if count_matches == 0 => {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "function type is not committed",
+            ));
+        }
+        None => {
+            return Err(DiagnosticDraft::unsupported(
+                "se-function of a non-M1 signature: canonical int result and parameters required",
+            ));
+        }
+    };
+    // The declared function symbol: exactly one symbol declared at this
     // declarator, typed with the checked signature. A missing or
     // divergently-typed symbol fails loudly; duplicates are a DEFECT.
     let mut symbol = None;
@@ -192,6 +248,11 @@ pub fn project_se_function_input(
             "se-function reads undeclared function",
         ));
     };
+    if symbol_body.kind != crate::bus::SymbolKind::Function {
+        return Err(DiagnosticDraft::unsupported(
+            "se-function with a non-function symbol",
+        ));
+    }
     match symbol_body.ty {
         Some(ty) if ty == signature => {}
         Some(_) => {
@@ -216,12 +277,41 @@ pub fn project_se_function_input(
         .nodes
         .get(compound)
         .map_err(|_| missing("node", compound.index()))?;
-    if compound_body.kind != NodeKind::Compound || compound_body.children.len() != 1 {
+    if compound_body.kind != NodeKind::Compound || compound_body.children.is_empty() {
         return Err(DiagnosticDraft::unsupported(
-            "se-function of a multi-statement body",
+            "se-function of a non-M1 block body",
         ));
     }
-    let ret = compound_body.children[0];
+    let Some(ret) = compound_body.children.last().copied() else {
+        return Err(DiagnosticDraft::unsupported(
+            "se-function of an empty block body",
+        ));
+    };
+    if compound_body.children.len() > 1 {
+        let declaration = compound_body.children[0];
+        let declaration_body = bus
+            .arenas
+            .nodes
+            .get(declaration)
+            .map_err(|_| missing("node", declaration.index()))?;
+        if declaration_body.kind != NodeKind::Declaration || declaration_body.children.len() != 3 {
+            return Err(DiagnosticDraft::unsupported(
+                "se-function of a non-covered declaration",
+            ));
+        }
+        for statement in &compound_body.children[1..compound_body.children.len() - 1] {
+            let statement_body = bus
+                .arenas
+                .nodes
+                .get(*statement)
+                .map_err(|_| missing("node", statement.index()))?;
+            if statement_body.kind != NodeKind::Assignment {
+                return Err(DiagnosticDraft::unsupported(
+                    "se-function of a non-assignment statement",
+                ));
+            }
+        }
+    }
     let ret_body = bus
         .arenas
         .nodes

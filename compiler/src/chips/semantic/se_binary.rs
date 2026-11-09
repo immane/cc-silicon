@@ -34,6 +34,8 @@ pub struct SeBinaryInput {
     pub node: NodeId,
     /// Operand `(node, literal)` leaves in source order.
     pub leaves: Vec<(NodeId, LiteralId)>,
+    /// Whether the literal/literal additive fold applies.
+    pub foldable: bool,
     /// Canonical `int` type.
     pub int: TypeId,
     /// Committed `SemRecord` for the node, if any.
@@ -80,9 +82,16 @@ pub fn project_se_binary_input(
             format!("se-binary reads missing node {}", node.index()),
         )
     })?;
-    if node_body.kind != NodeKind::BinaryAdd {
+    if !matches!(
+        node_body.kind,
+        NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+    ) {
         return Err(DiagnosticDraft::unsupported(
-            "se-binary of a non-additive node",
+            "se-binary of a non-covered binary node",
         ));
     }
     if node_body.children.len() != 2 {
@@ -100,23 +109,6 @@ pub fn project_se_binary_input(
                 format!("se-binary reads missing operand {}", child.index()),
             )
         })?;
-        if child_body.kind != NodeKind::IntLiteral {
-            return Err(DiagnosticDraft::unsupported(
-                "se-binary of a non-literal operand",
-            ));
-        }
-        let Some(literal) = child_body.literal else {
-            return Err(DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                format!("se-binary reads literal-less operand {}", child.index()),
-            ));
-        };
-        if bus.arenas.literals.get(literal).is_err() {
-            return Err(DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                format!("se-binary reads missing literal {}", literal.index()),
-            ));
-        }
         // Each operand leaf needs its committed `SemRecord` (checked first,
         // in task order) with the canonical `int` type.
         match sem_for_node(bus, *child) {
@@ -133,13 +125,45 @@ pub fn project_se_binary_input(
                 ));
             }
         }
-        leaves.push((*child, literal));
+        match child_body.kind {
+            NodeKind::IntLiteral => {
+                let Some(literal) = child_body.literal else {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("se-binary reads literal-less operand {}", child.index()),
+                    ));
+                };
+                if bus.arenas.literals.get(literal).is_err() {
+                    return Err(DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("se-binary reads missing literal {}", literal.index()),
+                    ));
+                }
+                leaves.push((*child, literal));
+            }
+            NodeKind::Identifier
+            | NodeKind::Call
+            | NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+            | NodeKind::UnaryPlus
+            | NodeKind::UnaryMinus => {}
+            _ => {
+                return Err(DiagnosticDraft::unsupported(
+                    "se-binary of a non-covered operand",
+                ));
+            }
+        }
     }
+    let foldable = node_body.kind == NodeKind::BinaryAdd && leaves.len() == 2;
     Ok(SeBinaryInput {
         task,
         state: record.state.clone(),
         node,
         leaves,
+        foldable,
         int,
         existing: sem_for_node(bus, node),
         sem_allocated: bus.arenas.sem.allocated(),
@@ -210,23 +234,27 @@ impl SeBinChip {
                 value: ResultValue::Record(RecordRef::Sem(existing)),
             }];
         }
-        vec![
-            Proposal::AppendRecords {
-                task: input.task,
-                batch: AppendBatch {
-                    records: vec![RecordDraft {
-                        family: crate::ids::RecordFamily::Sem,
-                        index: DraftRef(0),
-                    }],
-                    bodies: vec![G1DraftBody::Sem(SemRecord {
-                        node: input.node,
-                        ty: input.int,
-                        category: ValueCategory::NonLvalue,
-                        effects: EffectMask(0),
-                    })],
-                },
+        let predicted = crate::ids::SemId::from_index(input.sem_allocated);
+        let mut proposals = vec![Proposal::AppendRecords {
+            task: input.task,
+            batch: AppendBatch {
+                records: vec![RecordDraft {
+                    family: crate::ids::RecordFamily::Sem,
+                    index: DraftRef(0),
+                }],
+                bodies: vec![G1DraftBody::Sem(SemRecord {
+                    node: input.node,
+                    ty: input.int,
+                    category: ValueCategory::NonLvalue,
+                    effects: EffectMask(0),
+                })],
             },
-            Proposal::Enqueue(TaskDraft {
+        }];
+        // Literal/literal still forwards the identical fold request. A
+        // non-literal operand (for example the `/50` local identifier) has
+        // no constant fold; the semantic fact alone is the result.
+        if input.foldable {
+            proposals.push(Proposal::Enqueue(TaskDraft {
                 kind: TaskKind::CONSTANT_CONST_FOLD,
                 owner: crate::manifest::G1_FOLD_CHIP,
                 parent: Some(input.task),
@@ -236,11 +264,17 @@ impl SeBinChip {
                     RecordRef::Literal(input.leaves[1].1),
                 ]),
                 continuation: None,
-            }),
-            Proposal::AwaitChildren {
+            }));
+            proposals.push(Proposal::AwaitChildren {
                 task: input.task,
                 children: vec![ChildRef::OwnBatch(0)],
-            },
-        ]
+            });
+        } else {
+            proposals.push(Proposal::Complete {
+                task: input.task,
+                value: ResultValue::Record(RecordRef::Sem(predicted)),
+            });
+        }
+        proposals
     }
 }

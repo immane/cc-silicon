@@ -179,6 +179,70 @@ fn results_are_consumed_once() {
 }
 
 #[test]
+fn result_version_is_the_global_commit_ordinal() {
+    let mut bus = bus_with_manifest();
+    let first = running_task(&mut bus, TaskKind::CONTROL_NOOP);
+    let second = running_task(&mut bus, TaskKind::CONTROL_NOOP);
+    let complete = |task: TaskId| {
+        tag(
+            task,
+            Proposal::Complete {
+                task,
+                value: ResultValue::Empty,
+            },
+        )
+    };
+
+    let report = commit_proposals(&mut bus, vec![complete(first)]).unwrap();
+    let (_, result) = report.completed[0];
+    assert_eq!(bus.arenas.results.get(result).unwrap().version, 1);
+    assert_eq!(bus.control.next_commit_ordinal, 1);
+
+    // A failed commit consumes no ordinal.
+    let error = commit_proposals(&mut bus, vec![complete(second), complete(second)]).unwrap_err();
+    assert!(matches!(error, CommitError::DuplicateCompletion { task } if task == second));
+    assert_eq!(bus.control.next_commit_ordinal, 1);
+    assert_eq!(bus.arenas.results.allocated(), 1);
+
+    let report = commit_proposals(&mut bus, vec![complete(second)]).unwrap();
+    let (_, result) = report.completed[0];
+    assert_eq!(bus.arenas.results.get(result).unwrap().version, 2);
+    assert_eq!(bus.control.next_commit_ordinal, 2);
+}
+
+#[test]
+fn result_version_sequence_is_deterministic() {
+    fn run() -> Vec<u64> {
+        let mut bus = bus_with_manifest();
+        let tasks = [
+            running_task(&mut bus, TaskKind::CONTROL_NOOP),
+            running_task(&mut bus, TaskKind::CONTROL_NOOP),
+        ];
+        for task in tasks {
+            commit_proposals(
+                &mut bus,
+                vec![tag(
+                    task,
+                    Proposal::Complete {
+                        task,
+                        value: ResultValue::Empty,
+                    },
+                )],
+            )
+            .unwrap();
+        }
+        bus.arenas
+            .results
+            .iter()
+            .map(|(_, result)| result.version)
+            .collect()
+    }
+
+    assert_eq!(run(), vec![1, 2]);
+    assert_eq!(run(), run());
+}
+
+#[test]
 fn enqueued_tasks_are_ready_next_tick() {
     let mut bus = bus_with_manifest();
     let parent = running_task(&mut bus, TaskKind::CONTROL_NOOP);
@@ -896,9 +960,9 @@ fn proposal_transitions_and_wire_tags_are_frozen() {
 }
 
 #[test]
-fn result_value_set_is_unchanged_five_variants() {
-    // Exhaustive match: adding a variant (e.g. DraftRecords) fails this test
-    // at compile time by design.
+fn result_value_set_is_six_variants() {
+    // Exhaustive match: adding a variant fails this test at compile time by
+    // design.
     fn tag(value: &ResultValue) -> u8 {
         match value {
             ResultValue::Empty => 0,
@@ -906,6 +970,7 @@ fn result_value_set_is_unchanged_five_variants() {
             ResultValue::Record(_) => 2,
             ResultValue::Records(_) => 3,
             ResultValue::Diagnostic(_) => 4,
+            ResultValue::Integer(_) => 5,
         }
     }
     assert_eq!(tag(&ResultValue::Empty), 0);
@@ -916,6 +981,12 @@ fn result_value_set_is_unchanged_five_variants() {
         2
     );
     assert_eq!(tag(&ResultValue::Records(vec![])), 3);
+    assert_eq!(
+        tag(&ResultValue::Integer(
+            cc_silicon_compiler::bus::IntegerConst::new(vec![5], false)
+        )),
+        5
+    );
 }
 
 #[test]
@@ -1575,6 +1646,7 @@ fn append_reservation_is_deterministic() {
     assert_eq!(plan.plan_name(&mut bus, 0, b"main").unwrap(), first);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan.get(0), Some(first));
+    assert_eq!(bus.store_versions.get(StoreId::Names), 1);
 
     // Resolved table: drafts look up, committed refs pass through.
     let mut table = ResolvedTable::new();

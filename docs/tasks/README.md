@@ -1,6 +1,6 @@
 # Silicon C Compiler: LLM Parallel-Task Master Plan
 
-Status: task design; the compiler is not yet implemented and the GCC pass rate has not yet been measured. This document does not promise that parallel code generation alone can reach 99%+.
+Status: task design; there is no complete compiler and the GCC pass rate has not been measured. Partial PP/LX/PA/TY/SE/IR/VF worker slices, a candidate Part A evidence driver, the `/40` M1 A3 closure (SE29 dispatch, VF06 four-kind typed-fact set, T09 committed-fact consumption), the `/41` determinism/limits/replay closure, and the `/42` tagged, typed constant closure, the `/43` parser architecture/V1 AST common base, the `/44` IR/CFG common base, the `/45` constant v3 append, the `/46` type/layout/init common base, the `/47` diagnostic taxonomy, the `/48` probe-attested target baseline, the `/49` source-locals slice, the `/50` modeled-integer/local-add slice, the `/51` local binary-operator slice, the `/52` local expression-tree slice, the `/53` local assignment/statement slice, the `/54` direct-call schema, and the `/55` direct-call implementation exist under the current `t01-c01-c06/55` artifact; B3-03a adds host-only source `#define`/`#undef` driver orchestration and B3-03b adds bounded quoted `#include "..."` beside the including file, both without a contract bump; the M1 `--emit-asm` prototype can assemble/link/run the constant-return, local expression/assignment, and same-TU direct-call fixtures, but is not general codegen and has no memory, control flow, recursion, external calls, or wider ABI. This document does not promise that parallel code generation alone can reach 99%+.
 
 ## 1. Goals and Boundaries
 
@@ -8,7 +8,7 @@ Using `cc-silicon` as the framework, the planned compiler application is written
 
 Final acceptance: after freezing the revision, target platform, test inventory, and option matrix, the compile, execute, and execute/ieee rates of the GCC C torture suite must **each exceed 99%**, and a per-file full-matrix rate above 99% must also be reached. Gaming the score by skipping unimplemented features, modifying source code, hiding timeouts, or delegating to another C compiler is prohibited. See [T00](T00_GCC_TORTURE_GATE.md) for the exact definition.
 
-The recommended primary acceptance target is **aarch64-unknown-linux-gnu / ELF / LP64 / little-endian / AAPCS64**. The current macOS is a development host, not the runtime environment for that target; a Linux VM/CI or a trusted cross toolchain + runner must be established first. The ABI, object format, and long double of macOS arm64 must not be mixed in. The target **identity** is frozen (T01 §6 / ADR-0001); the T00 corpus/environment/option freeze is still pending, and concrete target values remain unverified until the Linux probe. The identity must not be changed without review.
+The recommended primary acceptance target is **aarch64-unknown-linux-gnu / ELF / LP64 / little-endian / AAPCS64**. The current macOS is a development host, not the runtime environment for that target; a Linux VM/CI or a trusted cross toolchain + runner must be established first. The ABI, object format, and long double of macOS arm64 must not be mixed in. The target **identity** is frozen (T01 §6 / ADR-0001); the T00 corpus/environment/option freeze is still pending. One pinned containerized AArch64 Linux probe has been classified/attested, but the official reference baseline/substrate remains open and the global artifact records `target_verification=probe-attested`. The identity must not be changed without review.
 
 Language evolution: minimal C subset → common C11 semantics → GNU C compatibility and torture gaps. To satisfy old tests, compatibility modes such as old-style functions and implicit declarations must also be explicitly supported; the standard mode must not be silently relaxed because of this. Modern C features and target-related extensions are driven by a frozen corpus list; do not claim "complete C" or "support for any GCC version" in advance.
 
@@ -21,8 +21,8 @@ Required reading:
 - [SFL schema draft](../architecture/SFL_SCHEMA_DRAFT.md): read/write sets, phase, capability declaration.
 - [Design blueprint](../design/ARCHITECTURAL_BLUEPRINT.md): design the bus, single responsibility, topology, and test bench first.
 - [Getting started](../design/GETTING_STARTED.md): the current framework API; do not assume that the new interfaces in the tasks already exist.
-- [Compiler development guardrails](COMPILER_DEVELOPMENT_GUARDRAILS.md): **accepted, policy-level and user-authorized** integrator contract supplement (2026-10-04), binding on new compiler-development work; it does **not** freeze the bus/schema and is **not** a `/6` acceptance — every pipeline/bus/schema mechanism it names remains PROPOSED and inert until the T01 integrator reconstitutes it in an accepted contract.
-- [ADR-0002: deterministic staged compiler pipelines](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md): **PROPOSED only**; it does not amend T01, does not change `t01-c01-c06/5`, and authorizes no implementation. It proposes staged pipelines with bounded in-flight tasks while keeping quota 1 as the correctness baseline.
+- [Compiler development guardrails](COMPILER_DEVELOPMENT_GUARDRAILS.md): **accepted, policy-level and user-authorized** integrator contract supplement (2026-10-04), binding on new compiler-development work; it does **not** freeze the bus/schema and is **not** a contract acceptance — every pipeline/bus/schema mechanism it names remains PROPOSED and inert until the T01 integrator reconstitutes it in an accepted contract.
+- [ADR-0002: deterministic staged compiler pipelines](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md): **PROPOSED only**; it does not amend T01, does not change the current `t01-c01-c06/55` artifact, and authorizes no implementation. It proposes staged pipelines with bounded in-flight tasks while keeping quota 1 as the correctness baseline.
 
 **Priority**: approved semantic contract > frozen task interface > single-chip implementation. The CPU dynamic arena is an **approved application-scoped extension** to "fixed arrays / no heap" (see [ADR-0001](../architecture/ADR-0001-COMPILER-DYNAMIC-ARENA.md) and T01); the framework's bus data remains fixed-layout / no-heap, while topology construction allocates and the default tick hot path does not (ADR-0001 §2). The extension is frozen in `compiler/` (C01–C06); it does not authorize C language chips or prove any compiler capability. The original design's descriptions that the compiler can guarantee no hidden state, automatic correctness, and automatic parallelism cannot be used as proof: the current trait does not enforce ZST, read/write permissions, or determinism.
 
@@ -50,20 +50,24 @@ Distinguish two kinds of backend: `cc-silicon::Backend` is the compute backend t
 | [Per-chip template](TASK_TEMPLATE.md) | Executable task header, exact field binding, three concrete examples of type promotion/declarator/variadic | T01 interface frozen |
 | [M1 vertical-slice acceptance (frontend half)](M1_VERTICAL_SLICE_ACCEPTANCE.md) | Planned target-independent (frontend) fixtures for `int main(void){return 2+3;}` (design only; no implementation, no execution, no pass rate) | T01 interface binding; target probe for target-dependent fixtures |
 | [M1 target acceptance](M1_TARGET_ACCEPTANCE.md) | Planned M1 vertical closed-loop end-to-end acceptance, including the Linux-probe-gated target half (design only; all checks NOT RUN) | T01, T09, T11; planned (not provisioned) Linux probe substrate for Part B |
+| [M1 source locals slice](M1_SOURCE_LOCALS_SLICE.md) | **Implemented `/49`–`/53` slice**: parse, check, lower, and execute local expression trees plus ordered assignments over one `int` through the M1 AArch64 prototype. Calls, memory, and control flow remain excluded | T01, T05, T06, T07, T09, T13, T11 prototype |
 | [Compiler development guardrails](COMPILER_DEVELOPMENT_GUARDRAILS.md) | **Accepted policy-level, user-authorized** integrator contract supplement for compiler-development work: binding-priority order, chip isolation, contract-change gate, complexity/performance discipline, modularity/fusion/traversal rules, pipeline-ready-but-quota-1 reconciliation, review checklist. Does **not** freeze `/6` | T01 interface; applies to all compiler-development work |
 | [ADR-0002 (PROPOSED)](../architecture/ADR-0002-DETERMINISTIC-COMPILER-PIPELINES.md) | Proposed ADR for deterministic staged compiler pipelines with bounded in-flight tasks (quota 1 baseline). **Proposal only**: not accepted, does not amend T01, does not change `t01-c01-c06/5`, authorizes no implementation | Proposed; requires integrator/owner acceptance |
 | [Gate 1 first-slice checklist](GATE_1_M1_FIRST_SLICE.md) | **Proposed** freeze work list for the M1 const-fold chain (M1-CL-05): typed literal/const schemas, slice task kinds/stages/allowlist, narrow `AppendRecords` materialization, freeze tests, version rule. Not a freeze, authorizes no chip code | T01 §7.1 `/6` foundation; M1 proposal rev 40; CDR rev 56 |
 | [Chip plan](CHIP_PLAN.md) | **Plan**: readiness grades, wave assignment, and per-chip unblock conditions for all 332 table rows. Not a freeze, authorizes no chip code | All T02–T13 tables; `TASK_TEMPLATE.md`; T01 §7; Gate 1 |
 | [Wave dispatch](WAVE_DISPATCH.md) | **Design**: serial-bootstrap → 100+ parallel generation pipeline, agent contract, merge loop, R1/R2/R3 rules (accepted 2026-10-06) | `CHIP_PLAN.md`; `PARALLEL_EXECUTION.md` |
+| [Direct-call slice](DIRECT_CALL_SLICE.md) | **Implemented `/54`–`/55` slice**: same-TU acyclic `int` calls with 0–8 parameters/arguments, parameter/call AST, explicit-callee IR, multi-function VF12 frames, and native AArch64 emission. Recursion, variadics, external/indirect calls, stack arguments, wider ABI, memory, and control flow remain excluded | T01 `/55`; `MASS_PARALLEL_DISPATCH.md` §13; T05/T06/T07/T09/T11/T13 |
+| [Mass-parallel dispatch runbook](MASS_PARALLEL_DISPATCH.md) | **Dispatch procedure, not implementation authorization**: Section 14 defines the one-hour 100-agent sprint over `/55`: 100 exact assignments, exclusive files, freeze gates, build/native queues, review/repair routing and deadline closeout. Section 13 records the preceding direct-call dispatch; earlier sections retain long-term capacity pools | Current frozen contract; `WAVE_DISPATCH.md`; `PARALLEL_EXECUTION.md` |
 
 T00's Host work items H00–H10 are defined in
 [T00_GCC_TORTURE_GATE.md](T00_GCC_TORTURE_GATE.md) §4. They are host/tooling
 tasks, not C-language chips, and none is complete today: H00 is scaffold only
 (no corpus, no frozen lock), H01's probe harness exists but has **never run**
 (no report; C02 unverified), and H04's candidate driver exists for Part A
-only (M1 evidence commands work; `-E`/`-I`/`-D`/`-U`/multi-source and the
-torture flag path are deferred — see [H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md));
-H02–H03 and H05–H10 are planned only. The probe→attestation handoff is T01-integrator-owned, with
+plus host-only `-E`/`-D`/`-U` (M1 evidence commands work; `-I`, multi-source,
+`-S`/`-c`, and the torture flag path are deferred/refused — see
+[H04_CANDIDATE_DRIVER.md](H04_CANDIDATE_DRIVER.md));
+H02–H03 and H06–H10 are planned only; H05 process supervision is implemented in `tools/runner`. The probe→attestation handoff is T01-integrator-owned, with
 H07 owning the classification of the report's `unresolved` ABI fields. No
 torture rate, probe result, or M1 acceptance may be claimed from this state.
 
@@ -127,12 +131,12 @@ compiler/contracts/         # frozen protocols and per-chip manifests
 tools/torture/              # peripheral test infrastructure, not the semantic core
 ```
 
-Whether to establish a Cargo workspace is decided by the T01 integrator; implementers must not each modify the root `Cargo.toml`. When this document was first added it only added task documents and created none of these directories; the T01 integrator has since created `compiler/` with the flat layout recorded in the T01 status below, while the group chip directories (`compiler/src/chips/<group>/`) and host code remain future work and do not exist yet.
+Whether to establish a Cargo workspace is decided by the T01 integrator; implementers must not each modify the root `Cargo.toml`. The T01 integrator has created `compiler/` with the flat layout recorded in the T01 status below. Group chip directories (`compiler/src/chips/<group>/`) and candidate host code (`compiler/src/bin/candidate*`) now exist; the original `compiler/src/host/` sketch was not adopted. The complete pipeline and most planned handlers remain future work.
 
 T01 status (2026-10-04): the T01 integrator created `compiler/` as a nested
 standalone package (path dependency on the root crate, its own lock file) and
 implemented the C01–C06 foundation with a flat module layout
 (`compiler/src/{arena,ids,task,bus,commit,...}.rs`) rather than the subdirectory
 sketch above. The root framework remains domain-free; the root package defaults
-are unchanged. Group chip files (`compiler/src/chips/<group>/`) and host code
-remain future work and do not exist yet.
+are unchanged. Group chip files and candidate host code exist as partial slices;
+a complete language pipeline and the full T02–T13 handler set do not.

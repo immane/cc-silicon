@@ -5,21 +5,24 @@
 // kind, kind-to-stage assignment, the SE store-owner allowlist rows,
 // stage/layer agreement, the two-phase binary handoff through a real
 // `const_fold` child (M1-CL-05 up to T09), snapshot bodies,
-// tick-lifecycle integration, and the `/14` hash participation. Chain
-// inputs come from the real LX+PA+TY slices; the automatic File-Enter
-// edge stays deferred (scope tasks dispatch after the TU commit).
+// tick-lifecycle integration, and the `/14` hash participation. The `/40`
+// VF06 delta extends the checked set to the four M1 kinds
+// (`IntLiteral`, `BinaryAdd`, `Return`, `FunctionDefinition`) with the
+// unique committed `int(void)` signature fact. Chain inputs come from the
+// real LX+PA+TY slices; the automatic File-Enter edge stays deferred
+// (scope tasks dispatch after the TU commit).
 // ============================================================================
 
 use cc_silicon_compiler::bus::{
-    CompilerBus, CompilerPins, EffectMask, NodeKind, PpTokenKind, PpTokenRecord, SpanRecord,
-    ValueCategory,
+    CompilerBus, CompilerPins, EffectMask, NodeKind, PpTokenKind, PpTokenRecord, SemRecord,
+    SpanRecord, TypeKind, TypeRecord, ValueCategory,
 };
 use cc_silicon_compiler::chips::{
     handler_for, LxClassifyChip, LxDecodeLiteralChip, LxInternChip, PaTuChip, SeBinChip, SeLitChip,
     SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf06Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::diagnostic::DiagGroup;
-use cc_silicon_compiler::ids::{NodeId, RecordRef, TaskId, TokenId, TypeId};
+use cc_silicon_compiler::ids::{NodeId, RecordRef, SemId, TaskId, TokenId, TypeId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     is_se_slice_kind, stage_of, FieldPath, ManifestRegistryError, StoreSchema, PA_TU_CHIP,
@@ -29,7 +32,9 @@ use cc_silicon_compiler::manifest::{
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{decode_sem, encode_sem, Snapshot};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
-use cc_silicon_compiler::task::{Payload, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry};
+use cc_silicon_compiler::task::{
+    Payload, ResultValue, TaskDraft, TaskGroup, TaskKind, TaskKindRegistry,
+};
 
 fn new_bus() -> CompilerBus {
     CompilerBus::new(CompilerConfig::new(
@@ -303,6 +308,8 @@ struct Chain {
     int: TypeId,
     func: TypeId,
     tu: NodeId,
+    /// Function definition node (pre-order `PA_TU` allocation: node 1).
+    funcdef: NodeId,
     lit2: NodeId,
     lit3: NodeId,
     binary: NodeId,
@@ -391,11 +398,169 @@ fn base_chain() -> Chain {
         int,
         func,
         tu,
+        funcdef: NodeId::from_index(1),
         lit2: NodeId::from_index(7),
         lit3: NodeId::from_index(8),
         binary: NodeId::from_index(6),
         ret: NodeId::from_index(5),
     }
+}
+
+/// Drive the frozen SE literal → binary(+fold) → return chain, leaving the
+/// four `/14` facts (two literals, binary, return) committed.
+fn seed_complete_se_facts(chain: &mut Chain, workers: &WorkerRegistry) {
+    for node in [chain.lit2, chain.lit3] {
+        bootstrap(
+            &mut chain.bus,
+            TaskKind::SEMANTIC_LITERAL_EXPR,
+            SE_LIT_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(node)]),
+        );
+        tick(&mut chain.bus, workers);
+    }
+    bootstrap(
+        &mut chain.bus,
+        TaskKind::SEMANTIC_BINARY_EXPR,
+        SE_BIN_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(chain.binary)]),
+    );
+    // One tick runs the fold child, one resumes the parent, and two drain
+    // (the `/14` positive VF06 sequence).
+    for _ in 0..4 {
+        tick(&mut chain.bus, workers);
+    }
+    bootstrap(
+        &mut chain.bus,
+        TaskKind::SEMANTIC_RETURN_STMT,
+        SE_RET_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(chain.ret)]),
+    );
+    tick(&mut chain.bus, workers);
+    assert_eq!(chain.bus.arenas.sem.allocated(), 4);
+}
+
+/// Seed one committed `SemRecord` directly.
+///
+/// Unit isolation: the real producers are the SE chips, and the
+/// function-definition fact is normally committed by SE29 (exercised
+/// end-to-end in `c39_sefunc.rs`). Direct seeding keeps these VF06 cases
+/// focused on the verifier's four-kind checked set.
+fn seed_sem_fact(
+    chain: &mut Chain,
+    node: NodeId,
+    ty: TypeId,
+    category: ValueCategory,
+    effects: EffectMask,
+) -> SemId {
+    let limits = chain.bus.limits();
+    chain
+        .bus
+        .arenas
+        .sem
+        .alloc(
+            SemRecord {
+                node,
+                ty,
+                category,
+                effects,
+            },
+            &limits,
+        )
+        .unwrap()
+}
+
+/// Seed the canonical `FunctionDefinition` signature fact.
+fn seed_function_fact(chain: &mut Chain) -> SemId {
+    seed_sem_fact(
+        chain,
+        chain.funcdef,
+        chain.func,
+        ValueCategory::NonLvalue,
+        EffectMask(0),
+    )
+}
+
+/// Append one committed node (test-only negative-shape construction).
+fn alloc_node(chain: &mut Chain, kind: NodeKind, children: Vec<NodeId>) -> NodeId {
+    let limits = chain.bus.limits();
+    chain
+        .bus
+        .arenas
+        .nodes
+        .alloc(
+            cc_silicon_compiler::bus::NodeRecord {
+                kind,
+                parent: None,
+                children,
+                first_token: TokenId::from_index(0),
+                last_token: TokenId::from_index(0),
+                name: None,
+                literal: None,
+            },
+            &limits,
+        )
+        .unwrap()
+}
+
+/// Dispatch VF06 on the chain TU and tick once.
+fn vf06_tick(
+    chain: &mut Chain,
+    workers: &WorkerRegistry,
+) -> cc_silicon_compiler::routing::TickReport {
+    bootstrap(
+        &mut chain.bus,
+        TaskKind::VERIFICATION_TYPED_INVARIANT,
+        VF06_CHIP,
+        Payload::from_refs(vec![RecordRef::Node(chain.tu)]),
+    );
+    tick(&mut chain.bus, workers)
+}
+
+/// Require VF06 to complete `Ack`.
+fn vf06_expect_ack(chain: &mut Chain, workers: &WorkerRegistry) {
+    let report = vf06_tick(chain, workers);
+    match &report.outcome {
+        TickOutcome::Executed { commit, .. } => {
+            assert_eq!(commit.failed.len(), 0);
+            assert_eq!(commit.completed.len(), 1);
+            match &chain
+                .bus
+                .arenas
+                .results
+                .get(commit.completed[0].1)
+                .unwrap()
+                .value
+            {
+                ResultValue::Ack => {}
+                other => panic!("expected Ack, got {other:?}"),
+            }
+        }
+        other => panic!("expected executed, got {other:?}"),
+    }
+}
+
+/// Require VF06 to fail with one diagnostic; return its group and message.
+///
+/// VF06 writes nothing, including on failure.
+fn vf06_fail(chain: &mut Chain, workers: &WorkerRegistry) -> (DiagGroup, String) {
+    let sem_before = chain.bus.arenas.sem.allocated();
+    let report = vf06_tick(chain, workers);
+    let (group, message) = match &report.outcome {
+        TickOutcome::Executed { commit, .. } => {
+            assert_eq!(commit.completed.len(), 0);
+            assert_eq!(commit.failed.len(), 1);
+            let diagnostic = chain
+                .bus
+                .arenas
+                .diagnostics
+                .get(commit.failed[0].1)
+                .unwrap();
+            (diagnostic.code.group, diagnostic.message.clone())
+        }
+        other => panic!("expected executed-with-failure, got {other:?}"),
+    };
+    assert_eq!(chain.bus.arenas.sem.allocated(), sem_before);
+    (group, message)
 }
 
 #[test]
@@ -543,7 +708,9 @@ fn se_binary_two_phase_handoff_folds_through_a_real_child() {
         .consts
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
-    assert_eq!(folded.value, vec![5]);
+    let folded_integer = folded.value.as_integer().unwrap();
+    assert_eq!(folded_integer.magnitude, vec![5]);
+    assert!(!folded_integer.negative);
     // Phase 3: the readied parent resumes and completes with its SemRecord.
     let report = tick(&mut chain.bus, &workers);
     match completed_ref(&report, &chain.bus) {
@@ -649,57 +816,253 @@ fn se_return_checks_the_identity_corner() {
 
 #[test]
 fn vf06_passes_on_complete_facts_and_fails_on_gaps() {
-    // Full facts: pass.
+    // Full facts (four checked kinds plus the seeded function-signature
+    // fact): pass.
     let mut chain = base_chain();
     let workers = workers();
-    for node in [chain.lit2, chain.lit3] {
-        bootstrap(
-            &mut chain.bus,
-            TaskKind::SEMANTIC_LITERAL_EXPR,
-            SE_LIT_CHIP,
-            Payload::from_refs(vec![RecordRef::Node(node)]),
-        );
-        tick(&mut chain.bus, &workers);
-    }
-    bootstrap(
-        &mut chain.bus,
-        TaskKind::SEMANTIC_BINARY_EXPR,
-        SE_BIN_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(chain.binary)]),
-    );
-    tick(&mut chain.bus, &workers);
-    tick(&mut chain.bus, &workers);
-    tick(&mut chain.bus, &workers);
-    tick(&mut chain.bus, &workers);
-    bootstrap(
-        &mut chain.bus,
-        TaskKind::SEMANTIC_RETURN_STMT,
-        SE_RET_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(chain.ret)]),
-    );
-    tick(&mut chain.bus, &workers);
-    bootstrap(
-        &mut chain.bus,
-        TaskKind::VERIFICATION_TYPED_INVARIANT,
-        VF06_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(chain.tu)]),
-    );
-    match tick(&mut chain.bus, &workers).outcome {
-        TickOutcome::Executed { commit, .. } => assert_eq!(commit.completed.len(), 1),
-        other => panic!("expected executed, got {other:?}"),
-    }
+    seed_complete_se_facts(&mut chain, &workers);
+    seed_function_fact(&mut chain);
+    assert_eq!(chain.bus.arenas.sem.allocated(), 5);
+    vf06_expect_ack(&mut chain, &workers);
     // Gap: nodes committed but no SemRecords — must fail loudly.
     let mut chain = base_chain();
-    bootstrap(
-        &mut chain.bus,
-        TaskKind::VERIFICATION_TYPED_INVARIANT,
-        VF06_CHIP,
-        Payload::from_refs(vec![RecordRef::Node(chain.tu)]),
+    let (group, _) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert_eq!(chain.bus.arenas.sem.allocated(), 0);
+}
+
+// A3-U01: the full M1 fact set (two literals, binary, return, function
+// definition) is the exact four-kind checked set and completes `Ack`.
+#[test]
+fn vf06_acks_full_m1_four_kind_facts() {
+    let mut chain = base_chain();
+    let workers = workers();
+    seed_complete_se_facts(&mut chain, &workers);
+    let function_sem = seed_function_fact(&mut chain);
+    assert_eq!(chain.bus.arenas.sem.allocated(), 5);
+    let sem = chain.bus.arenas.sem.get(function_sem).unwrap();
+    assert_eq!(sem.node, chain.funcdef);
+    assert_eq!(sem.ty, chain.func);
+    assert_eq!(sem.category, ValueCategory::NonLvalue);
+    assert_eq!(sem.effects, EffectMask(0));
+    vf06_expect_ack(&mut chain, &workers);
+}
+
+// A3-U02: without the function-definition fact (all four expression facts
+// present), VF06 fails as missing input — never a vacuous pass.
+#[test]
+fn vf06_missing_function_fact_fails() {
+    let mut chain = base_chain();
+    let workers = workers();
+    seed_complete_se_facts(&mut chain, &workers);
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("missing typed fact"),
+        "unexpected message: {message}"
     );
-    match tick(&mut chain.bus, &workers).outcome {
-        TickOutcome::Executed { commit, .. } => assert_eq!(commit.failed.len(), 1),
-        other => panic!("expected executed-with-failure, got {other:?}"),
+}
+
+// A3-U03: two function-definition facts are a duplicate-fact defect.
+#[test]
+fn vf06_duplicate_function_facts_fail() {
+    let mut chain = base_chain();
+    let workers = workers();
+    seed_complete_se_facts(&mut chain, &workers);
+    seed_function_fact(&mut chain);
+    seed_function_fact(&mut chain);
+    assert_eq!(chain.bus.arenas.sem.allocated(), 6);
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("duplicate typed fact"),
+        "unexpected message: {message}"
+    );
+}
+
+// A3-U04: a function-definition fact typed with canonical `int` is the
+// wrong signature fact; the `/14` blanket `ty == int` rule must not apply.
+#[test]
+fn vf06_function_fact_with_int_type_fails() {
+    let mut chain = base_chain();
+    let workers = workers();
+    seed_complete_se_facts(&mut chain, &workers);
+    let funcdef = chain.funcdef;
+    let int = chain.int;
+    seed_sem_fact(
+        &mut chain,
+        funcdef,
+        int,
+        ValueCategory::NonLvalue,
+        EffectMask(0),
+    );
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("non-signature type"),
+        "unexpected message: {message}"
+    );
+}
+
+// A3-U05: the function fact requires `NonLvalue` and `EffectMask(0)`.
+#[test]
+fn vf06_function_fact_requires_nonlvalue_and_zero_effects() {
+    // Wrong value category.
+    let mut chain = base_chain();
+    let workers = workers();
+    seed_complete_se_facts(&mut chain, &workers);
+    let funcdef = chain.funcdef;
+    let func = chain.func;
+    seed_sem_fact(
+        &mut chain,
+        funcdef,
+        func,
+        ValueCategory::Lvalue,
+        EffectMask(0),
+    );
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("value category"),
+        "unexpected message: {message}"
+    );
+    // Nonzero effects.
+    let mut chain = base_chain();
+    seed_complete_se_facts(&mut chain, &workers);
+    let funcdef = chain.funcdef;
+    let func = chain.func;
+    seed_sem_fact(
+        &mut chain,
+        funcdef,
+        func,
+        ValueCategory::NonLvalue,
+        EffectMask(1),
+    );
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("effect mask"),
+        "unexpected message: {message}"
+    );
+}
+
+// A3-U06: zero or multiple `FunctionDefinition` nodes in the M1 TU fail;
+// VF06 must not pass vacuously when the lowering consumer's node is absent.
+#[test]
+fn vf06_requires_exactly_one_function_definition_node() {
+    let workers = workers();
+    // Zero: strip the TU child.
+    let mut chain = base_chain();
+    chain
+        .bus
+        .arenas
+        .nodes
+        .get_mut(chain.tu)
+        .unwrap()
+        .children
+        .clear();
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("missing function definition"),
+        "unexpected message: {message}"
+    );
+    // Multiple: a second function-definition node under the TU.
+    let mut chain = base_chain();
+    let extra = alloc_node(&mut chain, NodeKind::FunctionDefinition, vec![]);
+    chain
+        .bus
+        .arenas
+        .nodes
+        .get_mut(chain.tu)
+        .unwrap()
+        .children
+        .push(extra);
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Unsupported);
+    assert!(
+        message.contains("multiple function definitions outside M1"),
+        "unexpected message: {message}"
+    );
+}
+
+// A3-U14: a committed non-M1 function type (parameters, non-prototype, or
+// variadic) is an explicit unsupported failure, never a silent pass. The
+// same projection requires a signature at all and rejects duplicates.
+#[test]
+fn vf06_requires_exactly_one_m1_signature() {
+    let workers = workers();
+    // Non-M1 function shapes committed next to the M1 signature.
+    for index in 0..3 {
+        let mut chain = base_chain();
+        let kind = match index {
+            0 => TypeKind::Function {
+                result: chain.int,
+                params: vec![chain.int],
+                prototype: true,
+                variadic: false,
+            },
+            1 => TypeKind::Function {
+                result: chain.int,
+                params: vec![],
+                prototype: false,
+                variadic: false,
+            },
+            _ => TypeKind::Function {
+                result: chain.int,
+                params: vec![],
+                prototype: true,
+                variadic: true,
+            },
+        };
+        let limits = chain.bus.limits();
+        chain
+            .bus
+            .arenas
+            .types
+            .alloc(TypeRecord { kind }, &limits)
+            .unwrap();
+        let (group, message) = vf06_fail(&mut chain, &workers);
+        assert_eq!(group, DiagGroup::Unsupported);
+        assert!(
+            message.contains("non-M1 function signature"),
+            "unexpected message: {message}"
+        );
     }
+    // Zero committed function types: missing input, not a pass.
+    let mut chain = base_chain();
+    chain.bus.arenas.types.remove(chain.func).unwrap();
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("missing int(void) signature"),
+        "unexpected message: {message}"
+    );
+    // Duplicate M1 signatures: an ambiguous handoff.
+    let mut chain = base_chain();
+    let limits = chain.bus.limits();
+    chain
+        .bus
+        .arenas
+        .types
+        .alloc(
+            TypeRecord {
+                kind: TypeKind::Function {
+                    result: chain.int,
+                    params: vec![],
+                    prototype: true,
+                    variadic: false,
+                },
+            },
+            &limits,
+        )
+        .unwrap();
+    let (group, message) = vf06_fail(&mut chain, &workers);
+    assert_eq!(group, DiagGroup::Task);
+    assert!(
+        message.contains("duplicate int(void) signature"),
+        "unexpected message: {message}"
+    );
 }
 
 #[test]
