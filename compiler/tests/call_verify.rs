@@ -1089,7 +1089,7 @@ fn vf05_rejects_function_parameter_and_call_budget_shapes() {
 
     // Nine call arguments.
     let mut bus = new_bus();
-    let nine_arguments: Vec<AstSpec> = (0..9).map(|value| literal(value)).collect();
+    let nine_arguments: Vec<AstSpec> = (0..9).map(literal).collect();
     let main = function_definition(1, None, vec![return_expression(call(1, nine_arguments))]);
     let tu = build_ast(&mut bus, ast(NodeKind::TranslationUnit, vec![main]));
     expect_fail(&run_vf05(&mut bus, tu));
