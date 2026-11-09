@@ -1374,7 +1374,18 @@ fn run(
             Payload::from_refs(vec![RecordRef::Node(node)]),
         )?;
     }
-    for node in nodes_of(&bus, NodeKind::BinaryAdd) {
+    let mut binary_nodes = Vec::new();
+    for kind in [
+        NodeKind::BinaryAdd,
+        NodeKind::BinarySub,
+        NodeKind::BinaryMul,
+        NodeKind::BinaryDiv,
+        NodeKind::BinaryRem,
+    ] {
+        binary_nodes.extend(nodes_of(&bus, kind));
+    }
+    binary_nodes.sort_by_key(|id| id.index());
+    for node in binary_nodes {
         step(
             &mut bus,
             &workers,

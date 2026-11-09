@@ -212,8 +212,8 @@ const M1_LOCALS_KINDS: &[TokenKind] = &[
     TokenKind::Eof,
 ];
 
-/// `/50` source-local-add shape token kinds:
-/// `int main ( void ) { int x = 2 ; return x + 3 ; } EOF`.
+/// `/50` source-local-binary shape token kinds:
+/// `int main ( void ) { int x = 2 ; return x <op> 3 ; } EOF`.
 const M1_LOCALS_ADD_KINDS: &[TokenKind] = &[
     TokenKind::Keyword,
     TokenKind::Identifier,
@@ -255,14 +255,15 @@ const M1_LOCALS_PUNCTUATORS: &[(usize, &[u8])] = &[
     (14, b"}"),
 ];
 
-/// `/50` punctuator spellings at fixed positions.
+/// `/50` fixed punctuator spellings for the local-binary shape. The operator
+/// at position 13 is validated separately so `+`, `-`, `*`, `/`, and `%` share
+/// the closed token layout.
 const M1_LOCALS_ADD_PUNCTUATORS: &[(usize, &[u8])] = &[
     (2, b"("),
     (4, b")"),
     (5, b"{"),
     (8, b"="),
     (10, b";"),
-    (13, b"+"),
     (15, b";"),
     (16, b"}"),
 ];
@@ -511,6 +512,24 @@ impl PaTuChip {
                 )];
             }
         }
+        let binary_kind = if binary {
+            let operator = input.bodies[&input.tokens[13]].pp_spelling.clone();
+            match operator.as_slice() {
+                b"+" => NodeKind::BinaryAdd,
+                b"-" => NodeKind::BinarySub,
+                b"*" => NodeKind::BinaryMul,
+                b"/" => NodeKind::BinaryDiv,
+                b"%" => NodeKind::BinaryRem,
+                _ => {
+                    return vec![fail(
+                        input.task,
+                        DiagnosticDraft::unsupported("non-locals binary operator spelling"),
+                    )];
+                }
+            }
+        } else {
+            NodeKind::BinaryAdd
+        };
         let eof_index = if binary { 17 } else { 15 };
         let eof = &input.bodies[&input.tokens[eof_index]];
         if !eof.pp_spelling.is_empty() || eof.name.is_some() {
@@ -655,7 +674,7 @@ impl PaTuChip {
         if binary {
             specs.extend([
                 (
-                    NodeKind::BinaryAdd,
+                    binary_kind,
                     Some(node(9)),
                     vec![node(11), node(12)],
                     12,

@@ -34,6 +34,8 @@ pub struct SeBinaryInput {
     pub node: NodeId,
     /// Operand `(node, literal)` leaves in source order.
     pub leaves: Vec<(NodeId, LiteralId)>,
+    /// Whether the literal/literal additive fold applies.
+    pub foldable: bool,
     /// Canonical `int` type.
     pub int: TypeId,
     /// Committed `SemRecord` for the node, if any.
@@ -80,9 +82,16 @@ pub fn project_se_binary_input(
             format!("se-binary reads missing node {}", node.index()),
         )
     })?;
-    if node_body.kind != NodeKind::BinaryAdd {
+    if !matches!(
+        node_body.kind,
+        NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+    ) {
         return Err(DiagnosticDraft::unsupported(
-            "se-binary of a non-additive node",
+            "se-binary of a non-covered binary node",
         ));
     }
     if node_body.children.len() != 2 {
@@ -140,11 +149,13 @@ pub fn project_se_binary_input(
             }
         }
     }
+    let foldable = node_body.kind == NodeKind::BinaryAdd && leaves.len() == 2;
     Ok(SeBinaryInput {
         task,
         state: record.state.clone(),
         node,
         leaves,
+        foldable,
         int,
         existing: sem_for_node(bus, node),
         sem_allocated: bus.arenas.sem.allocated(),
@@ -234,7 +245,7 @@ impl SeBinChip {
         // Literal/literal still forwards the identical fold request. A
         // non-literal operand (for example the `/50` local identifier) has
         // no constant fold; the semantic fact alone is the result.
-        if input.leaves.len() == 2 {
+        if input.foldable {
             proposals.push(Proposal::Enqueue(TaskDraft {
                 kind: TaskKind::CONSTANT_CONST_FOLD,
                 owner: crate::manifest::G1_FOLD_CHIP,

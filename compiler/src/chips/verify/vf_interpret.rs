@@ -292,7 +292,7 @@ impl Vf12Chip {
         // `/50` local addition: Constant, LocalStore, LocalLoad, Constant,
         // Add, Return.
         if input.instructions.len() == 6 {
-            return self.compute_local_add(input, block_id);
+            return self.compute_local_binary(input, block_id);
         }
         // Canonical `Constant` then `Return`, in ascending ID order.
         if input.instructions.len() != 2 {
@@ -431,11 +431,11 @@ impl Vf12Chip {
     /// `/50` exact `Constant`/`LocalStore`/`LocalLoad`/`Constant`/`Add`/
     /// `Return` path over canonical `int`. The result is a modeled integer,
     /// not a newly committed `ConstRecord`.
-    fn compute_local_add(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
+    fn compute_local_binary(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
         let [(c0id, c0), (s1id, s1), (l2id, l2), (c3id, c3), (a4id, a4), (r5id, r5)] =
             input.instructions.as_slice()
         else {
-            return vec![shape_fail(input.task, "local-add instruction shape")];
+            return vec![shape_fail(input.task, "local-binary instruction shape")];
         };
         if !(c0id.index() < s1id.index()
             && s1id.index() < l2id.index()
@@ -445,7 +445,7 @@ impl Vf12Chip {
         {
             return vec![shape_fail(
                 input.task,
-                "local-add instructions out of order",
+                "local-binary instructions out of order",
             )];
         }
         if c0.op != IrOp::Constant
@@ -455,13 +455,16 @@ impl Vf12Chip {
             || c0.result.is_none()
             || c0.local.is_some()
         {
-            return vec![shape_fail(input.task, "local-add initializer shape")];
+            return vec![shape_fail(input.task, "local-binary initializer shape")];
         }
         let Some(initial) = c0.result else {
-            return vec![shape_fail(input.task, "local-add initializer has no value")];
+            return vec![shape_fail(
+                input.task,
+                "local-binary initializer has no value",
+            )];
         };
         let Some(local) = s1.local else {
-            return vec![shape_fail(input.task, "local-add store has no local")];
+            return vec![shape_fail(input.task, "local-binary store has no local")];
         };
         if s1.op != IrOp::LocalStore
             || s1.block != *block_id
@@ -470,7 +473,7 @@ impl Vf12Chip {
             || s1.result.is_some()
             || !s1.successors.is_empty()
         {
-            return vec![shape_fail(input.task, "local-add store shape")];
+            return vec![shape_fail(input.task, "local-binary store shape")];
         }
         if l2.op != IrOp::LocalLoad
             || l2.block != *block_id
@@ -480,38 +483,43 @@ impl Vf12Chip {
             || l2.result.is_none()
             || !l2.successors.is_empty()
         {
-            return vec![shape_fail(input.task, "local-add load shape")];
+            return vec![shape_fail(input.task, "local-binary load shape")];
         }
         let Some(loaded) = l2.result else {
-            return vec![shape_fail(input.task, "local-add load has no value")];
+            return vec![shape_fail(input.task, "local-binary load has no value")];
         };
         let Some(rhs_const_id) = c3.immediate else {
-            return vec![shape_fail(input.task, "local-add rhs has no constant")];
+            return vec![shape_fail(input.task, "local-binary rhs has no constant")];
         };
         let Some(rhs_value) = c3.result else {
-            return vec![shape_fail(input.task, "local-add rhs has no value")];
+            return vec![shape_fail(input.task, "local-binary rhs has no value")];
         };
         if c3.op != IrOp::Constant
             || c3.block != *block_id
             || !c3.operands.is_empty()
             || c3.local.is_some()
         {
-            return vec![shape_fail(input.task, "local-add rhs shape")];
+            return vec![shape_fail(input.task, "local-binary rhs shape")];
         }
         let Some((_, rhs_const)) = input.consts.iter().find(|(id, _)| *id == rhs_const_id) else {
-            return vec![shape_fail(input.task, "local-add rhs constant is missing")];
+            return vec![shape_fail(
+                input.task,
+                "local-binary rhs constant is missing",
+            )];
         };
         let Some(sum_value) = a4.result else {
-            return vec![shape_fail(input.task, "local-add result is missing")];
+            return vec![shape_fail(input.task, "local-binary result is missing")];
         };
-        if a4.op != IrOp::Add
-            || a4.block != *block_id
+        if !matches!(
+            a4.op,
+            IrOp::Add | IrOp::Sub | IrOp::Mul | IrOp::Div | IrOp::Rem
+        ) || a4.block != *block_id
             || a4.operands != vec![loaded, rhs_value]
             || a4.immediate.is_some()
             || a4.local.is_some()
             || !a4.successors.is_empty()
         {
-            return vec![shape_fail(input.task, "local-add operation shape")];
+            return vec![shape_fail(input.task, "local-binary operation shape")];
         }
         if r5.op != IrOp::Return
             || r5.block != *block_id
@@ -521,32 +529,53 @@ impl Vf12Chip {
             || r5.local.is_some()
             || !r5.successors.is_empty()
         {
-            return vec![shape_fail(input.task, "local-add return shape")];
+            return vec![shape_fail(input.task, "local-binary return shape")];
         }
         let Some(lhs_integer) = input.modeled.1.value.as_integer() else {
-            return vec![shape_fail(input.task, "local-add lhs is not integer")];
+            return vec![shape_fail(input.task, "local-binary lhs is not integer")];
         };
         let Some(rhs_integer) = rhs_const.value.as_integer() else {
-            return vec![shape_fail(input.task, "local-add rhs is not integer")];
+            return vec![shape_fail(input.task, "local-binary rhs is not integer")];
         };
         let (Some(lhs), Some(rhs)) = (
             canonical_integer_i128(lhs_integer),
             canonical_integer_i128(rhs_integer),
         ) else {
-            return vec![shape_fail(input.task, "local-add operand is out of range")];
-        };
-        let Some(sum) = lhs.checked_add(rhs) else {
-            return vec![shape_fail(input.task, "local-add overflow")];
-        };
-        let Ok(sum) = i32::try_from(sum) else {
             return vec![shape_fail(
                 input.task,
-                "local-add result is not canonical int",
+                "local-binary operand is out of range",
+            )];
+        };
+        let result = match a4.op {
+            IrOp::Add => lhs.checked_add(rhs),
+            IrOp::Sub => lhs.checked_sub(rhs),
+            IrOp::Mul => lhs.checked_mul(rhs),
+            IrOp::Div => {
+                if rhs == 0 {
+                    return vec![shape_fail(input.task, "local-binary division by zero")];
+                }
+                lhs.checked_div(rhs)
+            }
+            IrOp::Rem => {
+                if rhs == 0 {
+                    return vec![shape_fail(input.task, "local-binary remainder by zero")];
+                }
+                lhs.checked_rem(rhs)
+            }
+            _ => unreachable!(),
+        };
+        let Some(result) = result else {
+            return vec![shape_fail(input.task, "local-binary overflow")];
+        };
+        let Ok(result) = i32::try_from(result) else {
+            return vec![shape_fail(
+                input.task,
+                "local-binary result is not canonical int",
             )];
         };
         vec![Proposal::Complete {
             task: input.task,
-            value: ResultValue::Integer(encode_canonical_int(sum)),
+            value: ResultValue::Integer(encode_canonical_int(result)),
         }]
     }
 }

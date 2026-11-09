@@ -228,7 +228,11 @@ impl Vf05Chip {
                 NodeKind::Declarator => (0, true, false),
                 NodeKind::Compound => (1, false, false),
                 NodeKind::Return => (1, false, false),
-                NodeKind::BinaryAdd => (2, false, false),
+                NodeKind::BinaryAdd
+                | NodeKind::BinarySub
+                | NodeKind::BinaryMul
+                | NodeKind::BinaryDiv
+                | NodeKind::BinaryRem => (2, false, false),
                 NodeKind::IntLiteral => (0, false, true),
                 // `/49` source-locals shape.
                 NodeKind::Declaration => (3, false, false),
@@ -238,10 +242,6 @@ impl Vf05Chip {
                 // than silently validating an unknown shape.
                 NodeKind::ExpressionStatement
                 | NodeKind::Assignment
-                | NodeKind::BinarySub
-                | NodeKind::BinaryMul
-                | NodeKind::BinaryDiv
-                | NodeKind::BinaryRem
                 | NodeKind::UnaryPlus
                 | NodeKind::UnaryMinus => {
                     return vec![syntax_fail(

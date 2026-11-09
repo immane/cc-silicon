@@ -95,7 +95,12 @@ pub fn project_se_return_input(
     })?;
     if !matches!(
         operand_body.kind,
-        NodeKind::BinaryAdd | NodeKind::Identifier
+        NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+            | NodeKind::Identifier
     ) {
         return Err(DiagnosticDraft::unsupported(
             "se-return of a non-covered operand",

@@ -89,6 +89,32 @@ fn local_add_lowers_to_arithmetic_ir_and_models_five() {
 }
 
 #[test]
+fn local_operators_lower_to_the_matching_ir() {
+    let cases = [
+        ("-", "value=01 negative=true", "sub w0, w0, w1"),
+        ("*", "value=06 negative=false", "mul w0, w0, w1"),
+        ("/", "value=00 negative=false", "sdiv w0, w0, w1"),
+        ("%", "value=02 negative=false", "msub w0, w2, w1, w0"),
+    ];
+    for (operator, expected, instruction) in cases {
+        let source = format!("int main(void){{int x=2;return x{operator}3;}}\n");
+        let dir = workdir(&format!("op-{}", operator.bytes().next().unwrap()));
+        let asm = dir.join("main.s");
+        let output = run_candidate(&source, Some(&asm));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{operator}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains(expected), "{operator}: {stdout}");
+        let assembly = String::from_utf8(std::fs::read(&asm).expect("assembly file")).unwrap();
+        assert!(assembly.contains(instruction), "{operator}: {assembly}");
+    }
+}
+
+#[test]
 fn canonical_constant_return_still_models_five() {
     let dir = workdir("canonical");
     let asm = dir.join("main.s");
@@ -155,7 +181,7 @@ fn identifier_chip_manifest_is_write_scoped() {
 fn locals_shape_rejects_mismatched_names_and_extra_statements() {
     for source in [
         "int main(void){int x=2;return y;}\n",
-        "int main(void){int x=2;return x-3;}\n",
+        "int main(void){int x=2;return x^3;}\n",
         "int main(void){int x;return x;}\n",
         "int main(void){return x;}\n",
     ] {
@@ -230,4 +256,37 @@ fn emitted_local_add_runs_on_aarch64() {
     );
     let run = Command::new(&exe).output().expect("program runs");
     assert_eq!(run.status.code(), Some(5));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn emitted_local_operators_run_on_aarch64() {
+    let machine = Command::new("gcc")
+        .arg("-dumpmachine")
+        .output()
+        .expect("gcc available");
+    if !String::from_utf8_lossy(&machine.stdout).contains("aarch64") {
+        return;
+    }
+    for (operator, expected) in [("-", 255), ("*", 6), ("/", 0), ("%", 2)] {
+        let dir = workdir(&format!("run-op-{}", operator.bytes().next().unwrap()));
+        let asm = dir.join("main.s");
+        let exe = dir.join("main");
+        let source = format!("int main(void){{int x=2;return x{operator}3;}}\n");
+        let output = run_candidate(&source, Some(&asm));
+        assert_eq!(output.status.code(), Some(0));
+        let build = Command::new("gcc")
+            .arg("-o")
+            .arg(&exe)
+            .arg(&asm)
+            .output()
+            .expect("gcc runs");
+        assert!(
+            build.status.success(),
+            "gcc failed: {}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let run = Command::new(&exe).output().expect("program runs");
+        assert_eq!(run.status.code(), Some(expected), "operator {operator}");
+    }
 }

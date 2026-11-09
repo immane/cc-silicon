@@ -212,12 +212,28 @@ pub fn project_ir_function_input(
         .map_err(|_| missing("node", operand.index()))?;
     let mut return_identifier = None;
     let mut local_rhs_node = None;
+    let mut local_ir_op = None;
     match (local_shape, operand_body.kind) {
         (None, NodeKind::BinaryAdd) => {}
         (Some(_), NodeKind::Identifier) => {
             return_identifier = Some(operand);
         }
-        (Some(_), NodeKind::BinaryAdd) => {
+        (
+            Some(_),
+            NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem,
+        ) => {
+            local_ir_op = Some(match operand_body.kind {
+                NodeKind::BinaryAdd => IrOp::Add,
+                NodeKind::BinarySub => IrOp::Sub,
+                NodeKind::BinaryMul => IrOp::Mul,
+                NodeKind::BinaryDiv => IrOp::Div,
+                NodeKind::BinaryRem => IrOp::Rem,
+                _ => unreachable!(),
+            });
             if operand_body.children.len() != 2 {
                 return Err(DiagnosticDraft::unsupported(
                     "lower of a malformed local binary return",
@@ -546,7 +562,7 @@ pub fn project_ir_function_input(
                 ));
             };
             local_rhs = Some(matching_const(rhs_literal, "right-hand operand")?);
-            local_op = Some(IrOp::Add);
+            local_op = local_ir_op;
         }
         local_symbol = Some(symbol_id);
         (constant, constant_record_ty)
@@ -789,7 +805,10 @@ impl IrFunctionChip {
         };
         if input.local_rhs.is_some() || input.local_op.is_some() {
             return match (input.local_rhs, input.local_op) {
-                (Some(rhs), Some(IrOp::Add)) => self.compute_local_add(input, local, rhs),
+                (
+                    Some(rhs),
+                    Some(op @ (IrOp::Add | IrOp::Sub | IrOp::Mul | IrOp::Div | IrOp::Rem)),
+                ) => self.compute_local_binary(input, local, rhs, op),
                 _ => vec![fail(
                     input.task,
                     DiagnosticDraft::unsupported(
@@ -904,14 +923,15 @@ impl IrFunctionChip {
         ]
     }
 
-    /// `/50` `local + literal` lowering:
-    /// `Constant init`, `LocalStore`, `LocalLoad`, `Constant rhs`, `Add`,
+    /// `/50`/`/51` `local <op> literal` lowering:
+    /// `Constant init`, `LocalStore`, `LocalLoad`, `Constant rhs`, `<op>`,
     /// `Return`.
-    fn compute_local_add(
+    fn compute_local_binary(
         &self,
         input: &IrFunctionInput,
         local: SymbolId,
         rhs_const: ConstId,
+        op: IrOp,
     ) -> Vec<Proposal> {
         let function = FunctionId::from_index(input.functions_allocated);
         let block = BlockId::from_index(input.blocks_allocated);
@@ -993,7 +1013,7 @@ impl IrFunctionChip {
                 successors: vec![],
             }),
             G1DraftBody::Instruction(InstructionRecord {
-                op: IrOp::Add,
+                op,
                 block,
                 operands: vec![loaded, rhs],
                 immediate: None,

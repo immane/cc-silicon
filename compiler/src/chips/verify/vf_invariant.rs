@@ -314,9 +314,14 @@ impl Vf06Chip {
 /// `int(void)` signature.
 fn expected_type(input: &Vf06Input, kind: NodeKind) -> Option<crate::ids::TypeId> {
     match kind {
-        NodeKind::IntLiteral | NodeKind::BinaryAdd | NodeKind::Return | NodeKind::Identifier => {
-            Some(input.int)
-        }
+        NodeKind::IntLiteral
+        | NodeKind::Identifier
+        | NodeKind::Return
+        | NodeKind::BinaryAdd
+        | NodeKind::BinarySub
+        | NodeKind::BinaryMul
+        | NodeKind::BinaryDiv
+        | NodeKind::BinaryRem => Some(input.int),
         NodeKind::FunctionDefinition => Some(input.signature),
         _ => None,
     }
