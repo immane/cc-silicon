@@ -41,14 +41,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// bodies, stage-first scheduling, macro/limit accounting, store and
 /// result versions, pin-aware trace evidence), and the B2-02 tagged,
 /// typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload,
-/// immediate-type enforcement).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/42";
+/// immediate-type enforcement), and the `/43` parser/AST common-base append
+/// (single-task V1 parser decision, V1 `NodeKind` inventory).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/43";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5";
+pub const CONTRACT_HASH: &str = "637a0484a4e1870b8e66b04dfd5ad79921d0ad1736972ce7f6a90243bce8df30";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -423,6 +424,17 @@ pub const NODE_KIND_NAMES: &[&str] = &[
     "return",
     "binary_add",
     "int_literal",
+    // `/43` V1 AST append.
+    "declaration",
+    "identifier",
+    "expression_statement",
+    "assignment",
+    "binary_sub",
+    "binary_mul",
+    "binary_div",
+    "binary_rem",
+    "unary_plus",
+    "unary_minus",
 ];
 
 /// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).

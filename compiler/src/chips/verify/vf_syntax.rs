@@ -230,6 +230,24 @@ impl Vf05Chip {
                 NodeKind::Return => (1, false, false),
                 NodeKind::BinaryAdd => (2, false, false),
                 NodeKind::IntLiteral => (0, false, true),
+                // `/43` freezes the V1 AST inventory but VF05's V1 shape
+                // table is not part of this schema slice. Fail closed rather
+                // than silently validating an unknown shape.
+                NodeKind::Declaration
+                | NodeKind::Identifier
+                | NodeKind::ExpressionStatement
+                | NodeKind::Assignment
+                | NodeKind::BinarySub
+                | NodeKind::BinaryMul
+                | NodeKind::BinaryDiv
+                | NodeKind::BinaryRem
+                | NodeKind::UnaryPlus
+                | NodeKind::UnaryMinus => {
+                    return vec![syntax_fail(
+                        input.task,
+                        "V1 AST kind is not covered by the M1 VF05 shape table",
+                    )];
+                }
             };
             if body.children.len() != children {
                 return vec![syntax_fail(input.task, "wrong child count for node kind")];

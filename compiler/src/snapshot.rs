@@ -2132,6 +2132,16 @@ pub fn node_kind_name(kind: NodeKind) -> &'static str {
         NodeKind::Return => "return",
         NodeKind::BinaryAdd => "binary_add",
         NodeKind::IntLiteral => "int_literal",
+        NodeKind::Declaration => "declaration",
+        NodeKind::Identifier => "identifier",
+        NodeKind::ExpressionStatement => "expression_statement",
+        NodeKind::Assignment => "assignment",
+        NodeKind::BinarySub => "binary_sub",
+        NodeKind::BinaryMul => "binary_mul",
+        NodeKind::BinaryDiv => "binary_div",
+        NodeKind::BinaryRem => "binary_rem",
+        NodeKind::UnaryPlus => "unary_plus",
+        NodeKind::UnaryMinus => "unary_minus",
     }
 }
 
@@ -2145,6 +2155,16 @@ fn parse_node_kind(name: &str) -> Option<NodeKind> {
         "return" => Some(NodeKind::Return),
         "binary_add" => Some(NodeKind::BinaryAdd),
         "int_literal" => Some(NodeKind::IntLiteral),
+        "declaration" => Some(NodeKind::Declaration),
+        "identifier" => Some(NodeKind::Identifier),
+        "expression_statement" => Some(NodeKind::ExpressionStatement),
+        "assignment" => Some(NodeKind::Assignment),
+        "binary_sub" => Some(NodeKind::BinarySub),
+        "binary_mul" => Some(NodeKind::BinaryMul),
+        "binary_div" => Some(NodeKind::BinaryDiv),
+        "binary_rem" => Some(NodeKind::BinaryRem),
+        "unary_plus" => Some(NodeKind::UnaryPlus),
+        "unary_minus" => Some(NodeKind::UnaryMinus),
         _ => None,
     }
 }

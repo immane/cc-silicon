@@ -559,6 +559,27 @@ pub enum NodeKind {
     BinaryAdd,
     /// A committed integer literal leaf.
     IntLiteral,
+    // `/43` V1 AST append (declaration/expression/statement common base).
+    /// One declaration (`int x;` / `int x = expr;`).
+    Declaration,
+    /// An identifier leaf (`name: Some`).
+    Identifier,
+    /// An expression statement (`expr;`).
+    ExpressionStatement,
+    /// Assignment (`lhs = rhs`).
+    Assignment,
+    /// Subtraction.
+    BinarySub,
+    /// Multiplication.
+    BinaryMul,
+    /// Division.
+    BinaryDiv,
+    /// Remainder.
+    BinaryRem,
+    /// Unary plus.
+    UnaryPlus,
+    /// Unary minus.
+    UnaryMinus,
 }
 
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
