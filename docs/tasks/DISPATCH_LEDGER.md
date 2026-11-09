@@ -10,13 +10,35 @@
 | Branch / HEAD | `wave4-development` / `a33c066` (code through the `/53` local-assignment slice committed; this status-doc commit follows) |
 | Workspace note | `/42`–`/53`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; no push was performed |
 
-### Next Dispatch Procedure (2026-11-10; Not Started)
+### CALL Lane Dispatch (2026-11-10; RUNNING)
+
+Baseline commit `9d715a7` (`t01-c01-c06/54`, shape-only direct-call schema),
+contract hash
+`850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39`.
+Five implementation lanes run in independent worktrees. The main worktree is
+reserved for CALL-F0 orchestration and integration.
+
+| Lane | Session | Worktree | Branch | State |
+|---|---|---|---|---|
+| CALL-P1 parser | `ses_e3e03d818fferNP3h3ZvvKfrpU` | `../cc-silicon-call-p1` | `call-p1` | RUNNING |
+| CALL-S1 types/symbols/semantics | `ses_e3e03d817ffeJHnGGwaCb3HDqA` | `../cc-silicon-call-s1` | `call-s1` | RUNNING |
+| CALL-I1 IR lowering | `ses_e3e03d808ffeYFzQba3HU4HqTN` | `../cc-silicon-call-i1` | `call-i1` | RUNNING |
+| CALL-V1 verification/modeling | `ses_e3e03d807ffeoyf4X401wxaaxd` | `../cc-silicon-call-v1` | `call-v1` | RUNNING |
+| CALL-A1 AArch64 emitter | `ses_e3e03d807ffdDpwNi27WLTXgZQ` | `../cc-silicon-call-a1` | `call-a1` | RUNNING |
+
+No lane may edit shared schema, `candidate.rs`, Cargo, `mod.rs` (except S1's
+module registration for its new worker), contract markers, or another lane's
+files. Each lane returns a branch commit; CALL-F0 cherry-picks in dependency
+order, resolves module aggregation, implements multi-function orchestration,
+and runs the real closed loop. No call implementation or native result is
+claimed yet.
+
+### Next Dispatch Procedure (2026-11-10; In Progress)
 
 The post-`/53` procedure is in
 [MASS_PARALLEL_DISPATCH.md §13](MASS_PARALLEL_DISPATCH.md#13-next-dispatch-from-53).
-`CALL-F0` froze the shape-only `/54` schema and is `READY` for `/55`
-orchestration; `CALL-P1/S1/I1/V1/A1/T1` are `READY` against `/54`. No
-implementation delivery or test result is recorded yet. `CALL-R1` and read-only
+`CALL-F0` froze the shape-only `/54` schema and the five production lanes are
+`RUNNING` against it; `CALL-T1` independent acceptance follows integration. `CALL-R1` and read-only
 interface/test review are eligible for assignment, but no role/session is assigned
 by this documentation update. No call schema, amendment number, ChipId or test
 result is frozen here. Capture actual HEAD and ownership before dispatch; the
