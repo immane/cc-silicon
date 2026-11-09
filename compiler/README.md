@@ -23,8 +23,8 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/52` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23` |
+| Contract version | `t01-c01-c06/53` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
@@ -37,16 +37,17 @@ continues on this foundation.
 | Source locals (`/49`) | Implemented and tested: shape-gated TU parser, block automatic `int`, identifier fact, `Constant`/`LocalStore`/`LocalLoad`/`Return` IR, VF12 local model; `c56_source_locals` 5 macOS / 6 native AArch64 Linux. Calls and general codegen remain future |
 | Local add and modeled integer (`/50`) | Implemented and tested: `ResultValue::Integer`, local-add shape, identifier/literal binary fact, six-instruction IR, VF12 modeled 5; `c56_source_locals` 6 macOS / 8 native AArch64 Linux. Calls and general codegen remain future |
 | Local binary operators (`/51`) | Implemented and tested: `+`, `-`, `*`, `/`, `%` over the local binary shape; VF05/VF06/SE/BIN/IR/VF12 coverage; `c56_source_locals` 7 macOS / 10 native AArch64 Linux; native exits 255/6/0/2 for the new operators. Calls and general codegen remain future |
-| Local expression trees (`/52`) | Implemented and tested: precedence, parentheses, literal-left forms, and unary `+`/`-`; pre-order AST commit, post-order semantic checks, recursive T09 lowering, general VF12 program interpreter; `c56_source_locals` 8 macOS / 12 native AArch64 Linux. Calls, memory, control flow, and general codegen remain future |
-| M1 target prototype | `candidate --emit-asm` emits constant-return and `/49`–`/52` local expression-tree AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run across precedence, parentheses, literal-left forms, and unary minus. Calls, memory, control flow, and general codegen remain absent. Not a T11 chip family or `-S`/`-c` |
+| Local expression trees (`/52`) | Implemented and tested: precedence, parentheses, literal-left forms, and unary `+`/`-`; pre-order AST commit, post-order semantic checks, recursive T09 lowering, general VF12 program interpreter; `c56_source_locals` 8 macOS / 12 native AArch64 Linux. Calls and general codegen remain future |
+| Local assignments (`/53`) | Implemented and tested: zero or more `x = <expr>;` statements, effect-carrying assignment facts, ordered `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 native AArch64 Linux. Calls, memory, branches, loops, and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return and `/49`–`/53` local-program AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run across expressions, parentheses, unary operators, and ordered assignments. Calls, memory, branches, loops, and general codegen remain absent. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/52
-hash=c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23
+version=t01-c01-c06/53
+hash=b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 probe_substrate=linux-ci-vm (planned, not provisioned)

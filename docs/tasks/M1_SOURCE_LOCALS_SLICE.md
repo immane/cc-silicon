@@ -1,10 +1,10 @@
-# M1 Source Locals Slice — Expression Trees
+# M1 Source Locals Slice — Expressions and Assignments
 
 | Field | Value |
 |---|---|
-| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/52` (`/49` local return, `/50` local add + modeled integer, `/51` binary operators, `/52` expression trees) |
+| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/53` (`/49` local return, `/50` local add + modeled integer, `/51` binary operators, `/52` expression trees, `/53` assignments) |
 | Goal | Parse, check, lower, symbolically model, and execute a closed local expression tree over one automatic `int` and integer literals |
-| Evidence | `c56_source_locals` 8 macOS / 12 native AArch64 Linux; native runs cover precedence, parentheses, literal-left forms, and unary minus |
+| Evidence | `c56_source_locals` 10 macOS / 13 native AArch64 Linux; native runs cover precedence, parentheses, literal-left forms, unary minus, and assignment order |
 | Non-claims | No calls, memory objects, branches, general ABI, object emission, or torture rate |
 
 ## 1. Supported source shapes
@@ -16,6 +16,8 @@ int main(void) { int x = 2; return (x + 3) * 2; }
 int main(void) { int x = 2; return 8 - x * 3; }
 int main(void) { int x = 2; return -(x + 3) * 2; }
 int main(void) { int x = 2; return +(x + 1); }
+int main(void) { int x = 2; x = x + 3; return x; }
+int main(void) { int x = 2; x = x + 3; x = x * 2; return x; }
 ```
 
 The return expression is a closed tree over:
@@ -26,7 +28,9 @@ The return expression is a closed tree over:
 - parentheses;
 - unary `+` and `-`.
 
-The initializer remains exactly one integer literal. The canonical
+Assignments are `x = <expression>;` statements between the initializer and the
+return; they execute in source order. The initializer remains exactly one
+integer literal. The canonical
 `int main(void){return 2+3;}` path is unchanged.
 
 Expected examples:
@@ -96,12 +100,26 @@ Expected examples:
 - Literal constants are paired to literals in fold order, so repeated literal
   values are not ambiguous.
 
-New hashed rules: `parse.tu-local-expression-tree`,
-`se.unary-checked-nonlvalue`, `ir.local-expression-tree`, and
-`vf12.local-expression-program`.
+### `/53` assignments
 
-Artifact: `t01-c01-c06/52`, hash
-`c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23`.
+- Zero or more `x = <expr>;` statements are accepted between the initializer
+  and return.
+- `SEMANTIC_ASSIGNMENT_EXPR` (`SEMANTIC` local 24,
+  `SE_ASSIGN_CHIP = ChipId(60)`) appends a `NonLvalue` fact with
+  `EFFECT_WRITES_LOCAL`.
+- VF05/VF06 cover `Assignment`; the assignment-lhs identifier does not need an
+  rvalue fact.
+- T09 lowers the rhs and then a `LocalStore` in source order; VF12 models the
+  store.
+
+New hashed rules: `parse.tu-local-expression-tree`,
+`se.unary-checked-nonlvalue`, `ir.local-expression-tree`,
+`vf12.local-expression-program`, `parse.tu-local-assignment`,
+`se.assignment-writes-local`, `ir.local-assignment-order`, and
+`vf12.local-assignment-model`.
+
+Artifact: `t01-c01-c06/53`, hash
+`b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e`.
 
 ## 3. AST shape
 
@@ -159,9 +177,9 @@ macOS:
 
 ```sh
 cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 8 passed (Linux execution tests cfg-skipped)
+# 10 passed (Linux execution tests cfg-skipped)
 cargo test --locked --manifest-path compiler/Cargo.toml
-# 738 tests / 62 suites passed
+# 740 tests / 62 suites passed
 ```
 
 Native AArch64 Linux:
@@ -171,14 +189,15 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   -e CARGO_TARGET_DIR=/tmp/target rust:1.85-bookworm \
   /usr/local/cargo/bin/cargo test --locked \
   --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 12 passed; native execution covers precedence, parentheses, literal-left
-# forms, unary minus, and the single-operator set
+# 13 passed; native execution covers precedence, parentheses, literal-left
+# forms, unary minus, the single-operator set, and assignment order
 ```
 
 ## 6. Explicit exclusions
 
-- One local declaration and one return statement only.
+- One local declaration, zero or more assignments, and one return statement only.
 - The initializer is one integer literal; no initializer expression.
+- Assignment targets are limited to the single declared local.
 - No multiple declarations, assignment, address-taking, pointers, arrays,
   aggregates, or static locals.
 - No `++`/`--`, casts, `sizeof`, logical/bitwise/comparison operators, or

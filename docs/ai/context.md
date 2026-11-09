@@ -1,18 +1,18 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/52`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/53`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-10 after freezing `/52` local expression trees, with the full
-> compiler suite green (738 tests / 62 suites (743 on native AArch64 Linux);
-> clippy clean).
+> 2026-11-10 after freezing `/53` local assignments, with the full compiler
+> suite green (740 tests / 62 suites (746 on native AArch64 Linux); clippy
+> clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/52` (source local expression trees over one
-  `int` and integer literals, modeled integer result, parser/semantic facts,
-  T09 recursive lowering, VF12 program interpreter), hash `c9ed8129c0527f6a8811accff76dc65d4509b6a9fdc9f9f9bb3325fc59dbae23`.
+- Frozen artifact: `t01-c01-c06/53` (source local expression trees and ordered
+  assignments over one `int`, modeled integer result, parser/semantic facts,
+  T09 recursive lowering, VF12 program interpreter), hash `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -34,16 +34,16 @@
   (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization (deferred
-  package now `/53`); B3-03 PP driver orchestration implementation (design complete,
+  package now `/54`); B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
   Part B general target codegen; full M1 acceptance. A host-only M1
-  `--emit-asm` prototype now emits/runs the constant-return and `/49`–`/52`
-  local expression-tree fixtures; the modeled integer result carrier avoids
-  verification writes. One pinned containerized AArch64
+  `--emit-asm` prototype now emits/runs the constant-return and `/49`–`/53`
+  local expression/assignment fixtures; the modeled integer result carrier
+  avoids verification writes. One pinned containerized AArch64
   probe report is H07-classified and attested by `c48_target_probe`; the global
   target state is `probe-attested`, while the official T00 CI/bare-metal
   baseline remains open. No torture-corpus target run or GCC pass rate is claimed.
-- Branch: `wave4-development`. Commits through `/52` are local; no push was
+- Branch: `wave4-development`. Commits through `/53` are local; no push was
   performed (no force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
@@ -102,6 +102,7 @@
 | `/50` | Modeled integer result + local add (`x+3`) | `task.rs`, `snapshot.rs`, `contract.rs`, `chips/{parse,semantic,ir_lower,verify,constant_layout_init}`, `bin/candidate.rs` | `c56_source_locals` 6 macOS / 8 Linux, full 736/62 (739 Linux) |
 | `/51` | Local binary operators (`- * / %`) | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 7 macOS / 10 Linux, full 737/62 (741 Linux) |
 | `/52` | Local expression trees (precedence, parentheses, unary) | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 8 macOS / 12 Linux, full 738/62 (743 Linux) |
+| `/53` | Local assignment statements | `chips/{parse,semantic,ir_lower,verify}`, `bin/candidate.rs`, `contract.rs` | `c56_source_locals` 10 macOS / 13 Linux, full 740/62 (746 Linux) |
 | — | M1 AArch64 constant-return assembly prototype (`candidate --emit-asm`) | `compiler/src/bin/candidate/target_m1.rs`, `compiler/tests/c55_target_m1.rs` | `c55_target_m1` 1 macOS / 2 native AArch64 Linux |
 | — | M1 automatic-local/integer-arithmetic IR slice | `candidate/target_m1.rs` | 14 candidate-bin unit tests macOS/Linux; native AArch64 `gcc` execution of add/div/rem/mul/sub/neg and signed-constant fixtures |
 | — | H01/H07 containerized target probe + attestation test (`/48`) | `tools/torture/probe/{run-probe.sh,classify.py}`, `compiler/tests/c48_target_probe.rs` | `c48_target_probe` 3 |
@@ -200,7 +201,8 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: calls and parameter ABI, then memory and control flow; the Batch G
+- NEXT UP: calls and parameter ABI after the assignment/statement foundation;
+  then memory and control flow; the Batch G
   torture chain still needs the official corpus/runner (H05 process
   supervision is implemented in `tools/runner`). B3-03c `#line`/`#pragma` and
   the wider H04 include policy remain open. Continue the PP remainder in

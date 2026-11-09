@@ -1082,7 +1082,7 @@ for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
 not a target codegen implementation, and not a torture result. New artifact
 `t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
 the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
-moves to `/53`.
+moves to `/54`.
 
 `/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
 auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts

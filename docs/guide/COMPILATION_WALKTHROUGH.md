@@ -110,10 +110,11 @@ cargo run --manifest-path compiler/Cargo.toml --bin candidate -- \
   local binary IR.
 - `int main(void){int x=2;return (x+3)*2;}` and unary forms parse a closed
   local expression tree.
+- `int main(void){int x=2;x=x+3;return x;}` lowers the assignment as a store.
 
 On native AArch64 Linux the emitted assembly assembles, links, and exits the
-modeled values. This is not a general compiler: calls, memory, branches, object
-emission, and `-S`/`-c` remain absent. Full setup is
+modeled values. This is not a general compiler: calls, memory, branches, loops,
+object emission, and `-S`/`-c` remain absent. Full setup is
 in [design/GETTING_STARTED.md](../design/GETTING_STARTED.md).
 
 ## Sources

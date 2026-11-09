@@ -16,7 +16,7 @@ pipeline and get exit code 5. M1 splits into two halves:
   assembly, external assemble/link, run, exit code 5.
 
 The CLI still refuses `-S`/`-c`; a host-only `--emit-asm` prototype covers
-constant return and `/49`–`/52` local expression fixtures, and one containerized
+constant return and `/49`–`/53` local expression/assignment fixtures, and one containerized
 probe report is classified/attested. General target codegen and the official
 T00 reference CI/bare-metal baseline remain blocked. The acceptance documents
 still describe the full milestone, not the current narrow slices:
@@ -74,9 +74,9 @@ B3-03a/B3-03b add source `#define`/`#undef` and bounded quoted includes.
 batches; `/47` is the diagnostic taxonomy; `/48` is the probe-attested
 target baseline; `/49` is the source local load/store slice; `/50` adds
 modeled-integer results and source local add; `/51` adds local `- * / %`; `/52`
-adds local expression trees with precedence, parentheses, and unary operators.
-`/53` owns full snapshot restore, quota>1 order, VF13 projections, per-stage
-queues, and `StorePatch` materialization.
+adds local expression trees with precedence, parentheses, and unary operators;
+`/53` adds ordered assignments. `/54` owns full snapshot restore, quota>1
+order, VF13 projections, per-stage queues, and `StorePatch` materialization.
 
 ## After M1: the longer climb
 
