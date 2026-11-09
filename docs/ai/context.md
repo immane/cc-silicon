@@ -4,7 +4,7 @@
 > 2026-11-09 after accepting `/43` parser architecture/V1 AST, implementing
 > B2-02 `/42`, B-INT-00, B3-03a source `#define`/`#undef`, B3-03b bounded
 > quote include, and the target probe, with the full compiler suite green
-> (728 tests / 61 suites (729 on native AArch64 Linux); clippy clean).
+> (730 tests / 61 suites (731 on native AArch64 Linux); clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.

@@ -34,9 +34,10 @@ FunctionRecord int(void)
 ```
 
 Locals must be automatic objects with the canonical signed-`int` type. Every
-produced value must carry that same type. Constants must fit `i32`; operands
-must be produced before use; `Return` must be last. Any other IR shape fails
-closed.
+produced value must carry that same type. Constants must fit `i32`; operands must be produced before use; `Return` must
+be last. Stack frames are 16-byte aligned and must fit the AArch64 `sub sp,
+sp, #imm` range (at most 4080 bytes after alignment). Any other IR shape
+fails closed.
 
 The host candidate frontend still produces only the `Constant` + `Return`
 shape. The local/arithmetic emitter is currently exercised by unit-test IR
@@ -94,7 +95,7 @@ are cfg-skipped):
 
 ```sh
 cargo test --locked --manifest-path compiler/Cargo.toml --bin candidate
-# 12 passed
+# 14 passed
 cargo test --locked --manifest-path compiler/Cargo.toml --test c55_target_m1
 # 1 passed
 ```
@@ -106,7 +107,8 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   -e CARGO_TARGET_DIR=/tmp/target rust:1.85-bookworm \
   /usr/local/cargo/bin/cargo test --locked \
   --manifest-path compiler/Cargo.toml --bin candidate
-# 12 passed; the local/add fixture exits 5 and the all-operator fixture exits 252 (-4)
+# 14 passed; the local/add fixture exits 5, the all-operator fixture exits
+# 252 (-4), and the signed-constant fixture exits 255 (-1)
 ```
 
 The `c55_target_m1` integration test separately assembles, links, and runs the
@@ -118,6 +120,8 @@ skip when the host GCC is not an AArch64 target.
 - Host-only prototype, not a T11 chip or manifest entry.
 - No target records, register allocation, calls, memory operands, branches,
   ABI argument classification, relocations, or object emission.
+- Stack frames larger than the `sub sp, sp, #imm` range fail closed; no
+  large-frame materialization yet.
 - The stack-machine IR path has no source-level producer yet; only the
   constant-return path is reachable through `--emit-asm`.
 - `-S`/`-c` remain refused; `--emit-asm` is an explicit bootstrap flag.

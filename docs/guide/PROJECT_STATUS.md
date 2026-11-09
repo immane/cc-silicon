@@ -70,7 +70,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **728 tests across 61 suites (729 on native AArch64 Linux) passed** after the M1 integer-IR slice (adds two target-emitter unit tests on top of the constant-return prototype and the `/47` schema suite) |
+| Compiler | **730 tests across 61 suites (731 on native AArch64 Linux) passed** after the M1 integer-IR slice (adds four target-emitter unit tests on top of the constant-return prototype and the `/47` schema suite) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; one containerized real probe report + H07 classification |
