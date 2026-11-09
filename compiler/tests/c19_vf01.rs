@@ -547,7 +547,7 @@ fn vf01_rejects_reserved_records_and_escaping_spans() {
     // A record in a still-reserved store breaks the M1 contract.
     let mut bus = full_chain();
     let limits = bus.limits();
-    bus.arenas.layouts.alloc(&limits).unwrap();
+    bus.arenas.vregs.alloc(&limits).unwrap();
     match run_vf01(&mut bus).outcome {
         TickOutcome::Executed { commit, .. } => assert_eq!(commit.failed.len(), 1),
         other => panic!("expected executed-with-failure, got {other:?}"),

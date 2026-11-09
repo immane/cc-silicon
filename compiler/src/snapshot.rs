@@ -17,12 +17,13 @@
 // ============================================================================
 
 use crate::bus::{
-    AddressConst, ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, CompilerPins,
-    ConstRecord, ConstValue, EffectMask, FloatConst, FunctionRecord, InstructionRecord, IntRank,
-    IntegerConst, IrOp, Linkage, LiteralRecord, MacroRecord, NodeKind, NodeRecord, PpTokenKind,
+    AddressConst, AggregateKind, AggregateMember, ArrayBound, ArtifactKind, ArtifactRecord,
+    BlockRecord, CharKind, CompilerBus, CompilerPins, ConstRecord, ConstValue, EffectMask,
+    Enumerator, FloatConst, FunctionRecord, InitRecord, InstructionRecord, IntRank, IntegerConst,
+    IrOp, LayoutRecord, Linkage, LiteralRecord, MacroRecord, NodeKind, NodeRecord, PpTokenKind,
     PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord,
-    StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord,
-    ValueCategory, ValueRecord,
+    StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeQualifiers,
+    TypeRecord, ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticRecord, Severity};
@@ -577,6 +578,14 @@ fn push_g1_draft_body(w: &mut Writer, body: &crate::records::G1DraftBody) {
             w.str(G1_DRAFT_BODY_NAMES[17]);
             w.raw(&encode_macro(record));
         }
+        G1DraftBody::Layout(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[18]);
+            w.raw(&encode_layout(record));
+        }
+        G1DraftBody::Init(record) => {
+            w.str(G1_DRAFT_BODY_NAMES[19]);
+            w.raw(&encode_init(record));
+        }
     }
 }
 
@@ -847,16 +856,17 @@ impl Snapshot {
             w.u32(id.index());
             w.raw(&encode_const(constant));
         }
-        push_reserved(
-            &mut w,
-            bus.arenas.layouts.allocated(),
-            bus.arenas.layouts.live_ids(),
-        );
-        push_reserved(
-            &mut w,
-            bus.arenas.inits.allocated(),
-            bus.arenas.inits.live_ids(),
-        );
+        // `/46` typed layouts and initialization records.
+        w.u64(bus.arenas.layouts.allocated() as u64);
+        for (id, layout) in bus.arenas.layouts.iter() {
+            w.u32(id.index());
+            w.raw(&encode_layout(layout));
+        }
+        w.u64(bus.arenas.inits.allocated() as u64);
+        for (id, init) in bus.arenas.inits.iter() {
+            w.u32(id.index());
+            w.raw(&encode_init(init));
+        }
         // Wave 2 (`/15`) typed IR: allocated count plus per-record bodies
         // in ascending ID order.
         w.u64(bus.arenas.functions.allocated() as u64);
@@ -2342,6 +2352,10 @@ pub fn type_kind_name(kind: &TypeKind) -> &'static str {
         TypeKind::Char(_) => "char",
         TypeKind::Int { .. } => "int",
         TypeKind::Function { .. } => "function",
+        TypeKind::Pointer { .. } => "pointer",
+        TypeKind::Array { .. } => "array",
+        TypeKind::Aggregate { .. } => "aggregate",
+        TypeKind::Enum { .. } => "enum",
     }
 }
 
@@ -2377,8 +2391,93 @@ pub fn encode_type(record: &TypeRecord) -> Vec<u8> {
             w.bool(*prototype);
             w.bool(*variadic);
         }
+        TypeKind::Pointer {
+            pointee,
+            qualifiers,
+        } => {
+            w.u32(pointee.index());
+            w.u8(qualifier_bits(*qualifiers));
+        }
+        TypeKind::Array { element, bound } => {
+            w.u32(element.index());
+            match bound {
+                ArrayBound::Constant(count) => {
+                    w.u8(0);
+                    w.u64(*count);
+                }
+                ArrayBound::Incomplete => w.u8(1),
+                ArrayBound::Vla { bound, scope } => {
+                    w.u8(2);
+                    w.u32(bound.index());
+                    w.u32(scope.index());
+                }
+            }
+        }
+        TypeKind::Aggregate { kind, members } => {
+            w.u8(match kind {
+                AggregateKind::Struct => 0,
+                AggregateKind::Union => 1,
+            });
+            w.u64(members.len() as u64);
+            for member in members {
+                match member.name {
+                    Some(name) => {
+                        w.u8(1);
+                        w.u32(name.index());
+                    }
+                    None => w.u8(0),
+                }
+                w.u32(member.ty.index());
+                match member.bit_width {
+                    Some(width) => {
+                        w.u8(1);
+                        w.u32(width);
+                    }
+                    None => w.u8(0),
+                }
+                w.bool(member.flexible);
+            }
+        }
+        TypeKind::Enum {
+            underlying,
+            enumerators,
+        } => {
+            w.u32(underlying.index());
+            w.u64(enumerators.len() as u64);
+            for enumerator in enumerators {
+                w.u32(enumerator.name.index());
+                match enumerator.value {
+                    Some(value) => {
+                        w.u8(1);
+                        w.u32(value.index());
+                    }
+                    None => w.u8(0),
+                }
+            }
+        }
     }
     w.finish()
+}
+
+/// Encode the four `/46` type qualifier booleans as one byte.
+fn qualifier_bits(qualifiers: TypeQualifiers) -> u8 {
+    u8::from(qualifiers.is_const)
+        | (u8::from(qualifiers.is_volatile) << 1)
+        | (u8::from(qualifiers.is_restrict) << 2)
+        | (u8::from(qualifiers.is_atomic) << 3)
+}
+
+/// Decode the `/46` type qualifier byte; unknown high bits are rejected.
+fn decode_qualifier_bits(bits: u8) -> Option<TypeQualifiers> {
+    if bits > 0x0f {
+        return None;
+    }
+    Some(TypeQualifiers {
+        is_const: bits & 1 != 0,
+        is_volatile: bits & 2 != 0,
+        is_restrict: bits & 4 != 0,
+        is_atomic: bits & 8 != 0,
+    })
 }
 
 /// Decode one committed [`TypeRecord`]; consumes the whole input.
@@ -2413,6 +2512,75 @@ pub fn decode_type(bytes: &[u8]) -> Result<TypeRecord, CodecError> {
                 params,
                 prototype: r.bool()?,
                 variadic: r.bool()?,
+            }
+        }
+        "pointer" => {
+            let pointee = TypeId::from_index(r.u32()?);
+            let qualifiers = decode_qualifier_bits(r.u8()?)
+                .ok_or(CodecError::Unsupported("unknown type qualifiers"))?;
+            TypeKind::Pointer {
+                pointee,
+                qualifiers,
+            }
+        }
+        "array" => {
+            let element = TypeId::from_index(r.u32()?);
+            let bound = match r.u8()? {
+                0 => ArrayBound::Constant(r.u64()?),
+                1 => ArrayBound::Incomplete,
+                2 => ArrayBound::Vla {
+                    bound: crate::ids::NodeId::from_index(r.u32()?),
+                    scope: crate::ids::ScopeId::from_index(r.u32()?),
+                },
+                tag => return Err(CodecError::InvalidTag(tag)),
+            };
+            TypeKind::Array { element, bound }
+        }
+        "aggregate" => {
+            let kind = match r.u8()? {
+                0 => AggregateKind::Struct,
+                1 => AggregateKind::Union,
+                tag => return Err(CodecError::InvalidTag(tag)),
+            };
+            let member_count = r.u64()? as usize;
+            let mut members = Vec::with_capacity(member_count);
+            for _ in 0..member_count {
+                let name = match r.u8()? {
+                    0 => None,
+                    1 => Some(crate::ids::NameId::from_index(r.u32()?)),
+                    tag => return Err(CodecError::InvalidTag(tag)),
+                };
+                let ty = TypeId::from_index(r.u32()?);
+                let bit_width = match r.u8()? {
+                    0 => None,
+                    1 => Some(r.u32()?),
+                    tag => return Err(CodecError::InvalidTag(tag)),
+                };
+                members.push(AggregateMember {
+                    name,
+                    ty,
+                    bit_width,
+                    flexible: r.bool()?,
+                });
+            }
+            TypeKind::Aggregate { kind, members }
+        }
+        "enum" => {
+            let underlying = TypeId::from_index(r.u32()?);
+            let count = r.u64()? as usize;
+            let mut enumerators = Vec::with_capacity(count);
+            for _ in 0..count {
+                let name = crate::ids::NameId::from_index(r.u32()?);
+                let value = match r.u8()? {
+                    0 => None,
+                    1 => Some(crate::ids::ConstId::from_index(r.u32()?)),
+                    tag => return Err(CodecError::InvalidTag(tag)),
+                };
+                enumerators.push(Enumerator { name, value });
+            }
+            TypeKind::Enum {
+                underlying,
+                enumerators,
             }
         }
         _ => return Err(CodecError::Unsupported("unknown type kind")),
@@ -2927,6 +3095,371 @@ pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError>
         local,
         successors,
     })
+}
+
+/// Canonical encoding of one committed [`LayoutRecord`].
+pub fn encode_layout(record: &LayoutRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.key.ty.index());
+    match record.key.pack {
+        Some(pack) => {
+            w.u8(1);
+            w.u8(pack);
+        }
+        None => w.u8(0),
+    }
+    match record.key.target {
+        crate::bus::LayoutTarget::Symbolic => w.u8(0),
+        crate::bus::LayoutTarget::Probed(hash) => {
+            w.u8(1);
+            w.raw(&hash);
+        }
+    }
+    match record.form {
+        crate::bus::LayoutForm::Scalar => w.u8(0),
+        crate::bus::LayoutForm::Pointer => w.u8(1),
+        crate::bus::LayoutForm::Array { element, count } => {
+            w.u8(2);
+            w.u32(element.index());
+            match count {
+                Some(count) => {
+                    w.u8(1);
+                    w.u64(count);
+                }
+                None => w.u8(0),
+            }
+        }
+        crate::bus::LayoutForm::Record => w.u8(3),
+        crate::bus::LayoutForm::Union => w.u8(4),
+        crate::bus::LayoutForm::BitFieldStorage => w.u8(5),
+        crate::bus::LayoutForm::Vla => w.u8(6),
+    }
+    push_extent(&mut w, record.size);
+    push_extent(&mut w, record.align);
+    w.u64(record.members.len() as u64);
+    for member in &record.members {
+        w.u32(member.index);
+        match member.name {
+            Some(name) => {
+                w.u8(1);
+                w.u32(name.index());
+            }
+            None => w.u8(0),
+        }
+        w.u32(member.ty.index());
+        w.u32(member.layout.index());
+        push_extent(&mut w, member.offset);
+        match member.bit_width {
+            Some(width) => {
+                w.u8(1);
+                w.u32(width);
+            }
+            None => w.u8(0),
+        }
+        push_extent(&mut w, member.bit_offset);
+    }
+    match record.vla {
+        Some(vla) => {
+            w.u8(1);
+            w.u32(vla.bound.index());
+            w.u32(vla.scope.index());
+            w.u32(vla.element.index());
+            push_extent(&mut w, vla.stride);
+        }
+        None => w.u8(0),
+    }
+    w.finish()
+}
+
+fn push_extent(w: &mut Writer, extent: crate::bus::LayoutExtent) {
+    match extent {
+        crate::bus::LayoutExtent::Symbolic => w.u8(0),
+        crate::bus::LayoutExtent::Bits(bits) => {
+            w.u8(1);
+            w.u64(bits);
+        }
+    }
+}
+
+fn read_extent(r: &mut Reader<'_>) -> Result<crate::bus::LayoutExtent, CodecError> {
+    match r.u8()? {
+        0 => Ok(crate::bus::LayoutExtent::Symbolic),
+        1 => Ok(crate::bus::LayoutExtent::Bits(r.u64()?)),
+        tag => Err(CodecError::InvalidTag(tag)),
+    }
+}
+
+/// Decode one committed [`LayoutRecord`]; consumes the whole input.
+pub fn decode_layout(bytes: &[u8]) -> Result<LayoutRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let ty = TypeId::from_index(r.u32()?);
+    let pack = match r.u8()? {
+        0 => None,
+        1 => Some(r.u8()?),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let target = match r.u8()? {
+        0 => crate::bus::LayoutTarget::Symbolic,
+        1 => {
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(r.raw(32)?);
+            crate::bus::LayoutTarget::Probed(hash)
+        }
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let form = match r.u8()? {
+        0 => crate::bus::LayoutForm::Scalar,
+        1 => crate::bus::LayoutForm::Pointer,
+        2 => {
+            let element = LayoutId::from_index(r.u32()?);
+            let count = match r.u8()? {
+                0 => None,
+                1 => Some(r.u64()?),
+                tag => return Err(CodecError::InvalidTag(tag)),
+            };
+            crate::bus::LayoutForm::Array { element, count }
+        }
+        3 => crate::bus::LayoutForm::Record,
+        4 => crate::bus::LayoutForm::Union,
+        5 => crate::bus::LayoutForm::BitFieldStorage,
+        6 => crate::bus::LayoutForm::Vla,
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    let size = read_extent(&mut r)?;
+    let align = read_extent(&mut r)?;
+    let member_count = r.u64()? as usize;
+    let mut members = Vec::with_capacity(member_count);
+    for _ in 0..member_count {
+        let index = r.u32()?;
+        let name = match r.u8()? {
+            0 => None,
+            1 => Some(crate::ids::NameId::from_index(r.u32()?)),
+            tag => return Err(CodecError::InvalidTag(tag)),
+        };
+        let member_ty = TypeId::from_index(r.u32()?);
+        let layout = LayoutId::from_index(r.u32()?);
+        let offset = read_extent(&mut r)?;
+        let bit_width = match r.u8()? {
+            0 => None,
+            1 => Some(r.u32()?),
+            tag => return Err(CodecError::InvalidTag(tag)),
+        };
+        let bit_offset = read_extent(&mut r)?;
+        members.push(crate::bus::LayoutMember {
+            index,
+            name,
+            ty: member_ty,
+            layout,
+            offset,
+            bit_width,
+            bit_offset,
+        });
+    }
+    let vla = match r.u8()? {
+        0 => None,
+        1 => Some(crate::bus::VlaDescriptor {
+            bound: crate::ids::NodeId::from_index(r.u32()?),
+            scope: crate::ids::ScopeId::from_index(r.u32()?),
+            element: LayoutId::from_index(r.u32()?),
+            stride: read_extent(&mut r)?,
+        }),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(LayoutRecord {
+        key: crate::bus::LayoutKey { ty, pack, target },
+        form,
+        size,
+        align,
+        members,
+        vla,
+    })
+}
+
+/// Canonical encoding of one committed [`InitRecord`].
+pub fn encode_init(record: &InitRecord) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.u32(record.ty.index());
+    w.u32(record.layout.index());
+    match &record.form {
+        crate::bus::InitForm::Plan { storage, steps } => {
+            w.u8(0);
+            w.u8(match storage {
+                crate::bus::InitStorage::Static => 0,
+                crate::bus::InitStorage::Automatic => 1,
+                crate::bus::InitStorage::Thread => 2,
+            });
+            push_init_steps(&mut w, steps);
+        }
+        crate::bus::InitForm::StaticImage {
+            plan,
+            bytes,
+            relocs,
+        } => {
+            w.u8(1);
+            w.u32(plan.index());
+            w.bytes(bytes);
+            w.u64(relocs.len() as u64);
+            for reloc in relocs {
+                w.u64(reloc.offset);
+                w.u32(reloc.base.index());
+                w.bytes(&reloc.addend.magnitude);
+                w.bool(reloc.addend.negative);
+            }
+        }
+        crate::bus::InitForm::RuntimeOps { plan, ops } => {
+            w.u8(2);
+            w.u32(plan.index());
+            push_init_steps(&mut w, ops);
+        }
+    }
+    w.finish()
+}
+
+fn push_init_steps(w: &mut Writer, steps: &[crate::bus::InitStep]) {
+    w.u64(steps.len() as u64);
+    for step in steps {
+        match step {
+            crate::bus::InitStep::Zero { offset, length } => {
+                w.u8(0);
+                push_extent(w, *offset);
+                push_extent(w, *length);
+            }
+            crate::bus::InitStep::Scalar { offset, value } => {
+                w.u8(1);
+                push_extent(w, *offset);
+                w.u32(value.index());
+            }
+            crate::bus::InitStep::Copy {
+                offset,
+                source,
+                length,
+            } => {
+                w.u8(2);
+                push_extent(w, *offset);
+                w.raw(&encode_record_ref(*source));
+                push_extent(w, *length);
+            }
+            crate::bus::InitStep::Relocation {
+                offset,
+                base,
+                addend,
+            } => {
+                w.u8(3);
+                push_extent(w, *offset);
+                match base {
+                    Some(base) => {
+                        w.u8(1);
+                        w.u32(base.index());
+                    }
+                    None => w.u8(0),
+                }
+                w.bytes(&addend.magnitude);
+                w.bool(addend.negative);
+            }
+            crate::bus::InitStep::RuntimeStore { offset, value } => {
+                w.u8(4);
+                w.u32(offset.index());
+                w.u32(value.index());
+            }
+        }
+    }
+}
+
+fn read_init_steps(r: &mut Reader<'_>) -> Result<Vec<crate::bus::InitStep>, CodecError> {
+    let count = r.u64()? as usize;
+    let mut steps = Vec::with_capacity(count);
+    for _ in 0..count {
+        let step = match r.u8()? {
+            0 => crate::bus::InitStep::Zero {
+                offset: read_extent(r)?,
+                length: read_extent(r)?,
+            },
+            1 => crate::bus::InitStep::Scalar {
+                offset: read_extent(r)?,
+                value: ConstId::from_index(r.u32()?),
+            },
+            2 => crate::bus::InitStep::Copy {
+                offset: read_extent(r)?,
+                source: decode_record_ref(&r.bytes()?)?,
+                length: read_extent(r)?,
+            },
+            3 => {
+                let offset = read_extent(r)?;
+                let base = match r.u8()? {
+                    0 => None,
+                    1 => Some(SymbolId::from_index(r.u32()?)),
+                    tag => return Err(CodecError::InvalidTag(tag)),
+                };
+                let magnitude = r.bytes()?;
+                let negative = r.bool()?;
+                crate::bus::InitStep::Relocation {
+                    offset,
+                    base,
+                    addend: IntegerConst {
+                        magnitude,
+                        negative,
+                    },
+                }
+            }
+            4 => crate::bus::InitStep::RuntimeStore {
+                offset: crate::ids::NodeId::from_index(r.u32()?),
+                value: crate::ids::NodeId::from_index(r.u32()?),
+            },
+            tag => return Err(CodecError::InvalidTag(tag)),
+        };
+        steps.push(step);
+    }
+    Ok(steps)
+}
+
+/// Decode one committed [`InitRecord`]; consumes the whole input.
+pub fn decode_init(bytes: &[u8]) -> Result<InitRecord, CodecError> {
+    let mut r = Reader::new(bytes);
+    let ty = TypeId::from_index(r.u32()?);
+    let layout = LayoutId::from_index(r.u32()?);
+    let form = match r.u8()? {
+        0 => {
+            let storage = match r.u8()? {
+                0 => crate::bus::InitStorage::Static,
+                1 => crate::bus::InitStorage::Automatic,
+                2 => crate::bus::InitStorage::Thread,
+                tag => return Err(CodecError::InvalidTag(tag)),
+            };
+            crate::bus::InitForm::Plan {
+                storage,
+                steps: read_init_steps(&mut r)?,
+            }
+        }
+        1 => {
+            let plan = InitId::from_index(r.u32()?);
+            let image = r.bytes()?;
+            let reloc_count = r.u64()? as usize;
+            let mut relocs = Vec::with_capacity(reloc_count);
+            for _ in 0..reloc_count {
+                relocs.push(crate::bus::Reloc {
+                    offset: r.u64()?,
+                    base: SymbolId::from_index(r.u32()?),
+                    addend: IntegerConst {
+                        magnitude: r.bytes()?,
+                        negative: r.bool()?,
+                    },
+                });
+            }
+            crate::bus::InitForm::StaticImage {
+                plan,
+                bytes: image,
+                relocs,
+            }
+        }
+        2 => crate::bus::InitForm::RuntimeOps {
+            plan: InitId::from_index(r.u32()?),
+            ops: read_init_steps(&mut r)?,
+        },
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
+    r.finish()?;
+    Ok(InitRecord { ty, layout, form })
 }
 
 /// Canonical encoding of a `/10` artifact: kind name, optional source index,

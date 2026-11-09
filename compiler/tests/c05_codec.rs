@@ -339,7 +339,7 @@ fn reserved_store_tombstones_are_visible() {
     let id = allocated_then_removed
         .arenas
         .layouts
-        .alloc(&limits)
+        .alloc(fixture_layout(), &limits)
         .unwrap();
     allocated_then_removed.arenas.layouts.remove(id).unwrap();
 
@@ -708,8 +708,12 @@ fn snapshot_covers_new_reserved_arenas_in_flight_and_report() {
         .literals
         .alloc(fixture_literal(2, b"2"), &limits)
         .unwrap();
-    touched.arenas.inits.alloc(&limits).unwrap();
-    touched.arenas.layouts.alloc(&limits).unwrap();
+    touched.arenas.inits.alloc(fixture_init(), &limits).unwrap();
+    touched
+        .arenas
+        .layouts
+        .alloc(fixture_layout(), &limits)
+        .unwrap();
     touched.tasks.in_flight.push(TaskId::from_index(3));
     touched
         .push_tick_record(TickRecord {
@@ -741,13 +745,45 @@ fn draft_handle(family: RecordFamily, index: u32) -> RecordDraft {
     }
 }
 
+fn fixture_layout() -> cc_silicon_compiler::bus::LayoutRecord {
+    use cc_silicon_compiler::bus::{
+        LayoutExtent, LayoutForm, LayoutKey, LayoutRecord, LayoutTarget,
+    };
+    LayoutRecord {
+        key: LayoutKey {
+            ty: TypeId::from_index(0),
+            pack: None,
+            target: LayoutTarget::Symbolic,
+        },
+        form: LayoutForm::Scalar,
+        size: LayoutExtent::Symbolic,
+        align: LayoutExtent::Symbolic,
+        members: vec![],
+        vla: None,
+    }
+}
+
+fn fixture_init() -> cc_silicon_compiler::bus::InitRecord {
+    use cc_silicon_compiler::bus::{InitForm, InitRecord, InitStorage};
+    InitRecord {
+        ty: TypeId::from_index(0),
+        layout: cc_silicon_compiler::ids::LayoutId::from_index(0),
+        form: InitForm::Plan {
+            storage: InitStorage::Static,
+            steps: vec![],
+        },
+    }
+}
+
 fn all_draft_bodies() -> Vec<G1DraftBody> {
     use cc_silicon_compiler::bus::{
         ArtifactKind, ArtifactRecord, BlockRecord, ConstRecord, ConstValue, EffectMask,
-        FunctionRecord, InstructionRecord, IntRank, IntegerConst, IrOp, Linkage, MacroRecord,
-        NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord,
-        ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord,
-        TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
+        FunctionRecord, InitForm, InitRecord, InitStorage, InstructionRecord, IntRank,
+        IntegerConst, IrOp, LayoutExtent, LayoutForm, LayoutKey, LayoutRecord, LayoutTarget,
+        Linkage, MacroRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
+        ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration,
+        SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory,
+        ValueRecord,
     };
     let span = SpanId::from_index(0);
     let name = NameId::from_index(0);
@@ -857,6 +893,26 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
             replacement: vec![],
             undefined: false,
         }),
+        G1DraftBody::Layout(LayoutRecord {
+            key: LayoutKey {
+                ty,
+                pack: None,
+                target: LayoutTarget::Symbolic,
+            },
+            form: LayoutForm::Scalar,
+            size: LayoutExtent::Symbolic,
+            align: LayoutExtent::Symbolic,
+            members: vec![],
+            vla: None,
+        }),
+        G1DraftBody::Init(InitRecord {
+            ty,
+            layout: cc_silicon_compiler::ids::LayoutId::from_index(0),
+            form: InitForm::Plan {
+                storage: InitStorage::Static,
+                steps: vec![],
+            },
+        }),
     ]
 }
 
@@ -946,6 +1002,20 @@ fn distinct_body(body: &G1DraftBody) -> G1DraftBody {
             record.spelling = b"other".to_vec();
             G1DraftBody::Macro(record)
         }
+        G1DraftBody::Layout(mut record) => {
+            record.size = cc_silicon_compiler::bus::LayoutExtent::Bits(8);
+            G1DraftBody::Layout(record)
+        }
+        G1DraftBody::Init(mut record) => {
+            record.form = cc_silicon_compiler::bus::InitForm::Plan {
+                storage: cc_silicon_compiler::bus::InitStorage::Automatic,
+                steps: vec![cc_silicon_compiler::bus::InitStep::Zero {
+                    offset: cc_silicon_compiler::bus::LayoutExtent::Bits(0),
+                    length: cc_silicon_compiler::bus::LayoutExtent::Bits(8),
+                }],
+            };
+            G1DraftBody::Init(record)
+        }
     }
 }
 
@@ -954,13 +1024,13 @@ fn append_wire_body_sensitivity() {
     let empty = Snapshot::capture(&append_bus(vec![], vec![])).hash();
     let empty_again = Snapshot::capture(&append_bus(vec![], vec![])).hash();
     assert_eq!(empty, empty_again);
-    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 18);
+    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 20);
 
     // Every typed body variant changes the snapshot, re-encodes
     // deterministically with the same handle, and remains sensitive to its
     // body bytes (same variant, same handle, one changed field).
     let bodies = all_draft_bodies();
-    assert_eq!(bodies.len(), 18);
+    assert_eq!(bodies.len(), 20);
     for body in &bodies {
         let family = body.family();
         let first = Snapshot::capture(&append_bus(

@@ -28,7 +28,7 @@ fn contract_version_file_matches_constants() {
     assert_eq!(VERSION_FILE, contract_version_file());
     assert_eq!(field("version"), CONTRACT_VERSION);
     assert_eq!(field("hash"), CONTRACT_HASH);
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/45");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/46");
 }
 
 #[test]
@@ -181,9 +181,10 @@ fn frozen_41_tables_match_their_encoders() {
         APPEND_BATCH_FIELDS, APPEND_BODY_STORE_NAMES, CONTROL_RECORD_FIELDS, G1_DRAFT_BODY_NAMES,
         PIN_RECORD_FIELDS, TASK_RECORD_FIELDS, TRACE_RECORD_FIELDS,
     };
-    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 18);
+    assert_eq!(G1_DRAFT_BODY_NAMES.len(), 20);
     assert_eq!(G1_DRAFT_BODY_NAMES[0], "literal");
     assert_eq!(G1_DRAFT_BODY_NAMES[17], "macro");
+    assert_eq!(G1_DRAFT_BODY_NAMES[19], "init");
     assert_eq!(APPEND_BATCH_FIELDS, &["records", "bodies"]);
     assert_eq!(APPEND_BODY_STORE_NAMES.len(), G1_DRAFT_BODY_NAMES.len());
     assert!(CONTROL_RECORD_FIELDS.contains(&"next_commit_ordinal"));

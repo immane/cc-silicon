@@ -18,8 +18,8 @@ use crate::diagnostic::DiagnosticRecord;
 use crate::ids::{
     ArtifactId, BlockId, ConstId, ContinuationId, DiagnosticId, ExpansionId, FunctionId,
     HostRequestId, InitId, InstructionId, LayoutId, LiteralId, MacroId, NameId, NodeId, PpTokenId,
-    ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId, TypeId,
-    VRegId, ValueId,
+    RecordRef, ResultId, ScopeEventId, ScopeId, SemId, SourceId, SpanId, SymbolId, TaskId, TokenId,
+    TypeId, VRegId, ValueId,
 };
 use crate::intern::InternTable;
 use crate::limits::{LimitError, Limits};
@@ -280,12 +280,72 @@ pub enum CharKind {
     Unsigned,
 }
 
+/// Type qualifiers (`/46` append).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TypeQualifiers {
+    /// `const`.
+    pub is_const: bool,
+    /// `volatile`.
+    pub is_volatile: bool,
+    /// `restrict`.
+    pub is_restrict: bool,
+    /// `_Atomic`.
+    pub is_atomic: bool,
+}
+
+/// Array bound (`/46` append).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayBound {
+    /// A constant element count.
+    Constant(u64),
+    /// An incomplete array bound.
+    Incomplete,
+    /// A VLA bound expression and its scope.
+    Vla {
+        /// Bound expression node.
+        bound: NodeId,
+        /// Scope holding the bound.
+        scope: ScopeId,
+    },
+}
+
+/// Aggregate kind (`/46` append).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AggregateKind {
+    /// `struct`.
+    Struct,
+    /// `union`.
+    Union,
+}
+
+/// One aggregate member (`/46` append).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AggregateMember {
+    /// Optional member name (`None` for unnamed bitfields/anonymous members).
+    pub name: Option<NameId>,
+    /// Member type.
+    pub ty: TypeId,
+    /// Bit width for bitfields.
+    pub bit_width: Option<u32>,
+    /// Whether this is a flexible array member.
+    pub flexible: bool,
+}
+
+/// One enum enumerator (`/46` append).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Enumerator {
+    /// Enumerator name.
+    pub name: NameId,
+    /// Committed constant value, when evaluated.
+    pub value: Option<ConstId>,
+}
+
 /// A T06-owned canonical type record (`/13` slice freeze).
 ///
 /// M1 produces only `Int { rank: Int, signed: true }` (TY13, single
 /// producer with reuse scan) and `Function { result: int, params: [],
-/// prototype: true, variadic: false }` (TY17). All other type forms are
-/// explicit unsupported.
+/// prototype: true, variadic: false }` (TY17). `/46` appends pointer,
+/// array, aggregate, and enum forms as schema-only carriers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeRecord {
     /// Type kind.
@@ -319,6 +379,35 @@ pub enum TypeKind {
         prototype: bool,
         /// Whether the function is variadic.
         variadic: bool,
+    },
+    // `/46` type-model append.
+    /// Pointer type.
+    Pointer {
+        /// Pointee type.
+        pointee: TypeId,
+        /// Pointer qualifiers.
+        qualifiers: TypeQualifiers,
+    },
+    /// Array type.
+    Array {
+        /// Element type.
+        element: TypeId,
+        /// Bound kind.
+        bound: ArrayBound,
+    },
+    /// Struct/union aggregate type.
+    Aggregate {
+        /// Struct or union.
+        kind: AggregateKind,
+        /// Members in declaration order.
+        members: Vec<AggregateMember>,
+    },
+    /// Enum type.
+    Enum {
+        /// Underlying integer type.
+        underlying: TypeId,
+        /// Enumerators in declaration order.
+        enumerators: Vec<Enumerator>,
     },
 }
 
@@ -525,6 +614,213 @@ pub struct InstructionRecord {
     /// CFG successors for `Branch`/`CondBranch`; empty for non-terminators
     /// (`/44` append). The ordered successor list is authoritative.
     pub successors: Vec<crate::ids::BlockId>,
+}
+
+/// Layout target identity (`/46`): symbolic Part A or an attested report hash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutTarget {
+    /// Target-independent symbolic layout.
+    Symbolic,
+    /// Attested target report fingerprint.
+    Probed([u8; 32]),
+}
+
+/// Layout extent (`/46`): symbolic vs a concrete bit count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutExtent {
+    /// Not computed in Part A.
+    Symbolic,
+    /// Concrete bit count.
+    Bits(u64),
+}
+
+/// Layout key (`/46`): type, effective pack, and target identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayoutKey {
+    /// Type being laid out.
+    pub ty: TypeId,
+    /// Effective pack, if any.
+    pub pack: Option<u8>,
+    /// Target identity used for the computation.
+    pub target: LayoutTarget,
+}
+
+/// Layout form (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutForm {
+    /// Scalar object.
+    Scalar,
+    /// Pointer object.
+    Pointer,
+    /// Array object.
+    Array {
+        /// Element layout.
+        element: LayoutId,
+        /// Constant element count (`None` for incomplete/VLA).
+        count: Option<u64>,
+    },
+    /// Struct object.
+    Record,
+    /// Union object.
+    Union,
+    /// Bitfield storage unit.
+    BitFieldStorage,
+    /// VLA descriptor.
+    Vla,
+}
+
+/// One layout member (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayoutMember {
+    /// Member ordinal.
+    pub index: u32,
+    /// Optional member name.
+    pub name: Option<NameId>,
+    /// Member type.
+    pub ty: TypeId,
+    /// Member layout.
+    pub layout: LayoutId,
+    /// Bit offset from object start.
+    pub offset: LayoutExtent,
+    /// Bitfield width.
+    pub bit_width: Option<u32>,
+    /// Bit offset within the allocation unit.
+    pub bit_offset: LayoutExtent,
+}
+
+/// VLA descriptor (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VlaDescriptor {
+    /// Runtime bound node.
+    pub bound: NodeId,
+    /// Scope holding the bound.
+    pub scope: ScopeId,
+    /// Element layout.
+    pub element: LayoutId,
+    /// Element stride in bits, when known.
+    pub stride: LayoutExtent,
+}
+
+/// A T08-owned layout record (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayoutRecord {
+    /// Structural key.
+    pub key: LayoutKey,
+    /// Layout form.
+    pub form: LayoutForm,
+    /// Object size.
+    pub size: LayoutExtent,
+    /// Object alignment.
+    pub align: LayoutExtent,
+    /// Members in declaration order.
+    pub members: Vec<LayoutMember>,
+    /// VLA descriptor, when applicable.
+    pub vla: Option<VlaDescriptor>,
+}
+
+/// Initialization storage duration (`/46`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InitStorage {
+    /// Static storage.
+    Static,
+    /// Automatic storage.
+    Automatic,
+    /// Thread storage.
+    Thread,
+}
+
+/// One initialization step (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InitStep {
+    /// Zero a range.
+    Zero {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Bit length.
+        length: LayoutExtent,
+    },
+    /// Store one constant.
+    Scalar {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Committed constant.
+        value: ConstId,
+    },
+    /// Copy from a record reference.
+    Copy {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Source record.
+        source: RecordRef,
+        /// Bit length.
+        length: LayoutExtent,
+    },
+    /// Link-time relocation.
+    Relocation {
+        /// Bit offset.
+        offset: LayoutExtent,
+        /// Optional base symbol.
+        base: Option<SymbolId>,
+        /// Addend.
+        addend: IntegerConst,
+    },
+    /// Runtime store from a node.
+    RuntimeStore {
+        /// Destination node.
+        offset: NodeId,
+        /// Value node.
+        value: NodeId,
+    },
+}
+
+/// One static relocation (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reloc {
+    /// Byte offset in the static image.
+    pub offset: u64,
+    /// Base symbol.
+    pub base: SymbolId,
+    /// Addend.
+    pub addend: IntegerConst,
+}
+
+/// Initialization form (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InitForm {
+    /// A plan of steps.
+    Plan {
+        /// Storage duration.
+        storage: InitStorage,
+        /// Ordered steps.
+        steps: Vec<InitStep>,
+    },
+    /// A static image materialization of a plan.
+    StaticImage {
+        /// Plan being materialized.
+        plan: InitId,
+        /// Image bytes.
+        bytes: Vec<u8>,
+        /// Relocations in deterministic order.
+        relocs: Vec<Reloc>,
+    },
+    /// Runtime operations materializing a plan.
+    RuntimeOps {
+        /// Plan being materialized.
+        plan: InitId,
+        /// Ordered runtime steps.
+        ops: Vec<InitStep>,
+    },
+}
+
+/// A T08-owned initialization record (`/46`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InitRecord {
+    /// Initialized type.
+    pub ty: TypeId,
+    /// Object layout.
+    pub layout: LayoutId,
+    /// Initialization form.
+    pub form: InitForm,
 }
 
 /// A T07-owned checked-node fact (`/14` SE-slice freeze; exactly one per
@@ -803,10 +1099,10 @@ pub struct Arenas {
     /// T08 appends exactly one `ConstRecord` per evaluation through the
     /// commit materialization path.
     pub consts: TypedArena<ConstId, ConstRecord>,
-    /// Layout descriptors (schema owned by T08).
-    pub layouts: ReservedArena<LayoutId>,
-    /// Initialization plans (schema owned by T08).
-    pub inits: ReservedArena<InitId>,
+    /// Layout descriptors (`/46` typed schema).
+    pub layouts: TypedArena<LayoutId, LayoutRecord>,
+    /// Initialization records (`/46` typed schema).
+    pub inits: TypedArena<InitId, InitRecord>,
     /// IR functions (`/15` slice freeze: typed on freeze).
     pub functions: TypedArena<FunctionId, FunctionRecord>,
     /// IR basic blocks (`/15` slice freeze: typed on freeze).

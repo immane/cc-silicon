@@ -614,6 +614,8 @@ pub fn commit_proposals(
     let mut new_spans: u32 = 0;
     let mut new_pptokens: u32 = 0;
     let mut new_macros: u32 = 0;
+    let mut new_layouts: u32 = 0;
+    let mut new_inits: u32 = 0;
     // Simulated intern table for `Name` bodies (`/11`): cloned once, then
     // fed every `Name` spelling in validation order so capacity is decided
     // without mutating the bus. The apply pass repeats the identical
@@ -641,6 +643,8 @@ pub fn commit_proposals(
     let spans_base = bus.arenas.spans.allocated();
     let pp_tokens_base = bus.arenas.pp_tokens.allocated();
     let macros_base = bus.arenas.macros.allocated();
+    let layouts_base = bus.arenas.layouts.allocated();
+    let inits_base = bus.arenas.inits.allocated();
     let intern_base = bus.intern.len();
     let mut predicted: BTreeSet<(TaskId, RecordFamily, u32)> = BTreeSet::new();
     {
@@ -659,6 +663,8 @@ pub fn commit_proposals(
         let mut next_instruction = instructions_base;
         let mut next_pptoken = pp_tokens_base;
         let mut next_macro = macros_base;
+        let mut next_layout = layouts_base;
+        let mut next_init = inits_base;
         for &(_, _, index) in &ordered {
             if let Proposal::AppendRecords { batch, .. } = &proposals[index].proposal {
                 for body in &batch.bodies {
@@ -778,6 +784,22 @@ pub fn commit_proposals(
                                 next_macro,
                             ));
                             next_macro = next_macro.saturating_add(1);
+                        }
+                        G1DraftBody::Layout(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Layout,
+                                next_layout,
+                            ));
+                            next_layout = next_layout.saturating_add(1);
+                        }
+                        G1DraftBody::Init(_) => {
+                            predicted.insert((
+                                proposals[index].task,
+                                RecordFamily::Init,
+                                next_init,
+                            ));
+                            next_init = next_init.saturating_add(1);
                         }
                         G1DraftBody::Span { .. } => {
                             // Spans are referenced through token bodies, never
@@ -1113,6 +1135,12 @@ pub fn commit_proposals(
                         G1DraftBody::Macro(_) => {
                             new_macros = new_macros.saturating_add(1);
                         }
+                        G1DraftBody::Layout(_) => {
+                            new_layouts = new_layouts.saturating_add(1);
+                        }
+                        G1DraftBody::Init(_) => {
+                            new_inits = new_inits.saturating_add(1);
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Lookup-first dedup: already-interned spellings
                             // consume no capacity and produce no new ID.
@@ -1406,6 +1434,8 @@ pub fn commit_proposals(
             new_spans,
             new_pptokens,
             new_macros,
+            new_layouts,
+            new_inits,
         },
     )?;
     // Queue backpressure with real reinsert counts. The single ready queue
@@ -1639,6 +1669,24 @@ pub fn commit_proposals(
                             )));
                             report.appended.push((*task, RecordRef::Macro(id)));
                         }
+                        G1DraftBody::Layout(record) => {
+                            let id = bus.arenas.layouts.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Layout,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Layout(id)));
+                        }
+                        G1DraftBody::Init(record) => {
+                            let id = bus.arenas.inits.push(record.clone());
+                            debug_assert!(predicted.contains(&(
+                                *task,
+                                RecordFamily::Init,
+                                id.index()
+                            )));
+                            report.appended.push((*task, RecordRef::Init(id)));
+                        }
                         G1DraftBody::Name { spelling } => {
                             // Preflighted exactly (same order, same table
                             // state): infallible here. Limits are immutable
@@ -1815,6 +1863,8 @@ fn append_store_field(body: &G1DraftBody) -> (StoreId, &'static str) {
         G1DraftBody::Span(_) => (StoreId::Sources, "spans"),
         G1DraftBody::PpToken(_) => (StoreId::Pp, "tokens"),
         G1DraftBody::Macro(_) => (StoreId::Pp, "macros"),
+        G1DraftBody::Layout(_) => (StoreId::Layout, "records"),
+        G1DraftBody::Init(_) => (StoreId::Init, "records"),
     }
 }
 
@@ -1993,6 +2043,10 @@ struct CapacityPlan {
     new_pptokens: u32,
     /// New macro-definition records (Wave 2 `/23`).
     new_macros: u32,
+    /// New layout records (`/46`).
+    new_layouts: u32,
+    /// New initialization records (`/46`).
+    new_inits: u32,
 }
 
 fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitError> {
@@ -2007,7 +2061,7 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
     }
     // Per-arena bound.
     let per_arena = limits.max_records_per_arena;
-    let checks: [(u32, u32, &'static str); 21] = [
+    let checks: [(u32, u32, &'static str); 23] = [
         (bus.arenas.tasks.allocated(), plan.new_tasks, "tasks"),
         (bus.arenas.results.allocated(), plan.new_results, "results"),
         (
@@ -2061,6 +2115,8 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
             "pp_tokens",
         ),
         (bus.arenas.macros.allocated(), plan.new_macros, "macros"),
+        (bus.arenas.layouts.allocated(), plan.new_layouts, "layouts"),
+        (bus.arenas.inits.allocated(), plan.new_inits, "inits"),
     ];
     for (allocated, additional, arena) in checks {
         if additional > per_arena.saturating_sub(allocated) {
@@ -2105,7 +2161,9 @@ fn check_capacity(bus: &CompilerBus, plan: CapacityPlan) -> Result<(), CommitErr
         + plan.new_instructions
         + plan.new_spans
         + plan.new_pptokens
-        + plan.new_macros) as u64
+        + plan.new_macros
+        + plan.new_layouts
+        + plan.new_inits) as u64
         + plan.patches as u64;
     bus.ensure_total_records(additional)?;
     Ok(())

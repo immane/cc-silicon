@@ -1,5 +1,7 @@
 # T06: Scope, Symbol, and Type Chips
 
+**`/46` type-model append (2026-11-09; accepted schema).** `TypeKind` appends pointer/array/aggregate/enum forms with qualifiers, array bounds (constant/incomplete/VLA), ordered aggregate members, and enum underlying/enumerator references. No T06 producer is implemented; see [ADR-0006](../architecture/ADR-0006-TYPE-LAYOUT-INIT-SCHEMA.md).
+
 Prerequisite T01. Directories `chips/symbols/`, `chips/types/`. Read symbols/types/config and task inputs; write this owner's records/proposals. Symbol addition/deletion can only be done by the designated declaration/scope tasks; type interning is not permitted to parse the AST incidentally. parse/sem is served through task requests and must not call the chip methods below.
 
 Type records cover the types required by the corpus, such as scalar, pointer, array (complete/incomplete/VLA), function (prototype/old-style/variadic), struct/union, enum, qualified/atomic, GNU vector/complex, etc. target-dependent layout is not privately computed here; it is handed to T08.

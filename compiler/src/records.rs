@@ -15,9 +15,9 @@
 // ============================================================================
 
 use crate::bus::{
-    ArtifactRecord, BlockRecord, ConstRecord, FunctionRecord, InstructionRecord, LiteralRecord,
-    MacroRecord, NodeRecord, PpTokenRecord, ScopeEventRecord, ScopeRecord, SemRecord, SpanRecord,
-    SymbolRecord, TokenRecord, TypeRecord, ValueRecord,
+    ArtifactRecord, BlockRecord, ConstRecord, FunctionRecord, InitRecord, InstructionRecord,
+    LayoutRecord, LiteralRecord, MacroRecord, NodeRecord, PpTokenRecord, ScopeEventRecord,
+    ScopeRecord, SemRecord, SpanRecord, SymbolRecord, TokenRecord, TypeRecord, ValueRecord,
 };
 use crate::ids::RecordFamily;
 use crate::task::DraftRef;
@@ -93,6 +93,10 @@ pub enum G1DraftBody {
     /// A macro definition (or `#undef` tombstone) to append to the
     /// `macros` arena (`/23` PP macro-definition slice).
     Macro(MacroRecord),
+    /// A layout record to append to the `layouts` arena (`/46`).
+    Layout(LayoutRecord),
+    /// An initialization record to append to the `inits` arena (`/46`).
+    Init(InitRecord),
 }
 
 impl G1DraftBody {
@@ -117,6 +121,8 @@ impl G1DraftBody {
             Self::Span(_) => RecordFamily::Span,
             Self::PpToken(_) => RecordFamily::PpToken,
             Self::Macro(_) => RecordFamily::Macro,
+            Self::Layout(_) => RecordFamily::Layout,
+            Self::Init(_) => RecordFamily::Init,
         }
     }
 }

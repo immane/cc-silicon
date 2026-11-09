@@ -44,14 +44,15 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// immediate-type enforcement), and the `/43` parser/AST common-base append
 /// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
 /// IR/CFG schema append (local load/store, arithmetic, branch successors),
-/// and the `/45` constant v3 append (float/address payload tags).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/45";
+/// the `/45` constant v3 append (float/address payload tags), and the `/46`
+/// T06 type-model/layout/init common base.
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/46";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "c4e84ccbd756b15faa9415192636ed93105d339e005e3b9e9d18a3f8cf30bac8";
+pub const CONTRACT_HASH: &str = "3416b176c23f3802e2c57978db74f89bcc7719337c968c0c12c9d7b19aa6972f";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -282,6 +283,11 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "const.float-format-bits",
     "const.address-symbolic",
     "snapshot.const-v3-tags",
+    // `/46` type-model append.
+    "ty.pointer-qualifiers",
+    "ty.array-bound",
+    "ty.aggregate-members",
+    "ty.enum-underlying",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -452,7 +458,17 @@ pub const NODE_KIND_NAMES: &[&str] = &[
 ];
 
 /// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).
-pub const TYPE_KIND_NAMES: &[&str] = &["void", "bool", "char", "int", "function"];
+pub const TYPE_KIND_NAMES: &[&str] = &[
+    "void",
+    "bool",
+    "char",
+    "int",
+    "function",
+    "pointer",
+    "array",
+    "aggregate",
+    "enum",
+];
 
 /// Frozen `/13` `IntRank` names, in declaration order.
 pub const INT_RANK_NAMES: &[&str] = &["short", "int", "long", "long_long"];
@@ -462,6 +478,16 @@ pub const CHAR_KIND_NAMES: &[&str] = &["plain", "signed", "unsigned"];
 
 /// Frozen `/13` `TypeRecord` fields, in declaration order.
 pub const TYPE_RECORD_FIELDS: &[&str] = &["kind"];
+/// The `/46` `TypeQualifiers` field names, in frozen field order.
+pub const TYPE_QUALIFIER_FIELDS: &[&str] = &["const", "volatile", "restrict", "atomic"];
+/// The `/46` `ArrayBound` tag names, in encoding order.
+pub const ARRAY_BOUND_NAMES: &[&str] = &["constant", "incomplete", "vla"];
+/// The `/46` `AggregateKind` names, in encoding order.
+pub const AGGREGATE_KIND_NAMES: &[&str] = &["struct", "union"];
+/// The `/46` `AggregateMember` field names, in frozen field order.
+pub const AGGREGATE_MEMBER_FIELDS: &[&str] = &["name", "ty", "bit_width", "flexible"];
+/// The `/46` `Enumerator` field names, in frozen field order.
+pub const ENUMERATOR_FIELDS: &[&str] = &["name", "value"];
 
 /// Frozen `/13` `SymbolKind` names, in declaration order.
 pub const SYMBOL_KIND_NAMES: &[&str] = &["function", "variable"];
@@ -576,6 +602,8 @@ pub const G1_DRAFT_BODY_NAMES: &[&str] = &[
     "span",
     "pp_token",
     "macro",
+    "layout",
+    "init",
 ];
 
 /// Frozen `/41` `AppendBatch` fields, in declaration order.
@@ -602,6 +630,8 @@ pub const APPEND_BODY_STORE_NAMES: &[&str] = &[
     "sources",
     "pp",
     "pp",
+    "layout",
+    "init",
 ];
 
 /// Frozen `/41` `Control` fields, in snapshot encoding order.
@@ -744,6 +774,11 @@ impl FrozenSchema {
         push_str_list(&mut w, NODE_KIND_NAMES);
         push_str_list(&mut w, NODE_RECORD_FIELDS);
         push_str_list(&mut w, TYPE_KIND_NAMES);
+        push_str_list(&mut w, TYPE_QUALIFIER_FIELDS);
+        push_str_list(&mut w, ARRAY_BOUND_NAMES);
+        push_str_list(&mut w, AGGREGATE_KIND_NAMES);
+        push_str_list(&mut w, AGGREGATE_MEMBER_FIELDS);
+        push_str_list(&mut w, ENUMERATOR_FIELDS);
         push_str_list(&mut w, INT_RANK_NAMES);
         push_str_list(&mut w, CHAR_KIND_NAMES);
         push_str_list(&mut w, TYPE_RECORD_FIELDS);

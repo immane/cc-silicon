@@ -1031,6 +1031,26 @@ extension; no producer is added. New artifact `t01-c01-c06/45`
 suite at 715 tests across 57 suites. No layout/init record, float/address
 producer, target width, codegen, or torture result is claimed.
 
+`/46` amendment — type, layout, and initialization common base (2026-11-09;
+[ADR-0006](../architecture/ADR-0006-TYPE-LAYOUT-INIT-SCHEMA.md) accepted by the
+T01 integrator; R1 auto-bump; `/45` preserved as history): `TypeKind` appends
+`Pointer { pointee, qualifiers }`, `Array { element, bound }`,
+`Aggregate { kind, members }`, and `Enum { underlying, enumerators }`, with
+`TypeQualifiers`, `ArrayBound` (constant/incomplete/VLA), `AggregateKind`,
+`AggregateMember`, and `Enumerator` carriers. `layouts`/`inits` become
+`TypedArena<LayoutId, LayoutRecord>` / `TypedArena<InitId, InitRecord>` with
+symbolic-or-bit extents, ordered members/VLA descriptors, and plan/static-image/
+runtime-op initialization forms. `G1DraftBody` appends `Layout`/`Init`, and
+snapshot bodies replace the reserved counts. New hashed tables
+`TYPE_QUALIFIER_FIELDS`, `ARRAY_BOUND_NAMES`, `AGGREGATE_KIND_NAMES`,
+`AGGREGATE_MEMBER_FIELDS`, `ENUMERATOR_FIELDS`; new rules
+`ty.pointer-qualifiers`, `ty.array-bound`, `ty.aggregate-members`,
+`ty.enum-underlying`. No type/layout/init producer, allowlist row, target byte
+layout, codegen, or torture result is added. New artifact `t01-c01-c06/46`
+(`3416b176…972f`); acceptance `c52_type_schema` (3) and
+`c53_layout_init_schema` (2) plus the full compiler suite at 720 tests across
+59 suites.
+
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
 | C01 | Append-only typed arenas, stable IDs with no reuse, checked access, structured capacity/errors, intern table, all declared record families have an owning arena; every configured limit enforced before mutation on the checked bus/commit entry points (`alloc_source`, task bootstrap/allocation, `intern_name`, routing diagnostic emission, `commit_proposals`); `task_depth` rejects dangling parents; source content hashes computed internally from bytes | Language-store record schemas (pp/lex/parse/symbols/types/nodes/consts/layout/init/ir/opt/machine/ext) are `ReservedArena` placeholders owned by their task groups; they must be frozen before those groups are dispatched. The public mutable stores (`bus.arenas`, `bus.patch_log`, ...) are a trusted integration/host boundary: raw `TypedArena`/`ReservedArena` allocation checks only the per-arena capacity, and public `get_mut`/direct pushes bypass the global total/source/task/diagnostic budgets; worker chips must mutate only through the checked entry points and the commit path. §4's deterministic reserved-ID/local-reference relocation protocol is **not implemented or frozen**: `commit.rs` resolves only earlier predicted `Enqueue`-parent IDs inside one batch, store-patch `RecordRef`s are not existence-checked, and no named reservation/apply-map protocol or hashed rule exists ([M1 proposal](M1_PART_A_CONTRACT_PROPOSAL.md) OB-49). Limit tests cover the checked entry points only (`c07_limits`); no test establishes global budgets for direct public-store mutation |
