@@ -9,10 +9,10 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/49`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/50`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
-| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/50` |
+| Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/51` |
 | Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
 | Parser architecture + V1 AST (`/43`) | **Schema frozen; producer not implemented** | ADR-0003 single-task V1 parser decision; append-only `NodeKind` inventory; snapshot names/round-trip. V1 parser and VF05 V1 shape table remain future |
 | IR/CFG common base (`/44`) | **Schema frozen; producer/verifier not implemented** | ADR-0004 `InstructionRecord.local`/`successors`; local/arithmetic/branch op append; snapshot round-trip. V1/V2 lowering and VF07/VF08 remain future |
@@ -21,7 +21,8 @@ re-verify. This page records observed state, not a new acceptance run.
 | Diagnostic taxonomy (`/47`) | **Registry frozen; migration pending** | ADR-0007 groups/codes/helpers; legacy `Task:4` call sites remain until owner migration |
 | Probe-attested target baseline (`/48`) | **Probe-attested; official baseline open** | Pinned Debian 12 arm64 / GCC 12.2.0 report, `target_verification=probe-attested`; `c48_target_probe` 3 |
 | Source locals (`/49`) | **Implemented and tested** | `int main(void){int x=2;return x;}` parses, declares a block automatic, lowers `Constant`/`LocalStore`/`LocalLoad`/`Return`, models 2, and executes on native AArch64; `c56_source_locals` 5 macOS / 6 Linux |
-| C source → executable | **M1 constant-return and local-return paths only** | `candidate --emit-asm` + native AArch64 assembler/linker/run returns 5 for `int main(void){return 2+3;}` and 2 for `int main(void){int x=2;return x;}`. The emitter also lowers arithmetic IR fixtures, but source arithmetic has no result carrier; no general codegen, `-S`/`-c`, calls, or memory |
+| Local add + modeled integer (`/50`) | **Implemented and tested** | `int main(void){int x=2;return x+3;}` lowers to six IR instructions, VF12 returns `ResultValue::Integer(5)`, and native AArch64 exits 5; `c56_source_locals` 6 macOS / 8 Linux |
+| C source → executable | **M1 constant-return, local-return, and local-add paths only** | `candidate --emit-asm` + native AArch64 assembler/linker/run returns 5 for `return 2+3`, 2 for `int x=2;return x`, and 5 for `int x=2;return x+3`. Other source operators remain IR-fixture-only; no general codegen, `-S`/`-c`, calls, or memory |
 | AArch64 target values | **Probe-attested baseline; official CI/bare-metal baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=probe-attested`; candidate codegen gate remains |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
 | GCC torture corpus | **Scaffold** | Lock schema + verifier tested; no corpus fetched, no pass rate |
@@ -31,13 +32,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/49`" means
+## What "frozen `/50`" means
 
-The frozen artifact is `t01-c01-c06/49`:
+The frozen artifact is `t01-c01-c06/50`:
 
 ```text
-version=t01-c01-c06/49
-hash=ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9
+version=t01-c01-c06/50
+hash=ff7177a944b5b5b7a65f4463e199ce5a90a8729700994162d4a82cafe310006c
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 ```
@@ -72,7 +73,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **735 tests across 62 suites (737 on native AArch64 Linux) passed** after the `/49` source-locals slice (adds the source-locals integration tests and the new identifier/IR/VF12 coverage) |
+| Compiler | **736 tests across 62 suites (739 on native AArch64 Linux) passed** after the `/50` local-add slice (adds the arithmetic integration test and modeled-integer coverage) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; one containerized real probe report + H07 classification |
@@ -94,13 +95,13 @@ are discovery/run observations, not a permanent promise; the source tree and
 - A pinned Debian-GCC-12.2.0 containerized probe has run and its report is
   attested in `c48_target_probe`; the global target state is
   `probe-attested`. The official T00 reference baseline/CI substrate is still
-  open, and target codegen is only the M1 constant-return/local-return source paths plus an IR-shape arithmetic emitter.
+  open, and target codegen is only the M1 constant-return/local-return/local-add source paths plus an IR-shape arithmetic emitter.
 - H05 process supervision is implemented in `tools/runner` (timeout/output
   caps/cancellation/Linux process-group+prlimit). It is not a kernel namespace
   sandbox, and H02/H03 target orchestration remains absent.
 - Replay is recorded-input re-execution over a canonical fingerprint, not bus
   restoration; full `Snapshot::from_bytes`/restore, quota>1 order, VF13
-  projections, and per-stage queues remain deferred to `/50`.
+  projections, and per-stage queues remain deferred to `/51`.
 - Adapters, host code, and custom backends remain trusted boundaries;
   determinism there is enforced by review, linting, and replay tests.
 

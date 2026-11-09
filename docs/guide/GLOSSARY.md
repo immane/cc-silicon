@@ -28,7 +28,7 @@ learn first.
 | Record reference | A tagged pointer to a record in exactly one arena (never a raw index) | `RecordRef`, wire tags 0–26 |
 | Manifest | A chip's declaration: ID, task kind, exact reads/writes, phase, capability, backend class | `compiler/src/manifest.rs` |
 | Snapshot | The canonical byte encoding of all observable state, used for replay and comparison | `compiler/src/snapshot.rs` |
-| Frozen (of a contract) | The agreed shapes/names/rules are versioned and hash-pinned; changing them needs an amendment | `t01-c01-c06/49`, hash in `contracts/CONTRACT_VERSION` |
+| Frozen (of a contract) | The agreed shapes/names/rules are versioned and hash-pinned; changing them needs an amendment | `t01-c01-c06/50`, hash in `contracts/CONTRACT_VERSION` |
 | Probe | Measuring the real target's ABI values on Linux; until attested, codegen stays fail-closed | `tools/torture/probe/` |
 | Torture suite | GCC's C test collection; the final acceptance exam, not yet run | [tasks/T00_GCC_TORTURE_GATE.md](../tasks/T00_GCC_TORTURE_GATE.md) |
 | SFL | Silicon Formal Language: the semantic source of truth; Rust/C/CUDA/HDL are realizations of it | [architecture/SFL_CONTRACT.md](../architecture/SFL_CONTRACT.md) |

@@ -1,22 +1,20 @@
-# M1 Source Locals Slice — `int main(void){int x = 2; return x;}`
+# M1 Source Locals Slice — Local Return and Local Add
 
 | Field | Value |
 |---|---|
-| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/49` |
-| Goal | Produce local load/store IR from source, emit AArch64, assemble/link/run, and return 2 |
-| Evidence | `c56_source_locals` 5 macOS / 6 native AArch64 Linux; native run exits 2 |
-| Non-claims | No source arithmetic, calls, memory objects, branches, general ABI, object emission, or torture rate |
+| Status | **IMPLEMENTED / VERIFIED (2026-11-10)** as contract `/50` (`/49` local return, `/50` local add) |
+| Goal | Produce local load/store and local-add IR from source, emit AArch64, execute on native Linux |
+| Evidence | `c56_source_locals` 6 macOS / 8 native AArch64 Linux; runs exit 2 and 5 |
+| Non-claims | No calls, memory objects, branches, general ABI, object emission, or torture rate |
 
-## 1. Why this slice
-
-The target emitter already lowered automatic `int` locals, `LocalLoad`/`LocalStore`,
-and one `Return` at IR level. This slice supplies the missing frontend producer:
+## 1. Supported source shapes
 
 ```c
 int main(void) { int x = 2; return x; }
+int main(void) { int x = 2; return x + 3; }
 ```
 
-The committed IR is:
+Committed IR:
 
 ```text
 Constant 2 -> v0
@@ -25,40 +23,55 @@ LocalLoad x -> v1
 Return v1
 ```
 
-The symbolic interpreter returns the initializer `ConstRecord`, and external
-AArch64 assembly/link/run exits 2. Source-level arithmetic (`x + 3`) remains a
-later slice because the current verification protocol has no approved carrier
-for a computed non-constant result.
+```text
+Constant 2 -> v0
+LocalStore x, v0
+LocalLoad x -> v1
+Constant 3 -> v2
+Add v1, v2 -> v3
+Return v3
+```
 
-## 2. Contract `/49`
+The symbolic interpreter returns 2 and 5 respectively. The emitted AArch64
+assembles, links, and exits 2 and 5 on native Linux. Other operators
+(`-`, `*`, `/`, `%`, unary `-`) remain a later slice even though the target
+emitter already handles them at IR level.
 
-The frozen rule `parse.tu-fixed-nine-node-tree` is replaced by
-`parse.tu-shape-gated-tree`: one `PARSE_TU` kind accepts exactly the canonical
-constant-return shape or the locals shape. Other declared changes:
+## 2. Contract impact
 
-1. `SEMANTIC` local 22: `semantic.identifier_expr`, `SE_ID_CHIP = ChipId(58)`,
-   stage 4, one `sem.records` allowlist row.
-2. `TySymbolChip` may declare an automatic `int` object in a committed block
-   scope (`sym.declare-block-object`).
-3. `SE_RETURN` accepts an identifier operand; `SE_FUNCTION` accepts the
-   one-declaration-plus-return body.
-4. VF05 covers `Declaration` and `Identifier`; VF06 adds `Identifier` to its
-   checked set.
-5. T09 lowers `Constant`, `LocalStore`, `LocalLoad`, `Return`.
-6. VF12 models the stored/loaded initializer.
+### `/49` local return
 
-New hashed rules: `parse.tu-shape-gated-tree`,
-`symbol.declare-block-object`, `se.identifier-checked-nonlvalue`,
-`ir.local-load-store-return`, `vf12.local-load-store-return`.
+- Shape-gated `PARSE_TU`: canonical constant return or one local declaration
+  plus an identifier return.
+- `TySymbolChip` declares a block-scope automatic `int`.
+- `semantic.identifier_expr` (`SEMANTIC` local 22, `SE_ID_CHIP = ChipId(58)`,
+  stage 4, one `sem.records` allowlist row) checks the binding.
+- `SE_RETURN` accepts an identifier operand; `SE_FUNCTION` accepts the
+  one-declaration-plus-return body.
+- VF05/VF06 cover `Declaration` and `Identifier`.
+- T09 lowers `Constant`, `LocalStore`, `LocalLoad`, `Return`.
+- VF12 models the stored/loaded initializer.
 
-Artifact: `t01-c01-c06/49`, hash
-`ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9`.
+### `/50` local add and modeled integer result
 
-No IR, type, layout, constant, or diagnostic record shape changed.
+- `ResultValue` appends `Integer(IntegerConst)` at wire tag 5. Verification can
+  return a computed scalar without writing a `ConstRecord`; canonical constant
+  folding still uses `Record(RecordRef::Const)`.
+- The TU parser adds the 18-token local-add shape.
+- `SE_BIN` accepts an identifier operand with a committed `int` fact and skips
+  constant folding when a non-literal operand is present.
+- T09 emits the six-instruction local-add IR.
+- VF12 checks the exact shape and returns the modeled integer 5.
 
-## 3. AST shape
+New hashed rules: `se.binary-identifier-operand`, `ir.local-add-return`,
+`vf12.local-add-modeled-integer`, `result.integer-modeled`.
 
-Token order:
+Artifact: `t01-c01-c06/50`, hash
+`ff7177a944b5b5b7a65f4463e199ce5a90a8729700994162d4a82cafe310006c`.
+
+## 3. AST shapes
+
+Local return token order:
 
 ```text
 0 int   1 main  2 (   3 void  4 )   5 {
@@ -66,11 +79,20 @@ Token order:
 11 return 12 x  13 ;   14 }    15 EOF
 ```
 
-Pre-order nodes and ranges:
+Local add token order:
+
+```text
+0 int   1 main  2 (   3 void  4 )   5 {
+6 int   7 x     8 =   9 2     10 ;
+11 return 12 x  13 +   14 3    15 ;
+16 }     17 EOF
+```
+
+Local return pre-order nodes:
 
 | Node | Children | Range |
 |---|---|---|
-| `TranslationUnit` | FunctionDefinition | 0..15 (EOF) |
+| `TranslationUnit` | FunctionDefinition | 0..15 |
 | `FunctionDefinition` | Specifiers, Declarator(main), Compound | 0..14 |
 | `Specifiers` | — | 0..0 |
 | `Declarator(main)` | — | 1..4 |
@@ -82,29 +104,28 @@ Pre-order nodes and ranges:
 | `Return` | Identifier(x) | 11..13 |
 | `Identifier(x)` | — | 12..12 |
 
-The canonical 9-node tree and ranges are unchanged.
+Local add adds `BinaryAdd` (12..14) with `Identifier(x)` (12..12) and
+`IntLiteral(3)` (14..14); `Return` spans 11..15 and the function/TU ranges
+extend to 16/17. The canonical 9-node tree is unchanged.
 
 ## 4. Implemented worker behavior
 
-- **PA01**: dispatches on token-sequence length; validates every keyword,
-  identifier, punctuator, EOF shape, matching declaration/use names, and the
+- **PA01**: dispatches on the closed token length; validates keyword,
+  identifier, punctuator, EOF, matching declaration/use names, and every
   committed literal before appending. Failures append no nodes.
-- **TySymbol**: function declarations remain file-scope/static/external; `int`
-  declarations are block-scope objects with no linkage and automatic storage.
-- **SE identifier**: requires exactly one block scope and a visible automatic
-  `int` object; appends one `NonLvalue`, zero-effect fact.
-- **SE return / SE function**: accept the identifier return and the
-  two-statement body; preserve the canonical path.
-- **VF05 / VF06**: cover the new node shapes and the identifier fact.
-- **IR lowering**: resolves the local symbol and the initializer's folded
-  constant by value, then emits the four-instruction local shape. The match
-  must be unique.
-- **VF12**: accepts exactly `Constant`, `LocalStore`, `LocalLoad`, `Return`
-  with the same local and a returned loaded value; rejects uninitialized or
-  unsupported shapes.
-- **Candidate driver**: enters the block scope, declares the local, folds the
-  initializer, runs the identifier fact, and keeps the canonical path
-  unchanged.
+- **TySymbol**: block-scope `int` objects are automatic, no linkage.
+- **SE identifier**: exactly one block scope, visible automatic `int` object.
+- **SE binary**: literal/literal still folds; identifier/literal appends the
+  `BinaryAdd` fact without a fold child.
+- **SE return / SE function**: accept both local bodies; preserve canonical.
+- **VF05 / VF06**: cover the new node shapes and identifier fact.
+- **IR lowering**: resolves the local and each literal's folded constant by
+  value, requires unique matches, and emits the exact local IR.
+- **VF12**: models both local shapes; local return yields its initializer,
+  local add yields the computed canonical `int`.
+- **Candidate driver**: enters block scope, declares the local, folds every
+  local-shape literal, checks identifier facts before binary facts, and handles
+  both `Const` and `Integer` verification results.
 
 ## 5. Verification
 
@@ -112,9 +133,9 @@ macOS:
 
 ```sh
 cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 5 passed (Linux execution test cfg-skipped)
+# 6 passed (Linux execution tests cfg-skipped)
 cargo test --locked --manifest-path compiler/Cargo.toml
-# 735 tests / 62 suites passed
+# 736 tests / 62 suites passed
 ```
 
 Native AArch64 Linux:
@@ -124,18 +145,21 @@ docker run --rm --platform linux/arm64 -v "$PWD":/repo -w /repo \
   -e CARGO_TARGET_DIR=/tmp/target rust:1.85-bookworm \
   /usr/local/cargo/bin/cargo test --locked \
   --manifest-path compiler/Cargo.toml --test c56_source_locals
-# 6 passed; emitted assembly assembles, links, and exits 2
+# 8 passed; local return exits 2 and local add exits 5 after assemble/link/run
 ```
 
 The integration test also checks the canonical `return 2+3` evidence and
-assembly remain unchanged, rejects mismatched names/extra statements, checks
-the identifier chip's write scope, and replays the same source deterministically.
+assembly, rejects mismatched names/unsupported operators/extra statements,
+checks the identifier chip's write scope, and replays the same source
+deterministically.
 
 ## 6. Explicit exclusions
 
-- No source arithmetic, assignment statements, compound assignment, multiple
-  declarations, initializers other than one integer literal, or expression
-  statements.
+- No source `-`, `*`, `/`, `%`, unary `-`, assignment, multiple declarations,
+  or initializers other than one integer literal.
+- The initializer and local-add operand are matched to folded constants by
+  value, so two identical literal values fail closed as ambiguous instead of
+  guessing which fold belongs to which use.
 - No local address-taking, pointers, arrays, aggregates, or static locals.
 - No calls, parameters, branches, loops, or memory objects.
 - No `-S`/`-c`; the slice remains reachable through the bootstrap

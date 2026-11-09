@@ -23,8 +23,8 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/49` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9` |
+| Contract version | `t01-c01-c06/50` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `ff7177a944b5b5b7a65f4463e199ce5a90a8729700994162d4a82cafe310006c` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
@@ -34,16 +34,17 @@ continues on this foundation.
 | Type/layout/init (`/46`) | Schema frozen: pointer/array/aggregate/enum `TypeKind`; typed `LayoutRecord`/`InitRecord`; `G1DraftBody::Layout`/`Init`; symbolic-or-bit extents. Producers, target byte layout, and validation remain future |
 | Diagnostic taxonomy (`/47`) | Schema frozen: lex/parse/type/const/ir/codegen/host groups; named code registry and structured helpers. Full legacy `Task:4` migration remains future |
 | Probe-attested target baseline (`/48`) | `TargetSpec::aarch64_unknown_linux_gnu_probe_attested`, pinned H07 report; `c48_target_probe` 3. Official CI/bare-metal baseline and general codegen remain future |
-| Source locals (`/49`) | Implemented and tested: shape-gated TU parser, block automatic `int`, identifier fact, `Constant`/`LocalStore`/`LocalLoad`/`Return` IR, VF12 local model; `c56_source_locals` 5 macOS / 6 native AArch64 Linux. Source arithmetic, calls, and general codegen remain future |
-| M1 target prototype | `candidate --emit-asm` emits constant-return and `/49` local-return AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run (exit 5 and 2). The emitter also lowers arithmetic IR fixtures, but source arithmetic is absent. Not a T11 chip family or `-S`/`-c` |
+| Source locals (`/49`) | Implemented and tested: shape-gated TU parser, block automatic `int`, identifier fact, `Constant`/`LocalStore`/`LocalLoad`/`Return` IR, VF12 local model; `c56_source_locals` 5 macOS / 6 native AArch64 Linux. Calls and general codegen remain future |
+| Local add and modeled integer (`/50`) | Implemented and tested: `ResultValue::Integer`, local-add shape, identifier/literal binary fact, six-instruction IR, VF12 modeled 5; `c56_source_locals` 6 macOS / 8 native AArch64 Linux. Other source operators, calls, and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return, `/49` local-return, and `/50` local-add AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run (exit 5, 2, and 5). Other source operators remain IR-fixture-only. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/49
-hash=ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9
+version=t01-c01-c06/50
+hash=ff7177a944b5b5b7a65f4463e199ce5a90a8729700994162d4a82cafe310006c
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 probe_substrate=linux-ci-vm (planned, not provisioned)

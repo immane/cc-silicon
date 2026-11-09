@@ -1082,7 +1082,7 @@ for ABI/scalar values, not the official T00 CI/bare-metal reference baseline,
 not a target codegen implementation, and not a torture result. New artifact
 `t01-c01-c06/48` (`820230c4…ad58e`); acceptance `c48_target_probe` 3 tests plus
 the full compiler suite. The deferred restore/quota>1/VF13/`StorePatch` package
-moves to `/50`.
+moves to `/51`.
 
 `/49` amendment — M1 source locals (2026-11-10; T01 integrator acceptance; R1
 auto-bump; `/48` preserved as history): the single `PARSE_TU` kind now accepts
@@ -1103,6 +1103,22 @@ unchanged. New hashed rules `parse.tu-shape-gated-tree` (replacing
 (`ecf40bd3…62bd9`); acceptance `c56_source_locals` 5 macOS / 6 native AArch64
 Linux tests plus the full compiler suite. No source arithmetic, calls, memory,
 branch, ABI, object-emission, or torture result is claimed.
+
+`/50` amendment — modeled integer result and local add (2026-11-10; T01
+integrator acceptance; R1 auto-bump; `/49` preserved as history):
+`ResultValue` appends `Integer(IntegerConst)` at wire tag 5 so verification can
+return a computed scalar without materializing a `ConstRecord`. The shape-gated
+TU parser adds `int main(void){int x=2;return x+3;}`; `SE_BIN` accepts an
+identifier operand with a committed `int` fact and skips constant folding when a
+non-literal is present; T09 emits `Constant`/`LocalStore`/`LocalLoad`/
+`Constant`/`Add`/`Return`; VF12 checks the six-instruction shape and returns the
+modeled integer 5. The canonical constant-return and `/49` local-return paths
+remain unchanged. New hashed rules `se.binary-identifier-operand`,
+`ir.local-add-return`, `vf12.local-add-modeled-integer`, and
+`result.integer-modeled`. New artifact `t01-c01-c06/50`
+(`ff7177a9…006c`); acceptance `c56_source_locals` 6 macOS / 8 native AArch64
+Linux tests plus the full compiler suite. No calls, memory, branches, general
+ABI, object emission, or torture result is claimed.
 
 | ID | Implemented | Explicitly blocked / limited |
 |---|---|---|
