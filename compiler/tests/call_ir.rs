@@ -13,10 +13,10 @@
 use std::collections::BTreeSet;
 
 use cc_silicon_compiler::bus::{
-    CompilerBus, ConstRecord, ConstValue, EffectMask, FunctionRecord, IntRank, IntegerConst,
-    IrOp, Linkage, LiteralRecord, NodeKind, NodeRecord, ScopeKind, ScopeRecord, SemRecord,
-    StorageDuration, SymbolKind, SymbolRecord, TaggedProposal, TypeKind, TypeRecord,
-    ValueCategory, EFFECT_WRITES_LOCAL,
+    CompilerBus, ConstRecord, ConstValue, EffectMask, FunctionRecord, IntRank, IntegerConst, IrOp,
+    Linkage, LiteralRecord, NodeKind, NodeRecord, ScopeKind, ScopeRecord, SemRecord,
+    StorageDuration, SymbolKind, SymbolRecord, TaggedProposal, TypeKind, TypeRecord, ValueCategory,
+    EFFECT_WRITES_LOCAL,
 };
 use cc_silicon_compiler::chips::{IrFunctionChip, IrFunctionInput, LocalExpr, Worker};
 use cc_silicon_compiler::commit::commit_proposals;
@@ -149,7 +149,8 @@ impl Fixture {
 
     fn literal_node(&mut self, value: u8) -> (NodeId, LiteralId) {
         let limits = self.bus.limits();
-        let literal = self.bus
+        let literal = self
+            .bus
             .arenas
             .literals
             .alloc(
@@ -349,12 +350,7 @@ impl Fixture {
         } else {
             vec![self.node(NodeKind::ParameterList, parameters.clone(), None, None)]
         };
-        let declarator = self.node(
-            NodeKind::Declarator,
-            declarator_children,
-            Some(name),
-            None,
-        );
+        let declarator = self.node(NodeKind::Declarator, declarator_children, Some(name), None);
         let compound = self.node(NodeKind::Compound, statements.clone(), None, None);
         let funcdef = self.node(
             NodeKind::FunctionDefinition,
@@ -385,12 +381,7 @@ impl Fixture {
             .zip(parameter_names)
             .map(|(parameter, name)| self.object_symbol(*name, block, *parameter))
             .collect();
-        self.sem_with(
-            funcdef,
-            signature,
-            ValueCategory::NonLvalue,
-            EffectMask(0),
-        );
+        self.sem_with(funcdef, signature, ValueCategory::NonLvalue, EffectMask(0));
         BuiltFunction {
             funcdef,
             symbol,
@@ -425,11 +416,7 @@ fn project(
     Ok((task, input))
 }
 
-fn commit(
-    fixture: &mut Fixture,
-    task: TaskId,
-    input: IrFunctionInput,
-) -> FunctionId {
+fn commit(fixture: &mut Fixture, task: TaskId, input: IrFunctionInput) -> FunctionId {
     let proposals = IrFunctionChip.compute(&input);
     let tagged: Vec<TaggedProposal> = proposals
         .into_iter()
@@ -444,7 +431,15 @@ fn commit(
         [(_, result)] => *result,
         other => panic!("expected one completed IR task, got {other:?}"),
     };
-    match fixture.bus.arenas.results.get(result).unwrap().value.clone() {
+    match fixture
+        .bus
+        .arenas
+        .results
+        .get(result)
+        .unwrap()
+        .value
+        .clone()
+    {
         ResultValue::Record(RecordRef::Function(function)) => function,
         other => panic!("expected a function result, got {other:?}"),
     }
@@ -459,7 +454,10 @@ fn function_record(fixture: &Fixture, function: FunctionId) -> FunctionRecord {
     fixture.bus.arenas.functions.get(function).unwrap().clone()
 }
 
-fn instructions_for(fixture: &Fixture, function: FunctionId) -> Vec<cc_silicon_compiler::bus::InstructionRecord> {
+fn instructions_for(
+    fixture: &Fixture,
+    function: FunctionId,
+) -> Vec<cc_silicon_compiler::bus::InstructionRecord> {
     let blocks: BTreeSet<BlockId> = fixture
         .bus
         .arenas
@@ -479,7 +477,10 @@ fn instructions_for(fixture: &Fixture, function: FunctionId) -> Vec<cc_silicon_c
 }
 
 fn ops(instructions: &[cc_silicon_compiler::bus::InstructionRecord]) -> Vec<IrOp> {
-    instructions.iter().map(|instruction| instruction.op).collect()
+    instructions
+        .iter()
+        .map(|instruction| instruction.op)
+        .collect()
 }
 
 fn build_add(fixture: &mut Fixture) -> (BuiltFunction, NameId) {
@@ -530,7 +531,10 @@ fn add_and_main_call_lower_with_parameters_and_callee() {
     assert_eq!(add_instructions[1].local, Some(add.parameters[1]));
     assert_eq!(
         add_instructions[2].operands,
-        vec![add_instructions[0].result.unwrap(), add_instructions[1].result.unwrap()]
+        vec![
+            add_instructions[0].result.unwrap(),
+            add_instructions[1].result.unwrap()
+        ]
     );
 
     let main_fn = lower(&mut fixture, main_fn.funcdef).unwrap();
@@ -571,11 +575,7 @@ fn add_and_main_call_lower_with_parameters_and_callee() {
     );
     // The caller's values do not alias the callee's value range.
     for instruction in &instructions {
-        for value in instruction
-            .operands
-            .iter()
-            .chain(instruction.result.iter())
-        {
+        for value in instruction.operands.iter().chain(instruction.result.iter()) {
             assert!(value.index() >= value_base, "{value:?}");
         }
     }
@@ -691,9 +691,7 @@ fn parameter_only_function_lowers_identifier_to_parameter_symbol() {
 fn eight_parameters_keep_declaration_and_argument_order() {
     let mut fixture = Fixture::new();
     let eight_name = fixture.name(b"eight");
-    let names: Vec<NameId> = (b'a'..=b'h')
-        .map(|byte| fixture.name(&[byte]))
-        .collect();
+    let names: Vec<NameId> = (b'a'..=b'h').map(|byte| fixture.name(&[byte])).collect();
     let mut expression = fixture.identifier(names[0]);
     for name in &names[1..] {
         let next = fixture.identifier(*name);
@@ -816,7 +814,9 @@ fn call_inside_binary_and_assignment_lower_in_source_order() {
     );
     // The single local is declared at the first identifier; the argument
     // load, both stores, and the final load all name that same symbol.
-    let local = instructions[1].local.expect("initializer store names a local");
+    let local = instructions[1]
+        .local
+        .expect("initializer store names a local");
     assert_eq!(instructions[2].local, Some(local));
     assert_eq!(instructions[5].local, Some(local));
     assert_eq!(instructions[6].local, Some(local));
@@ -865,7 +865,9 @@ fn local_argument_call_add_x_3_lowers_local_before_literal() {
             IrOp::Return
         ]
     );
-    let local = instructions[1].local.expect("initializer store names a local");
+    let local = instructions[1]
+        .local
+        .expect("initializer store names a local");
     assert_eq!(instructions[2].local, Some(local));
     assert_eq!(instructions[4].callee, Some(add.symbol));
     assert_eq!(
@@ -986,7 +988,11 @@ fn unknown_forward_self_and_arity_callees_fail_without_ir() {
         let main_fn = fixture.function(main, &[], vec![ret]);
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Semantic);
-        assert!(error.message.contains("unknown callee"), "{}", error.message);
+        assert!(
+            error.message.contains("unknown callee"),
+            "{}",
+            error.message
+        );
         assert_eq!(fixture.bus.arenas.functions.allocated(), 0);
     }
     // Forward callee.
@@ -1006,7 +1012,11 @@ fn unknown_forward_self_and_arity_callees_fail_without_ir() {
         assert!(later_fn.funcdef.index() > main_fn.funcdef.index());
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Semantic);
-        assert!(error.message.contains("forward callee"), "{}", error.message);
+        assert!(
+            error.message.contains("forward callee"),
+            "{}",
+            error.message
+        );
         assert_eq!(fixture.bus.arenas.functions.allocated(), 0);
     }
     // Self callee.
@@ -1020,7 +1030,11 @@ fn unknown_forward_self_and_arity_callees_fail_without_ir() {
         let main_fn = fixture.function(main, &[], vec![ret]);
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Semantic);
-        assert!(error.message.contains("self-recursive callee"), "{}", error.message);
+        assert!(
+            error.message.contains("self-recursive callee"),
+            "{}",
+            error.message
+        );
         assert_eq!(fixture.bus.arenas.functions.allocated(), 0);
     }
     // Arity mismatch.
@@ -1035,7 +1049,11 @@ fn unknown_forward_self_and_arity_callees_fail_without_ir() {
         let main_fn = fixture.function(main, &[], vec![ret]);
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Semantic);
-        assert!(error.message.contains("arity mismatch"), "{}", error.message);
+        assert!(
+            error.message.contains("arity mismatch"),
+            "{}",
+            error.message
+        );
         assert_eq!(fixture.bus.arenas.functions.allocated(), 0);
         let _ = add;
     }
@@ -1065,12 +1083,7 @@ fn non_int_argument_and_effectful_call_fail_without_ir() {
                 .unwrap()
         };
         let (argument, argument_literal) = fixture.literal_node(1);
-        fixture.sem_with(
-            argument,
-            short,
-            ValueCategory::NonLvalue,
-            EffectMask(0),
-        );
+        fixture.sem_with(argument, short, ValueCategory::NonLvalue, EffectMask(0));
         fixture.literal_const(argument_literal, 1);
         let main = fixture.name(b"main");
         let (other, other_literal) = fixture.int_lit(2);
@@ -1097,7 +1110,11 @@ fn non_int_argument_and_effectful_call_fail_without_ir() {
         let main_fn = fixture.function(main, &[], vec![ret]);
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Task);
-        assert!(error.message.contains("effectful node"), "{}", error.message);
+        assert!(
+            error.message.contains("effectful node"),
+            "{}",
+            error.message
+        );
         assert_eq!(fixture.bus.arenas.functions.allocated(), 0);
         let _ = add;
     }
@@ -1142,7 +1159,9 @@ fn literal_origin_selection_rejects_missing_ambiguous_and_foreign() {
         let error = project(&mut fixture, main_fn.funcdef).unwrap_err();
         assert_eq!(error.code.group, DiagGroup::Task);
         assert!(
-            error.message.contains("ambiguous folded constants for literal"),
+            error
+                .message
+                .contains("ambiguous folded constants for literal"),
             "{}",
             error.message
         );

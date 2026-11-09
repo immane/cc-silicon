@@ -312,7 +312,8 @@ pub fn project_ir_function_input(
                     .nodes
                     .get(*statement)
                     .map_err(|_| missing("node", statement.index()))?;
-                if statement_body.kind != NodeKind::Assignment || statement_body.children.len() != 2 {
+                if statement_body.kind != NodeKind::Assignment || statement_body.children.len() != 2
+                {
                     return Err(DiagnosticDraft::unsupported(
                         "lower of a non-assignment statement",
                     ));
@@ -346,10 +347,25 @@ pub fn project_ir_function_input(
         .get(operand)
         .map_err(|_| missing("node", operand.index()))?;
     let has_call = expression_contains_call(bus, operand)?;
-    // The canonical single-fold path is preserved only when there are no
-    // parameters, no local declaration, and no call in the returned
-    // expression. Everything else uses the general per-function program.
-    let canonical = parameter_nodes.is_empty() && local_shape.is_none() && !has_call;
+    // The canonical single-fold path is preserved only for the exact
+    // two-literal additive tree with no parameters, local, or call. All
+    // other covered expressions use the general per-function program.
+    let canonical_children_literals =
+        if operand_body.kind == NodeKind::BinaryAdd && operand_body.children.len() == 2 {
+            operand_body.children.iter().all(|child| {
+                bus.arenas
+                    .nodes
+                    .get(*child)
+                    .map(|body| body.kind == NodeKind::IntLiteral)
+                    .unwrap_or(false)
+            })
+        } else {
+            false
+        };
+    let canonical = parameter_nodes.is_empty()
+        && local_shape.is_none()
+        && !has_call
+        && canonical_children_literals;
     if canonical && operand_body.kind != NodeKind::BinaryAdd {
         return Err(DiagnosticDraft::unsupported(
             "lower of a non-additive canonical return operand",
@@ -437,9 +453,10 @@ pub fn project_ir_function_input(
     // must name a covered `int(int, ...)` prototype with the same parameter
     // count as the AST list.
     let signature = function_fact.ty;
-    let signature_body = bus.arenas.types.get(signature).map_err(|_| {
-        DiagnosticDraft::unsupported("lower of an uncommitted function signature")
-    })?;
+    let signature_body =
+        bus.arenas.types.get(signature).map_err(|_| {
+            DiagnosticDraft::unsupported("lower of an uncommitted function signature")
+        })?;
     match &signature_body.kind {
         TypeKind::Function {
             result,
@@ -721,7 +738,10 @@ fn symbol_for_decl(
         if found.is_some() {
             return Err(DiagnosticDraft::error(
                 DiagnosticCode::new(DiagGroup::Task, 4),
-                format!("lower reads duplicate symbol for declarator {}", decl.index()),
+                format!(
+                    "lower reads duplicate symbol for declarator {}",
+                    decl.index()
+                ),
             ));
         }
         found = Some((id, symbol.clone()));
@@ -734,10 +754,7 @@ fn symbol_for_decl(
     })
 }
 
-fn unique_sem(
-    bus: &crate::bus::CompilerBus,
-    node: NodeId,
-) -> Result<SemRecord, DiagnosticDraft> {
+fn unique_sem(bus: &crate::bus::CompilerBus, node: NodeId) -> Result<SemRecord, DiagnosticDraft> {
     let mut found = None;
     for (_, sem) in bus.arenas.sem.iter() {
         if sem.node != node {
@@ -1319,9 +1336,7 @@ fn resolve_callee(
     let (symbol, body) = candidates.pop().expect("one candidate");
     let mut definitions = Vec::new();
     for (id, node) in bus.arenas.nodes.iter() {
-        if node.kind == NodeKind::FunctionDefinition
-            && node.children.get(1) == Some(&body.decl)
-        {
+        if node.kind == NodeKind::FunctionDefinition && node.children.get(1) == Some(&body.decl) {
             definitions.push(id);
         }
     }

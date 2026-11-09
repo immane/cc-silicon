@@ -318,7 +318,10 @@ fn validate_parameters(
                 ));
             }
             let symbol = bus.arenas.symbols.get(*parameter).map_err(|_| {
-                format!("target emit: missing parameter symbol {}", parameter.index())
+                format!(
+                    "target emit: missing parameter symbol {}",
+                    parameter.index()
+                )
             })?;
             if symbol.kind != SymbolKind::Object
                 || symbol.storage != StorageDuration::Automatic
@@ -400,7 +403,10 @@ fn validate_instructions<'a>(
         validate_instruction_shape(bus, int, id, record)?;
         if let Some(result) = record.result {
             if producers.insert(result, (function, id)).is_some() {
-                return Err(format!("target emit: duplicate value id {}", result.index()));
+                return Err(format!(
+                    "target emit: duplicate value id {}",
+                    result.index()
+                ));
             }
         }
         per_function
@@ -610,7 +616,10 @@ fn validate_instruction_shape(
                 bus,
                 int,
                 record.result.ok_or_else(|| {
-                    format!("target emit: instruction {} is not the Neg shape", id.index())
+                    format!(
+                        "target emit: instruction {} is not the Neg shape",
+                        id.index()
+                    )
                 })?,
             )?;
             Ok(())
@@ -692,22 +701,24 @@ fn validate_calls(
                     instruction_id.index()
                 )
             })?;
-            let symbol = bus
-                .arenas
-                .symbols
-                .get(callee_symbol)
-                .map_err(|_| format!("target emit: unresolved callee symbol {}", callee_symbol.index()))?;
+            let symbol = bus.arenas.symbols.get(callee_symbol).map_err(|_| {
+                format!(
+                    "target emit: unresolved callee symbol {}",
+                    callee_symbol.index()
+                )
+            })?;
             if symbol.kind != SymbolKind::Function {
                 return Err(format!(
                     "target emit: unresolved callee symbol {}",
                     callee_symbol.index()
                 ));
             }
-            let scope = bus
-                .arenas
-                .scopes
-                .get(symbol.scope)
-                .map_err(|_| format!("target emit: unresolved callee symbol {}", callee_symbol.index()))?;
+            let scope = bus.arenas.scopes.get(symbol.scope).map_err(|_| {
+                format!(
+                    "target emit: unresolved callee symbol {}",
+                    callee_symbol.index()
+                )
+            })?;
             if scope.kind != ScopeKind::File {
                 return Err(format!(
                     "target emit: unresolved callee symbol {}",
@@ -787,8 +798,7 @@ fn build_layouts(
                 function.id.index()
             )
         })?;
-        let parameters: BTreeSet<SymbolId> =
-            function.record.parameters.iter().copied().collect();
+        let parameters: BTreeSet<SymbolId> = function.record.parameters.iter().copied().collect();
         let mut locals = BTreeSet::new();
         let mut values = BTreeSet::new();
         for (_, record) in list {
@@ -808,22 +818,22 @@ fn build_layouts(
         let mut next = 0u32;
         for parameter in &function.record.parameters {
             symbol_slots.insert(*parameter, next);
-            next = next.checked_add(4).ok_or_else(|| {
-                "target emit: stack frame size overflow".to_string()
-            })?;
+            next = next
+                .checked_add(4)
+                .ok_or_else(|| "target emit: stack frame size overflow".to_string())?;
         }
         for local in locals {
             symbol_slots.insert(local, next);
-            next = next.checked_add(4).ok_or_else(|| {
-                "target emit: stack frame size overflow".to_string()
-            })?;
+            next = next
+                .checked_add(4)
+                .ok_or_else(|| "target emit: stack frame size overflow".to_string())?;
         }
         let mut value_slots = BTreeMap::new();
         for value in values {
             value_slots.insert(value, next);
-            next = next.checked_add(4).ok_or_else(|| {
-                "target emit: stack frame size overflow".to_string()
-            })?;
+            next = next
+                .checked_add(4)
+                .ok_or_else(|| "target emit: stack frame size overflow".to_string())?;
         }
 
         let slot_count = (next / 4) as usize;
@@ -999,9 +1009,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.value_slots.get(&result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let slot = layout
+                .value_slots
+                .get(&result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             store_value(assembly, *slot);
             Ok(())
         }
@@ -1012,9 +1023,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.symbol_slots.get(&local).ok_or_else(|| {
-                format!("target emit: missing slot for symbol {}", local.index())
-            })?;
+            let slot = layout
+                .symbol_slots
+                .get(&local)
+                .ok_or_else(|| format!("target emit: missing slot for symbol {}", local.index()))?;
             load_value(assembly, *slot, 0);
             let result = record.result.ok_or_else(|| {
                 format!(
@@ -1022,9 +1034,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let result_slot = layout.value_slots.get(&result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let result_slot = layout
+                .value_slots
+                .get(&result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             store_value(assembly, *result_slot);
             Ok(())
         }
@@ -1045,9 +1058,10 @@ fn emit_instruction(
                 format!("target emit: missing slot for value {}", operand.index())
             })?;
             load_value(assembly, *operand_slot, 0);
-            let local_slot = layout.symbol_slots.get(&local).ok_or_else(|| {
-                format!("target emit: missing slot for symbol {}", local.index())
-            })?;
+            let local_slot = layout
+                .symbol_slots
+                .get(&local)
+                .ok_or_else(|| format!("target emit: missing slot for symbol {}", local.index()))?;
             assembly.push_str(&format!("    str w0, [sp, #{local_slot}]\n"));
             Ok(())
         }
@@ -1064,12 +1078,14 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let lhs_slot = layout.value_slots.get(lhs).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", lhs.index())
-            })?;
-            let rhs_slot = layout.value_slots.get(rhs).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", rhs.index())
-            })?;
+            let lhs_slot = layout
+                .value_slots
+                .get(lhs)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", lhs.index()))?;
+            let rhs_slot = layout
+                .value_slots
+                .get(rhs)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", rhs.index()))?;
             load_value(assembly, *lhs_slot, 0);
             load_value(assembly, *rhs_slot, 1);
             match record.op {
@@ -1093,9 +1109,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.value_slots.get(&result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let slot = layout
+                .value_slots
+                .get(&result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             store_value(assembly, *slot);
             Ok(())
         }
@@ -1117,9 +1134,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.value_slots.get(&result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let slot = layout
+                .value_slots
+                .get(&result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             store_value(assembly, *slot);
             Ok(())
         }
@@ -1149,9 +1167,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.value_slots.get(&result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let slot = layout
+                .value_slots
+                .get(&result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             store_value(assembly, *slot);
             Ok(())
         }
@@ -1162,9 +1181,10 @@ fn emit_instruction(
                     instruction_id.index()
                 )
             })?;
-            let slot = layout.value_slots.get(result).ok_or_else(|| {
-                format!("target emit: missing slot for value {}", result.index())
-            })?;
+            let slot = layout
+                .value_slots
+                .get(result)
+                .ok_or_else(|| format!("target emit: missing slot for value {}", result.index()))?;
             load_value(assembly, *slot, 0);
             if layout.nonleaf {
                 let lr = layout

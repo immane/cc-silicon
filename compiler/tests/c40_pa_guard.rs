@@ -1,15 +1,14 @@
 // ============================================================================
 // c40_pa_guard.rs — B1-01 PA01 exact-shape gate regression.
 //
-// Covers the D-01 wrong-acceptance defect: PA01 must validate every fixed
-// M1 punctuator spelling (`(` 2, `)` 4, `{` 5, `+` 8, `;` 10, `}` 11) and the
-// EOF token shape, not only token kinds and the four keyword/identifier
-// spellings. Non-M1 operators (`*`, `-`), a unary-plus shape (`2 + +3`),
-// malformed delimiters, and wrong word spellings must fail as typed
-// `Unsupported` diagnostics before any AST node is appended. The canonical
-// M1 source remains the only accepted shape and still appends the nine-node
-// tree. A final probe runs the built candidate binary end to end for the
-// three D-01 sources without touching `candidate.rs`.
+// Covers the D-01 wrong-acceptance defect and its `/54` parser extension:
+// malformed delimiters and wrong keyword shapes must still fail atomically,
+// while the formerly mis-parsed `*`, `-`, and unary `+` forms now parse as
+// real general expressions rather than being accepted as the canonical tree.
+// Arbitrary function names also parse; entry-name enforcement is a driver
+// rule, not a parser rule. The final probe runs the candidate end to end:
+// the former D-01 sources must now return their true values, and malformed
+// delimiters must still fail.
 // ============================================================================
 
 use cc_silicon_compiler::bus::{
@@ -312,8 +311,20 @@ fn canonical_m1_is_accepted_and_appends_the_tree() {
     );
 }
 
+fn assert_parsed(report: &TickReport, bus: &CompilerBus, label: &str) {
+    match &report.outcome {
+        TickOutcome::Executed { commit, .. } => {
+            assert!(commit.failed.is_empty(), "{label}");
+            assert_eq!(commit.completed.len(), 1, "{label}");
+            assert!(!commit.appended.is_empty(), "{label}");
+        }
+        other => panic!("{label}: expected parse execution, got {other:?}"),
+    }
+    assert!(bus.arenas.nodes.allocated() > 0, "{label}");
+}
+
 #[test]
-fn non_m1_punctuators_and_eof_shape_are_unsupported() {
+fn general_expression_punctuators_are_accepted() {
     let cases: Vec<GuardCase> = vec![
         ("mul", m1_with(&[(8, PpTokenKind::Punctuator, b"*")])),
         ("sub", m1_with(&[(8, PpTokenKind::Punctuator, b"-")])),
@@ -322,6 +333,25 @@ fn non_m1_punctuators_and_eof_shape_are_unsupported() {
             tokens.insert(9, (PpTokenKind::Punctuator, b"+"));
             tokens
         }),
+    ];
+    for (label, tokens) in cases {
+        let (mut bus, token_ids) = lex_chain(&tokens);
+        let report = parse_tu(&mut bus, &token_ids);
+        assert_parsed(&report, &bus, label);
+    }
+    let (mut bus, token_ids) = lex_chain(&m1_with(&[(8, PpTokenKind::Punctuator, b"*")]));
+    let report = parse_tu(&mut bus, &token_ids);
+    assert_parsed(&report, &bus, "mul-kind");
+    assert!(bus
+        .arenas
+        .nodes
+        .iter()
+        .any(|(_, body)| body.kind == NodeKind::BinaryMul));
+}
+
+#[test]
+fn malformed_delimiters_and_eof_shape_are_unsupported() {
+    let cases: Vec<GuardCase> = vec![
         ("open_paren", m1_with(&[(2, PpTokenKind::Punctuator, b"[")])),
         (
             "close_paren",
@@ -351,14 +381,17 @@ fn non_m1_punctuators_and_eof_shape_are_unsupported() {
 }
 
 #[test]
-fn wrong_word_spellings_are_unsupported() {
-    let cases: Vec<GuardCase> = vec![
+fn arbitrary_function_name_parses_but_bad_words_fail() {
+    let (mut bus, token_ids) = lex_chain(&m1_with(&[(1, PpTokenKind::Identifier, b"mian")]));
+    let report = parse_tu(&mut bus, &token_ids);
+    assert_parsed(&report, &bus, "mian");
+
+    let bad: Vec<GuardCase> = vec![
         ("int", m1_with(&[(0, PpTokenKind::Identifier, b"float")])),
-        ("main", m1_with(&[(1, PpTokenKind::Identifier, b"mian")])),
         ("void", m1_with(&[(3, PpTokenKind::Identifier, b"char")])),
         ("return", m1_with(&[(6, PpTokenKind::Identifier, b"break")])),
     ];
-    for (label, tokens) in cases {
+    for (label, tokens) in bad {
         let (mut bus, token_ids) = lex_chain(&tokens);
         let report = parse_tu(&mut bus, &token_ids);
         assert_unsupported_without_ast(&report, &bus, label);
@@ -390,13 +423,30 @@ fn write_source(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 }
 
 #[test]
-fn candidate_rejects_d01_sources_end_to_end() {
+fn candidate_handles_former_d01_sources_end_to_end() {
     let dir = workdir("d01");
+    let good: &[(&str, &[u8], &str)] = &[
+        ("mul.c", b"int main(void){return 2*3;}\n", "value=06"),
+        (
+            "sub.c",
+            b"int main(void){return 2-3;}\n",
+            "value=01 negative=true",
+        ),
+        ("unary.c", b"int main(void){return 2 + +3;}\n", "value=05"),
+    ];
+    for (name, source, expected) in good {
+        let path = write_source(&dir, name, source);
+        let output = Command::new(candidate())
+            .arg(&path)
+            .output()
+            .expect("candidate runs");
+        assert_eq!(output.status.code(), Some(0), "{name}");
+        let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+        assert!(stdout.contains(expected), "{name}: {stdout}");
+    }
     let bad: &[(&str, &[u8])] = &[
-        ("mul.c", b"int main(void){return 2*3;}\n"),
-        ("sub.c", b"int main(void){return 2-3;}\n"),
-        ("unary.c", b"int main(void){return 2 + +3;}\n"),
         ("delim.c", b"int main(void]{return 2*3;)\n"),
+        ("not_main.c", b"int mian(void){return 2+3;}\n"),
     ];
     for (name, source) in bad {
         let path = write_source(&dir, name, source);
@@ -407,12 +457,8 @@ fn candidate_rejects_d01_sources_end_to_end() {
         assert_eq!(output.status.code(), Some(1), "{name}");
         let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
         assert!(!stdout.contains("interpret: "), "{name}");
-        assert!(!stdout.contains("snapshot: "), "{name}");
         let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
-        assert!(
-            stderr.contains("candidate diagnostic: "),
-            "{name}: {stderr}"
-        );
+        assert!(stderr.contains("candidate:"), "{name}: {stderr}");
     }
     let canonical = write_source(&dir, "canonical.c", b"int main(void){return 2+3;}\n");
     let output = Command::new(candidate())

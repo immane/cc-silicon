@@ -13,9 +13,7 @@
 
 use super::se_identifier::enclosing_block;
 use super::se_literal::{find_m1_int, sem_for_node};
-use crate::bus::{
-    EffectMask, NodeKind, ScopeKind, SemRecord, SymbolKind, TypeKind, ValueCategory,
-};
+use crate::bus::{EffectMask, NodeKind, ScopeKind, SemRecord, SymbolKind, TypeKind, ValueCategory};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{NodeId, RecordRef, SymbolId, TaskId, TypeId};
@@ -85,9 +83,7 @@ pub fn project_se_call_input(
         )
     })?;
     if node_body.kind != NodeKind::Call {
-        return Err(DiagnosticDraft::unsupported(
-            "se-call of a non-call node",
-        ));
+        return Err(DiagnosticDraft::unsupported("se-call of a non-call node"));
     }
     let Some(callee_node) = node_body.children.first().copied() else {
         return Err(DiagnosticDraft::error(
@@ -227,11 +223,7 @@ pub fn project_se_call_input(
             "se-call target has more than eight parameters",
         ));
     }
-    if *result != int
-        || !params.iter().all(|param| *param == int)
-        || !*prototype
-        || *variadic
-    {
+    if *result != int || !params.iter().all(|param| *param == int) || !*prototype || *variadic {
         return Err(DiagnosticDraft::unsupported(
             "se-call target has a non-M1 signature",
         ));
@@ -262,10 +254,7 @@ pub fn project_se_call_input(
             Some((_, sem)) if sem.category != ValueCategory::NonLvalue => {
                 return Err(DiagnosticDraft::error(
                     DiagnosticCode::new(DiagGroup::Semantic, 1),
-                    format!(
-                        "se-call argument {} is not a non-lvalue",
-                        argument.index()
-                    ),
+                    format!("se-call argument {} is not a non-lvalue", argument.index()),
                 ));
             }
             Some(_) => {

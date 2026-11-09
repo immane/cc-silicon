@@ -119,7 +119,7 @@ fn undef_prevents_later_expansion() {
 
     let evidence = run(&[std::ffi::OsStr::new("--interpret-ir"), path.as_os_str()]);
     assert_eq!(evidence.status.code(), Some(1));
-    assert!(stderr(&evidence).contains("non-M1 token sequence"));
+    assert!(stderr(&evidence).contains("undeclared name"));
 }
 
 #[test]

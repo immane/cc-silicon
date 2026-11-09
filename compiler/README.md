@@ -7,9 +7,10 @@ and the shared schema every compiler task package must obey.
 It is **not a complete C compiler**. It compiles and tests the storage profile,
 IDs, task/result protocol, target/config schema, manifest extension,
 deterministic serializer, and the routing shell, and it contains partial
-PP/LX/PA/TY/SE/IR/VF language-worker slices plus a candidate Part A evidence
-driver. There is no source-to-executable pipeline. Language work (T02–T13)
-continues on this foundation.
+PP/LX/PA/TY/SE/IR/VF language-worker slices plus a candidate evidence driver
+and a host-only AArch64 prototype for constant, local, and bounded direct-call
+programs. There is no general source-to-executable pipeline. Language work
+(T02–T13) continues on this foundation.
 
 ## Status
 
@@ -23,10 +24,10 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/54` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
+| Contract version | `t01-c01-c06/55` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
-| Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
+| Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/56` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
 | Parser/AST common base (`/43`) | Schema frozen: single-task V1 parser decision; append-only `NodeKind` V1 inventory; canonical node names/round-trip. V1 parser producer and VF05 V1 shapes remain future |
 | IR/CFG common base (`/44`) | Schema frozen: `InstructionRecord.local`/`successors`; local/arithmetic/branch `IrOp` append; `EFFECT_WRITES_LOCAL`; VF07/VF08 and V1/V2 producers remain future |
@@ -38,19 +39,21 @@ continues on this foundation.
 | Local add and modeled integer (`/50`) | Implemented and tested: `ResultValue::Integer`, local-add shape, identifier/literal binary fact, six-instruction IR, VF12 modeled 5; `c56_source_locals` 6 macOS / 8 native AArch64 Linux. Calls and general codegen remain future |
 | Local binary operators (`/51`) | Implemented and tested: `+`, `-`, `*`, `/`, `%` over the local binary shape; VF05/VF06/SE/BIN/IR/VF12 coverage; `c56_source_locals` 7 macOS / 10 native AArch64 Linux; native exits 255/6/0/2 for the new operators. Calls and general codegen remain future |
 | Local expression trees (`/52`) | Implemented and tested: precedence, parentheses, literal-left forms, and unary `+`/`-`; pre-order AST commit, post-order semantic checks, recursive T09 lowering, general VF12 program interpreter; `c56_source_locals` 8 macOS / 12 native AArch64 Linux. Calls and general codegen remain future |
-| Local assignments (`/53`) | Implemented and tested: zero or more `x = <expr>;` statements, effect-carrying assignment facts, ordered `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 native AArch64 Linux. Calls, memory, branches, loops, and general codegen remain future |
-| M1 target prototype | `candidate --emit-asm` emits constant-return and `/49`–`/53` local-program AArch64 assembly; `c55_target_m1`/`c56_source_locals` verify native Linux assemble/link/run across expressions, parentheses, unary operators, and ordered assignments. Calls, memory, branches, loops, and general codegen remain absent. Not a T11 chip family or `-S`/`-c` |
+| Local assignments (`/53`) | Implemented and tested: zero or more `x = <expr>;` statements, effect-carrying assignment facts, ordered `LocalStore` lowering, VF12 store model; `c56_source_locals` 10 macOS / 13 native AArch64 Linux. Memory, branches, loops, and general codegen remain future |
+| Direct-call schema (`/54`) | Shape-only freeze: `ParameterList`/`Parameter`/`Call`, `FunctionRecord.parameters`, `InstructionRecord.callee`, `IrOp::Call`, `ConstRecord.origins`, call task/chip reservation, and call/interpretation budgets. No producer was added by this amendment |
+| Direct calls (`/55`) | Implemented and tested: same-TU acyclic calls, 0–8 signed-`int` parameters/arguments, parameterized signatures, explicit callee identity, fresh VF12 frames, multi-function AArch64 emission with `w0`–`w7`/`w0`, LR/leaf handling, aligned frames; `call_source` 7 macOS / 8 native AArch64 Linux, `c55_target_m1` 24/25, `call_abi` shape test 1 with two reference directions blocked. Recursion, variadics, external/indirect calls, stack arguments, wider ABI, memory, control flow, and general codegen remain future |
+| M1 target prototype | `candidate --emit-asm` emits constant-return, `/49`–`/53` local, and `/55` same-TU direct-call AArch64 assembly; `c55_target_m1`/`c56_source_locals`/`call_source` verify native Linux assemble/link/run across expressions, ordered assignments, parameter passing, and nested calls. Memory, branches, loops, external/stack-passed calls, and general codegen remain absent. Not a T11 chip family or `-S`/`-c` |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/54
-hash=850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39
+version=t01-c01-c06/55
+hash=e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
-probe_substrate=linux-ci-vm (planned, not provisioned)
+probe_substrate=docker-linux-arm64 (pinned 2026-11-09; official T00 baseline open)
 corpus_fetch=on-demand hash-locked
 reference_baseline=authorized, not available, not candidate evidence
 hash_scope=normative-shapes-and-rule-ids (not source code, not semantic proof)

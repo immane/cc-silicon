@@ -81,19 +81,14 @@ pub(crate) fn enclosing_block(
     let Some(function) = function else {
         return Err(DiagnosticDraft::error(
             DiagnosticCode::new(DiagGroup::Task, 4),
-            format!(
-                "node {} is not inside a function definition",
-                node.index()
-            ),
+            format!("node {} is not inside a function definition", node.index()),
         ));
     };
     let mut scopes: Vec<ScopeId> = bus
         .arenas
         .scopes
         .iter()
-        .filter(|(_, scope)| {
-            scope.kind == ScopeKind::Block && scope.owner == Some(compound)
-        })
+        .filter(|(_, scope)| scope.kind == ScopeKind::Block && scope.owner == Some(compound))
         .map(|(id, _)| id)
         .collect();
     scopes.sort_by_key(|id| id.index());

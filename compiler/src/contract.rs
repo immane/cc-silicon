@@ -52,13 +52,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// result plus local-add source slice, the `/51` local binary-operator
 /// source slice, the `/52` local expression-tree slice, and the `/53` local
 /// assignment/statement slice.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/54";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/55";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39";
+pub const CONTRACT_HASH: &str = "e19cf5c1dd86c7ca50da0fe429e25f4acf2ecbcfd8cd18da7efe1fd5d09d7652";
 
 /// Normative rule identifiers covered by the contract hash.
 ///

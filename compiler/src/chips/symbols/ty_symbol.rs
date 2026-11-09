@@ -137,11 +137,7 @@ pub fn project_ty_declare_input(
         )
     })?;
     let (symbol_kind, linkage, storage) = match (node_body.kind, &ty_body.kind, scope_body.kind) {
-        (
-            NodeKind::Declarator,
-            TypeKind::Function { .. },
-            crate::bus::ScopeKind::File,
-        ) => (
+        (NodeKind::Declarator, TypeKind::Function { .. }, crate::bus::ScopeKind::File) => (
             SymbolKind::Function,
             Linkage::External,
             StorageDuration::Static,

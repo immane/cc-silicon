@@ -27,9 +27,9 @@ use cc_silicon_compiler::chips::{
     PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
     PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
     PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeAssignmentChip,
-    SeBinChip, SeFuncChip, SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip, TyConvChip,
-    TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker,
-    WorkerRegistry,
+    SeBinChip, SeCallChip, SeFuncChip, SeIdentifierChip, SeLitChip, SeRetChip, SeUnaryChip,
+    TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip,
+    Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
@@ -279,6 +279,7 @@ fn install(bus: &mut CompilerBus) {
         &SeIdentifierChip,
         &SeUnaryChip,
         &SeAssignmentChip,
+        &SeCallChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -478,6 +479,7 @@ fn run_expression_node(
     workers: &WorkerRegistry,
     trace: &mut Trace,
     node: NodeId,
+    fold_literals: bool,
 ) -> Result<(), String> {
     let kind = bus
         .arenas
@@ -486,7 +488,7 @@ fn run_expression_node(
         .map_err(|_| "expression node vanished".to_string())?
         .kind;
     match kind {
-        NodeKind::IntLiteral => run_literal(bus, workers, trace, node, true),
+        NodeKind::IntLiteral => run_literal(bus, workers, trace, node, fold_literals),
         NodeKind::Identifier => {
             step(
                 bus,
@@ -645,6 +647,9 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeAssignmentChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeCallChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -1559,7 +1564,7 @@ fn run_program(
                     let mut order = Vec::new();
                     expression_postorder(bus, statement_body.children[1], &mut order)?;
                     for node in order {
-                        run_expression_node(bus, workers, trace, node)?;
+                        run_expression_node(bus, workers, trace, node, false)?;
                     }
                     step(
                         bus,
@@ -1578,7 +1583,7 @@ fn run_program(
                     let mut order = Vec::new();
                     expression_postorder(bus, statement_body.children[0], &mut order)?;
                     for node in order {
-                        run_expression_node(bus, workers, trace, node)?;
+                        run_expression_node(bus, workers, trace, node, false)?;
                     }
                     step(
                         bus,
@@ -1757,13 +1762,44 @@ fn run(
         VF05_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
-    // `/54` direct-call programs use the multi-function orchestration below.
-    // The legacy single-function shapes keep their existing byte-identical
-    // path.
-    if nodes_of(&bus, NodeKind::FunctionDefinition).len() > 1
-        || !nodes_of(&bus, NodeKind::ParameterList).is_empty()
-        || !nodes_of(&bus, NodeKind::Call).is_empty()
-    {
+    // `/54` direct-call and broader integer programs use the multi-function
+    // orchestration below. Only the exact canonical add tree and the closed
+    // `/53` single-local shape keep the legacy byte-identical path.
+    let initial_funcdefs = nodes_of(&bus, NodeKind::FunctionDefinition);
+    let initial_declarations = nodes_of(&bus, NodeKind::Declaration);
+    let has_parameters = !nodes_of(&bus, NodeKind::ParameterList).is_empty();
+    let has_calls = !nodes_of(&bus, NodeKind::Call).is_empty();
+    let has_noncanonical_expression = [
+        NodeKind::BinarySub,
+        NodeKind::BinaryMul,
+        NodeKind::BinaryDiv,
+        NodeKind::BinaryRem,
+        NodeKind::UnaryPlus,
+        NodeKind::UnaryMinus,
+    ]
+    .iter()
+    .any(|kind| !nodes_of(&bus, *kind).is_empty());
+    let canonical_add_tree = initial_declarations.is_empty()
+        && !has_noncanonical_expression
+        && nodes_of(&bus, NodeKind::BinaryAdd).len() == 1
+        && nodes_of(&bus, NodeKind::IntLiteral).len() == 2;
+    let legacy_shape = initial_funcdefs.len() == 1
+        && !has_parameters
+        && !has_calls
+        && (initial_declarations.len() == 1 || canonical_add_tree);
+    let entry_is_main = initial_funcdefs.len() == 1
+        && bus
+            .arenas
+            .nodes
+            .get(initial_funcdefs[0])
+            .ok()
+            .and_then(|body| body.children.get(1).copied())
+            .and_then(|declarator| bus.arenas.nodes.get(declarator).ok())
+            .and_then(|declarator| declarator.name)
+            .and_then(|name| bus.intern.get(name).ok())
+            .map(|name| name == b"main")
+            .unwrap_or(false);
+    if !legacy_shape || !entry_is_main {
         return run_program(&mut bus, &workers, &mut trace, tu[0], input, asm_output);
     }
     // Types and symbols by tree walk (no fixed node IDs). The `/49` locals
@@ -1918,7 +1954,7 @@ fn run(
             let mut order = Vec::new();
             expression_postorder(&bus, statement_body.children[1], &mut order)?;
             for node in order {
-                run_expression_node(&mut bus, &workers, &mut trace, node)?;
+                run_expression_node(&mut bus, &workers, &mut trace, node, true)?;
             }
             step(
                 &mut bus,
@@ -1932,7 +1968,7 @@ fn run(
         let mut order = Vec::new();
         expression_postorder(&bus, root, &mut order)?;
         for node in order {
-            run_expression_node(&mut bus, &workers, &mut trace, node)?;
+            run_expression_node(&mut bus, &workers, &mut trace, node, true)?;
         }
         step(
             &mut bus,

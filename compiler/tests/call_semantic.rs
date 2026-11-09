@@ -154,13 +154,7 @@ fn alloc_sem(
 }
 
 fn seed_int_sem(bus: &mut CompilerBus, int: TypeId, node: NodeId) {
-    alloc_sem(
-        bus,
-        node,
-        int,
-        ValueCategory::NonLvalue,
-        EffectMask(0),
-    );
+    alloc_sem(bus, node, int, ValueCategory::NonLvalue, EffectMask(0));
 }
 
 fn running_task(
@@ -368,12 +362,7 @@ fn build_model() -> Model {
 
     let file = alloc_scope(&mut bus, ScopeKind::File, None, None);
     let add_block = alloc_scope(&mut bus, ScopeKind::Block, Some(file), Some(add_compound));
-    let main_block = alloc_scope(
-        &mut bus,
-        ScopeKind::Block,
-        Some(file),
-        Some(main_compound),
-    );
+    let main_block = alloc_scope(&mut bus, ScopeKind::Block, Some(file), Some(main_compound));
     let add_symbol = alloc_symbol(
         &mut bus,
         add_name,
@@ -615,7 +604,12 @@ fn nested_call_and_expression_operands_are_checked() {
     seed_int_sem(&mut model.bus, model.int, inner_arg_b);
     let inner_input = project_call(&mut model.bus, inner).unwrap();
     let inner_sem = proposed_sem(&SeCallChip.compute(&inner_input));
-    let inner_id = model.bus.arenas.sem.alloc(inner_sem, &model.bus.limits()).unwrap();
+    let inner_id = model
+        .bus
+        .arenas
+        .sem
+        .alloc(inner_sem, &model.bus.limits())
+        .unwrap();
 
     // outer = add(inner, 2)
     let outer_arg = alloc_node(&mut model.bus, NodeKind::IntLiteral, None);
@@ -625,7 +619,12 @@ fn nested_call_and_expression_operands_are_checked() {
     set_parent(&mut model.bus, outer, model.main_compound);
     let outer_input = project_call(&mut model.bus, outer).unwrap();
     let outer_sem = proposed_sem(&SeCallChip.compute(&outer_input));
-    let outer_id = model.bus.arenas.sem.alloc(outer_sem, &model.bus.limits()).unwrap();
+    let outer_id = model
+        .bus
+        .arenas
+        .sem
+        .alloc(outer_sem, &model.bus.limits())
+        .unwrap();
 
     // A checked call is a valid binary operand.
     let binary = alloc_node(&mut model.bus, NodeKind::BinaryAdd, None);
@@ -681,10 +680,7 @@ fn nested_call_and_expression_operands_are_checked() {
     let input = project_se_assignment_input(&model.bus, task).unwrap();
     let assignment_sem = proposed_sem(&SeAssignmentChip.compute(&input));
     assert_eq!(assignment_sem.node, assignment);
-    assert_eq!(
-        assignment_sem.effects,
-        EffectMask(EFFECT_WRITES_LOCAL)
-    );
+    assert_eq!(assignment_sem.effects, EffectMask(EFFECT_WRITES_LOCAL));
 
     // A checked call is a valid return operand.
     attach(&mut model.bus, model.main_return, vec![outer]);
@@ -763,11 +759,7 @@ fn non_int_argument_is_rejected() {
     seed_int_sem(&mut model.bus, model.int, model.arg_b);
     let error = project_call(&mut model.bus, model.call).unwrap_err();
     assert_eq!(error.code.group, DiagGroup::Semantic);
-    assert!(
-        error.message.contains("canonical int"),
-        "{}",
-        error.message
-    );
+    assert!(error.message.contains("canonical int"), "{}", error.message);
 }
 
 #[test]
@@ -821,7 +813,13 @@ fn unknown_forward_and_self_calls_are_rejected() {
         StorageDuration::Static,
         later_decl,
     );
-    forward.bus.arenas.nodes.get_mut(forward.callee).unwrap().name = Some(later_name);
+    forward
+        .bus
+        .arenas
+        .nodes
+        .get_mut(forward.callee)
+        .unwrap()
+        .name = Some(later_name);
     let error = project_call(&mut forward.bus, forward.call).unwrap_err();
     assert_eq!(error.code.group, DiagGroup::Semantic);
     assert!(
@@ -1095,11 +1093,11 @@ fn call_chip_manifest_is_write_scoped() {
     let manifest = SeCallChip.manifest();
     assert_eq!(manifest.id, SE_CALL_CHIP);
     assert_eq!(manifest.chip_name, "SeCallChip");
-    assert_eq!(manifest.group, cc_silicon_compiler::task::TaskGroup::SEMANTIC);
     assert_eq!(
-        manifest.task_kinds,
-        vec![TaskKind::SEMANTIC_CALL_EXPR]
+        manifest.group,
+        cc_silicon_compiler::task::TaskGroup::SEMANTIC
     );
+    assert_eq!(manifest.task_kinds, vec![TaskKind::SEMANTIC_CALL_EXPR]);
     assert_eq!(
         manifest.writes,
         vec![FieldPath::new(StoreId::Sem, "records")]

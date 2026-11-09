@@ -17,9 +17,7 @@ use cc_silicon_compiler::bus::{
     IntegerConst, IrOp, Linkage, ScopeKind, ScopeRecord, StorageDuration, SymbolKind, SymbolRecord,
     TypeKind, TypeRecord, ValueRecord,
 };
-use cc_silicon_compiler::ids::{
-    BlockId, NameId, NodeId, ScopeId, SymbolId, TypeId, ValueId,
-};
+use cc_silicon_compiler::ids::{BlockId, NameId, NodeId, ScopeId, SymbolId, TypeId, ValueId};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -130,10 +128,7 @@ impl Module {
     fn declare(&mut self, name: &str, params: &[&str], linkage: Linkage) -> FnDecl {
         let name = self.intern(name);
         let param_names: Vec<String> = params.iter().map(|param| (*param).to_string()).collect();
-        let param_ids: Vec<NameId> = param_names
-            .iter()
-            .map(|param| self.intern(param))
-            .collect();
+        let param_ids: Vec<NameId> = param_names.iter().map(|param| self.intern(param)).collect();
         let signature = self.signature(params.len());
         let limits = self.bus.limits();
         let scope_owner = self.next_node();
@@ -328,13 +323,27 @@ impl Body<'_> {
             )
             .unwrap();
         let result = self.value();
-        self.instruction(IrOp::Constant, vec![], Some(constant), Some(result), None, None);
+        self.instruction(
+            IrOp::Constant,
+            vec![],
+            Some(constant),
+            Some(result),
+            None,
+            None,
+        );
         result
     }
 
     fn load_symbol(&mut self, symbol: SymbolId) -> ValueId {
         let result = self.value();
-        self.instruction(IrOp::LocalLoad, vec![], None, Some(result), Some(symbol), None);
+        self.instruction(
+            IrOp::LocalLoad,
+            vec![],
+            None,
+            Some(result),
+            Some(symbol),
+            None,
+        );
         result
     }
 
@@ -344,7 +353,14 @@ impl Body<'_> {
     }
 
     fn store_symbol(&mut self, symbol: SymbolId, value: ValueId) {
-        self.instruction(IrOp::LocalStore, vec![value], None, None, Some(symbol), None);
+        self.instruction(
+            IrOp::LocalStore,
+            vec![value],
+            None,
+            None,
+            Some(symbol),
+            None,
+        );
     }
 
     fn local(&mut self, name: &str) -> SymbolId {
@@ -388,14 +404,7 @@ impl Body<'_> {
 
     fn call_optional(&mut self, callee: Option<SymbolId>, arguments: Vec<ValueId>) -> ValueId {
         let result = self.value();
-        self.instruction(
-            IrOp::Call,
-            arguments,
-            None,
-            Some(result),
-            None,
-            callee,
-        );
+        self.instruction(IrOp::Call, arguments, None, Some(result), None, callee);
         result
     }
 
@@ -892,8 +901,8 @@ fn internal_linkage_omits_globl() {
 #[test]
 fn unsafe_names_and_duplicate_functions_fail() {
     for name in [
-        "x0", "w30", "sp", "wsp", "xzr", "wzr", "lr", "fp", "ip0", "ip1", "d0", "s31", "q15",
-        "v8", "eq", "al", "bad name", "9lives", "café",
+        "x0", "w30", "sp", "wsp", "xzr", "wzr", "lr", "fp", "ip0", "ip1", "d0", "s31", "q15", "v8",
+        "eq", "al", "bad name", "9lives", "café",
     ] {
         let mut module = Module::new();
         let _main = module.declare("main", &[], Linkage::External);
@@ -1016,10 +1025,7 @@ fn recursive_and_cyclic_calls_fail() {
         body.ret(result);
     }
     let error = emit(&module).unwrap_err();
-    assert!(
-        error.contains("recursive or cyclic call graph"),
-        "{error}"
-    );
+    assert!(error.contains("recursive or cyclic call graph"), "{error}");
 
     let mut module = Module::new();
     let first = module.declare("first", &[], Linkage::External);
@@ -1041,10 +1047,7 @@ fn recursive_and_cyclic_calls_fail() {
         body.ret(seven);
     }
     let error = emit(&module).unwrap_err();
-    assert!(
-        error.contains("recursive or cyclic call graph"),
-        "{error}"
-    );
+    assert!(error.contains("recursive or cyclic call graph"), "{error}");
 }
 
 #[test]
