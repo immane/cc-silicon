@@ -28,6 +28,9 @@ use cc_silicon_compiler::manifest::{
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome, TickReport};
 use cc_silicon_compiler::target::{CompilerConfig, Dialect, OptLevel, TargetSpec};
 use cc_silicon_compiler::task::{Payload, ResultValue, TaskDraft, TaskKind, TaskKindRegistry};
+
+/// One PA01 rejection case: label plus the replacement M1 token stream.
+type GuardCase = (&'static str, Vec<(PpTokenKind, &'static [u8])>);
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -311,7 +314,7 @@ fn canonical_m1_is_accepted_and_appends_the_tree() {
 
 #[test]
 fn non_m1_punctuators_and_eof_shape_are_unsupported() {
-    let cases: Vec<(&str, Vec<(PpTokenKind, &'static [u8])>)> = vec![
+    let cases: Vec<GuardCase> = vec![
         ("mul", m1_with(&[(8, PpTokenKind::Punctuator, b"*")])),
         ("sub", m1_with(&[(8, PpTokenKind::Punctuator, b"-")])),
         ("unary_plus", {
@@ -349,7 +352,7 @@ fn non_m1_punctuators_and_eof_shape_are_unsupported() {
 
 #[test]
 fn wrong_word_spellings_are_unsupported() {
-    let cases: Vec<(&str, Vec<(PpTokenKind, &'static [u8])>)> = vec![
+    let cases: Vec<GuardCase> = vec![
         ("int", m1_with(&[(0, PpTokenKind::Identifier, b"float")])),
         ("main", m1_with(&[(1, PpTokenKind::Identifier, b"mian")])),
         ("void", m1_with(&[(3, PpTokenKind::Identifier, b"char")])),

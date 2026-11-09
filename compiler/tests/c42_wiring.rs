@@ -2,7 +2,7 @@
 // c42_wiring.rs — chip-tree wiring and reachability guard (WO-A13-03 / B1-06).
 //
 // Every `.rs` file under `compiler/src/chips` other than a `mod.rs` must be
-// declared by a `mod <name>;` in its parent `mod.rs`. The four user-owned
+// declared by a `mod <name>;` in its parent `mod.rs`. The nine user-owned
 // drafts that are intentionally not built are listed in `DRAFT_FILES`; the
 // list must stay exact, so a draft that becomes wired fails with an explicit
 // instruction to remove its parked entry.
@@ -27,7 +27,12 @@ const CHIPS_REL: &str = "src/chips";
 const DRAFT_FILES: &[&str] = &[
     "lex/lx_error.rs",
     "lex/lx_extension.rs",
+    "parse/pa_cast.rs",
+    "parse/pa_decl_spec.rs",
     "parse/pa_expr_ext.rs",
+    "parse/pa_ext_dispatch.rs",
+    "parse/pa_init.rs",
+    "parse/pa_stmt.rs",
     "parse/pa_typedef_query.rs",
 ];
 
