@@ -9,10 +9,11 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/41`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/42`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
-| M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance and IR-4(b) are not claimed |
+| M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
 | Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/43` |
+| Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
 | AArch64 target values | **Unverified** | Identity frozen; probe never run; concrete values fail closed |
 | ABI probe harness (`tools/torture/probe/`) | Scaffold, **never run** | Harness self-tests pass; no report, no attestation |
@@ -23,13 +24,13 @@ re-verify. This page records observed state, not a new acceptance run.
 No complete compiler capability, verified target ABI, or GCC pass rate is
 claimed by this repository or this page.
 
-## What "frozen `/41`" means
+## What "frozen `/42`" means
 
-The frozen artifact is `t01-c01-c06/41`:
+The frozen artifact is `t01-c01-c06/42`:
 
 ```text
-version=t01-c01-c06/41
-hash=500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966
+version=t01-c01-c06/42
+hash=a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -56,7 +57,7 @@ target_verification=unverified
 
 ## Observed test inventory
 
-The following counts were observed during the 2026-11-09 `/40` integration
+The following counts were observed during the 2026-11-09 `/42` integration
 run (and, for the non-compiler packages, the 2026-11-07 dispatch audit). They
 are discovery/run observations, not a permanent promise; the source tree and
 `compiler/tests/` are authoritative.
@@ -64,7 +65,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **723 tests across 50 suites passed** after `/41` (adds the append/trace/scheduler/limit/store-version cases) |
+| Compiler | **694 tests across 52 suites passed** after B3-03a (adds the tagged-constant cases and the bounded PP driver tests) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
@@ -72,12 +73,15 @@ are discovery/run observations, not a permanent promise; the source tree and
 ## Known limitations
 
 - No complete PP→LX→PA→TY→SE→CL→IR→target pipeline.
-- Integrated preprocessing/lexing is narrow: source macros/includes are not
-  orchestrated end-to-end, and the integrated lexer is M1-integer-only.
-- Many parse/type/semantic/IR/verification catalog rows are absent; several
-  parse drafts are registered nowhere or claim colliding IDs.
-- `ConstRecord.ty`/`ir.op-immediate-type` remain deferred (B2-02); M1 Part A
-  IR-4(b) must not be claimed at `/40`.
+- Integrated preprocessing/lexing is narrow: source `#define`/`#undef` are
+  orchestrated by B3-03a, but `#include`/`#line`/`#pragma` remain PP05
+  fail-closed, post-conditional source macro mutation is rejected, and the
+  integrated lexer is M1-integer-only.
+- Many parse/type/semantic/IR/verification catalog rows are absent. Unregistered
+  parse drafts are explicitly parked by B-INT-00; their candidate IDs are not
+  frozen, and canonical PA15 selection remains future work.
+- `ConstRecord.ty`/`ir.op-immediate-type` are implemented at `/42`, but this is
+  not full M1 acceptance or target execution.
 - The ABI/target probe has never run; no concrete target value may drive
   codegen.
 - H05 isolated execution is absent; no untrusted binary may be run at scale.

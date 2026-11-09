@@ -59,12 +59,13 @@ The standing rule for this work: **grow through small, complete
 vertical slices.** Freeze one slice's schemas, implement it with tests,
 then widen. Do not declare all 331 interfaces ready before they are.
 
-**Current freeze state (2026-11-09):** `/40` closed the M1 Part A A3 path
-and `/41` closed the B2-00 determinism/limits/replay package (append wire
+**Current freeze state (2026-11-09):** `/40` closed the M1 Part A A3 path,
+`/41` closed the B2-00 determinism/limits/replay package (append wire
 bodies, stage-first scheduling, macro/store/result versions, pin-aware
-trace evidence). The next contract freeze is `/42` for tagged constants
-(`ConstRecord.ty`, B2-02); `/43` owns full snapshot restore, quota>1 order,
-VF13 projections, per-stage queues, and `StorePatch` materialization.
+trace evidence), and `/42` closed B2-02 tagged, typed constants
+(`ConstRecord.ty`, integer payload, immediate-type checks). `/43` owns full
+snapshot restore, quota>1 order, VF13 projections, per-stage queues, and
+`StorePatch` materialization.
 
 ## After M1: the longer climb
 

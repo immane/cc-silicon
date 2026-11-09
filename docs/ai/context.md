@@ -1,35 +1,47 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/41`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/42`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
-> 2026-11-09 after accepting and implementing B2-00 as `/41` and running
-> the full compiler suite green (723 tests / 50 suites).
+> 2026-11-09 after accepting and implementing B2-02 as `/42`, parking the
+> unregistered parse drafts (B-INT-00), implementing B3-03a source
+> `#define`/`#undef`, and running the full compiler suite green (694 tests /
+> 52 suites; clippy clean).
 > The frozen contract (`compiler/contracts/CONTRACT_VERSION`) plus
 > `docs/tasks/T01_COMPILER_CONTRACT.md` §7.1 remain authoritative; this
 > file is an index, not a freeze.
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/41` (determinism/limits/replay closure),
-  hash `500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966`.
+- Frozen artifact: `t01-c01-c06/42` (tagged, typed constants; determinism/
+  limits/replay), hash
+  `a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
   and the Host `ReplayEvidence` envelope. Evidence: `c05_codec` 29,
   `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22,
-  `c11_lex` 11, `freeze` 15; direct candidate emits `/41` and `value=05`
-  with byte-identical repeated output.
+  `c11_lex` 11, `freeze` 15.
+- Implemented and test-green at `/42`: `ConstRecord { ty, value:
+  ConstValue::Integer(..) }`, fold type resolution from committed
+  `SemRecord.ty` (binary) / unique canonical `int` (literal), T09/VF12
+  `ir.op-immediate-type` checks, VF14 integer gate decode, canonical typed
+  snapshot body. Evidence: `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13,
+  `c17_vf12` 6, `c38_vf14` 10, `c05_codec` 29, `freeze` 15; direct
+  candidate emits `/42` and `value=05` with byte-identical repeated output.
 - `/40` remains the M1 Part A A3 closure: SE29 dispatch, VF06 four-kind
   typed-fact set, T09 committed-fact consumption (`c14_se` 16,
   `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18).
-- Not done: B2-02 tagged constants (`ConstRecord.ty` /
-  `ir.op-immediate-type`, finding D-09) for `/42`; full
-  `Snapshot::from_bytes`/restore, quota>1 order, VF13 projections,
-  per-stage queues, and `StorePatch` materialization for `/43`; H05
-  isolated execution; the Linux ABI probe / Part B target codegen; full M1
-  acceptance. No target execution or GCC pass rate is claimed.
-- Branch: `initial-compiler-development`. Slices through `/40` are
-  committed; the `/41` integration is in the worktree and is NOT yet
-  committed or pushed (no force-push).
+- B-INT-00 is complete: all nine unregistered parse/lex drafts are parked,
+  clippy is clean, and no candidate ID is frozen
+  (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
+- Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
+  projections, per-stage queues, and `StorePatch` materialization for
+  `/43`; B3-03 PP driver orchestration implementation (design complete,
+  gated by H04/T03/T02); H05 isolated execution; the Linux ABI probe /
+  Part B target codegen; full M1 acceptance. No target execution or GCC
+  pass rate is claimed.
+- Branch: `wave4-development`. Commits through B3-03a are local
+  (`82ae0ac` at the time of this note); no push was performed (no
+  force-push).
 - Dispatcher mode is ACTIVE (user instruction): serial freeze by the
   integrator, parallel implementation via subagents on disjoint files,
   integrate + verify per slice, continue without stopping.
@@ -74,6 +86,8 @@
 | `/39` | SE29 function-definition | `semantic/se_function.rs` | `c39_sefunc` 8 |
 | `/40` | M1 Part A A3 closure (SE29 wiring + VF06 four-kind + T09 consumption) | `bin/candidate.rs`, `verify/vf_invariant.rs`, `ir_lower/ir_function.rs` | `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18 |
 | `/41` | B2-00 determinism/limits/replay (append bodies, stage-first, versions, pin-aware trace) | `snapshot.rs`, `routing.rs`, `commit.rs`, `bus.rs` | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, full 723/50 |
+| `/42` | B2-02 tagged, typed constants (`ConstRecord.ty`, integer payload, immediate-type checks) | `bus.rs`, `snapshot.rs`, `chips/constant_layout_init/fold.rs`, `chips/ir_lower/ir_function.rs`, `chips/verify/{vf_interpret,vf_evidence}.rs` | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, full 684/51 |
+| — | B3-03a source `#define`/`#undef` driver orchestration (host-only, no version bump) | `compiler/src/bin/candidate.rs`, `compiler/src/bin/candidate/pp_driver.rs` | `c46_pp_driver` 10, full 694/52 |
 | — | H04 Part A candidate driver (no version bump) | `compiler/src/bin/candidate.rs` | `h04_candidate` 18 |
 
 ## 3. Patterns every new slice must follow
@@ -169,12 +183,12 @@ pass when results look cached/stale.
 
 ## 6. Open threads (do not treat as settled)
 
-- NEXT UP: commit `/41` when the user authorizes it (the full compiler
-  suite, root tests, fmt, torture, and chip-lint are green; compiler
-  clippy remains red only in the D-04 parse drafts). Then freeze `/42`
-  (B2-02 tagged constants) and `/43` (restore/quota>1/VF13/`StorePatch`),
-  resolve B-INT-00 draft disposition, and continue the PP remainder in
-  pipeline order — then T04 LX
+- NEXT UP: decide the H04 include policy and PP18 single-header seam for
+  B3-03b leaf `#include`; then B3-03c `#line`/`#pragma` (carrier or
+  explicit fail-closed); freeze `/43` (restore/quota>1/VF13/`StorePatch`)
+  after an explicit integrator decision; choose and allocate the canonical
+  PA15/parse IDs (B3-04). The `/42`, B-INT-00, and B3-03a work is green but
+  uncommitted. Continue the PP remainder in pipeline order — then T04 LX
   remainder (adjacent strings, literal extensions), T05/T06/T07 remainders, T08
   layout/init, T09 IR remainder, T10 optimize, T12 GNU, T02 control +
   `/6` co-freeze (H6/H9), T11 target (probe-gated → Unsupported shells
