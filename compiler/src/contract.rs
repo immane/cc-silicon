@@ -44,16 +44,18 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// immediate-type enforcement), and the `/43` parser/AST common-base append
 /// (single-task V1 parser decision, V1 `NodeKind` inventory), and the `/44`
 /// IR/CFG schema append (local load/store, arithmetic, branch successors),
-/// the `/45` constant v3 append (float/address payload tags), and the `/46`
+/// the `/45` constant v3 append (float/address payload tags), the `/46`
 /// T06 type-model/layout/init common base, the `/47` diagnostic taxonomy,
-/// and the `/48` probe-attested target baseline.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/48";
+/// the `/48` probe-attested target baseline, and the `/49` M1 source-locals
+/// slice (shape-gated TU parser, block automatic object, identifier fact,
+/// local load/store IR, symbolic local model).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/49";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "820230c41c37ec4ce12d7517172b767d837211b4ef638c6b7a2f2d111c1ad58e";
+pub const CONTRACT_HASH: &str = "ecf40bd3d0ca1dc9f48140ea461e9716b222a8b0d41aa623a075144bea062bd9";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -174,7 +176,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "lex.token-back-link-committed",
     "commit.name-interned-lookup-first",
     "commit.token-materialized",
-    "parse.tu-fixed-nine-node-tree",
+    "parse.tu-shape-gated-tree",
     "parse.token-range-committed",
     "commit.node-materialized",
     "ty.canonical-int-reuse-scan",
@@ -182,15 +184,18 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "scope.enter-after-tu-guarded-once",
     "scope.lifecycle-worker-enforced",
     "symbol.declare-no-duplicate",
+    "symbol.declare-block-object",
     "symbol.lookup-chain-hit-or-typed-miss",
     "ty.identity-completes-no-plan",
     "commit.type-symbol-scope-materialized",
     "se.literal-checked-nonlvalue",
+    "se.identifier-checked-nonlvalue",
     "se.binary-forwards-identical-fold",
     "se.return-identity-no-plan",
     "vf06.checked-set-complete",
     "commit.sem-materialized",
     "ir.constant-no-refold",
+    "ir.local-load-store-return",
     "ir.return-single-terminator",
     "ir.function-single-entry",
     "commit.ir-materialized",
@@ -199,6 +204,7 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "pp.scan-maximal-munch",
     "commit.span-pptoken-materialized",
     "vf12.interpret-symbolic-m1",
+    "vf12.local-load-store-return",
     "vf12.unsupported-never-pass",
     "vf05.syntax-ranges-ordered",
     "vf05.required-fields-complete",

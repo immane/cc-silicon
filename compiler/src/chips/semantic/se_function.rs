@@ -216,12 +216,27 @@ pub fn project_se_function_input(
         .nodes
         .get(compound)
         .map_err(|_| missing("node", compound.index()))?;
-    if compound_body.kind != NodeKind::Compound || compound_body.children.len() != 1 {
+    if compound_body.kind != NodeKind::Compound || !matches!(compound_body.children.len(), 1 | 2) {
         return Err(DiagnosticDraft::unsupported(
-            "se-function of a multi-statement body",
+            "se-function of a non-M1 block body",
         ));
     }
-    let ret = compound_body.children[0];
+    let ret = if compound_body.children.len() == 2 {
+        let declaration = compound_body.children[0];
+        let declaration_body = bus
+            .arenas
+            .nodes
+            .get(declaration)
+            .map_err(|_| missing("node", declaration.index()))?;
+        if declaration_body.kind != NodeKind::Declaration || declaration_body.children.len() != 3 {
+            return Err(DiagnosticDraft::unsupported(
+                "se-function of a non-covered declaration",
+            ));
+        }
+        compound_body.children[1]
+    } else {
+        compound_body.children[0]
+    };
     let ret_body = bus
         .arenas
         .nodes

@@ -27,19 +27,19 @@ use cc_silicon_compiler::chips::{
     PaTuChip, PpCommentChip, PpConditionalChip, PpDefineChip, PpDiagnosticChip, PpDirectiveChip,
     PpEmitChip, PpIncludeEnterChip, PpIncludeResolveChip, PpInvokeChip, PpNormalizeChip,
     PpRedefineChip, PpScanChip, PpSpliceChip, PpSubstituteChip, PpUndefChip, SeBinChip, SeFuncChip,
-    SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip, Vf01Chip, Vf05Chip,
-    Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
+    SeIdentifierChip, SeLitChip, SeRetChip, TyConvChip, TyScopeChip, TySymbolChip, TyTypeChip,
+    Vf01Chip, Vf05Chip, Vf06Chip, Vf12Chip, Worker, WorkerRegistry,
 };
 use cc_silicon_compiler::codec::hex32;
 use cc_silicon_compiler::contract::CONTRACT_VERSION;
 use cc_silicon_compiler::ids::{ChipId, NodeId, RecordRef, TokenId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
-    StoreSchema, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP, PA_TU_CHIP,
-    PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP, PP17_CHIP,
-    PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP, PP_SPLICE_CHIP,
-    SE_BIN_CHIP, SE_FUNC_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP, TY_SCOPE_CHIP,
-    TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
+    StoreSchema, G1_FOLD_CHIP, IR_FUNCTION_CHIP, LX_CLASSIFY_CHIP, LX_DECODE_CHIP, LX_INTERN_CHIP,
+    PA_TU_CHIP, PP01_CHIP, PP05_CHIP, PP06_CHIP, PP07_CHIP, PP08_CHIP, PP09_CHIP, PP12_CHIP,
+    PP17_CHIP, PP18_CHIP, PP19_CHIP, PP26_CHIP, PP28_CHIP, PP_COMMENT_CHIP, PP_SCAN_CHIP,
+    PP_SPLICE_CHIP, SE_BIN_CHIP, SE_FUNC_CHIP, SE_ID_CHIP, SE_LIT_CHIP, SE_RET_CHIP, TY_CONV_CHIP,
+    TY_SCOPE_CHIP, TY_SYMBOL_CHIP, TY_TYPE_CHIP, VF01_CHIP, VF05_CHIP, VF06_CHIP, VF12_CHIP,
 };
 use cc_silicon_compiler::routing::{RoutingShell, TickOutcome};
 use cc_silicon_compiler::snapshot::{Snapshot, Trace};
@@ -274,6 +274,7 @@ fn install(bus: &mut CompilerBus) {
         &SeBinChip,
         &SeRetChip,
         &SeFuncChip,
+        &SeIdentifierChip,
         &Vf06Chip,
         &Vf05Chip,
         &IrFunctionChip,
@@ -317,6 +318,7 @@ fn install(bus: &mut CompilerBus) {
         (TaskKind::SEMANTIC_BINARY_EXPR, SE_BIN_CHIP, 4),
         (TaskKind::SEMANTIC_RETURN_STMT, SE_RET_CHIP, 4),
         (TaskKind::SEMANTIC_FUNCTION_DEF, SE_FUNC_CHIP, 4),
+        (TaskKind::SEMANTIC_IDENTIFIER_EXPR, SE_ID_CHIP, 4),
         (TaskKind::VERIFICATION_TYPED_INVARIANT, VF06_CHIP, 4),
         (TaskKind::VERIFICATION_TOKEN_AST_INVARIANT, VF05_CHIP, 2),
         (TaskKind::IR_FUNCTION, IR_FUNCTION_CHIP, 5),
@@ -502,6 +504,9 @@ fn build_workers() -> Result<WorkerRegistry, String> {
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(SeFuncChip)
+        .map_err(|error| format!("worker registration failed: {error}"))?;
+    workers
+        .register(SeIdentifierChip)
         .map_err(|error| format!("worker registration failed: {error}"))?;
     workers
         .register(Vf06Chip)
@@ -1233,10 +1238,17 @@ fn run(
         VF05_CHIP,
         Payload::from_refs(vec![RecordRef::Node(tu[0])]),
     )?;
-    // Types and symbols by tree walk (no fixed node IDs).
+    // Types and symbols by tree walk (no fixed node IDs). The `/49` locals
+    // shape has one function declarator plus one block-scope declarator.
+    let declarations = nodes_of(&bus, NodeKind::Declaration);
+    let locals = declarations.len() == 1;
     let declarators = nodes_of(&bus, NodeKind::Declarator);
-    if declarators.len() != 1 {
-        return Err("expected exactly one declarator".to_string());
+    let expected_declarators = if locals { 2 } else { 1 };
+    if declarators.len() != expected_declarators {
+        return Err(format!(
+            "expected {expected_declarators} declarator(s), got {}",
+            declarators.len()
+        ));
     }
     let int = match step(
         &mut bus,
@@ -1283,6 +1295,47 @@ fn run(
             RecordRef::Scope(file_scope),
         ]),
     )?;
+    let _block_scope = if locals {
+        let compounds = nodes_of(&bus, NodeKind::Compound);
+        if compounds.len() != 1 {
+            return Err("expected exactly one function body".to_string());
+        }
+        let block_scope = match step(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::SYMBOL_SCOPE_ENTER,
+            TY_SCOPE_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(compounds[0])]),
+        )? {
+            ResultValue::Record(RecordRef::Scope(id)) => id,
+            other => return Err(format!("expected block scope ref, got {other:?}")),
+        };
+        let declaration = bus
+            .arenas
+            .nodes
+            .get(declarations[0])
+            .map_err(|_| "local declaration vanished".to_string())?;
+        let local_declarator = *declaration
+            .children
+            .get(1)
+            .ok_or_else(|| "local declaration has no declarator".to_string())?;
+        step(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::SYMBOL_DECLARE,
+            TY_SYMBOL_CHIP,
+            Payload::from_refs(vec![
+                RecordRef::Node(local_declarator),
+                RecordRef::Type(int),
+                RecordRef::Scope(block_scope),
+            ]),
+        )?;
+        Some(block_scope)
+    } else {
+        None
+    };
     // Semantic checks over every literal/return/binary node found.
     for node in nodes_of(&bus, NodeKind::IntLiteral) {
         step(
@@ -1293,6 +1346,23 @@ fn run(
             SE_LIT_CHIP,
             Payload::from_refs(vec![RecordRef::Node(node)]),
         )?;
+        if locals {
+            let literal = bus
+                .arenas
+                .nodes
+                .get(node)
+                .map_err(|_| "literal node vanished".to_string())?
+                .literal
+                .ok_or_else(|| "literal node carries no literal".to_string())?;
+            step(
+                &mut bus,
+                &workers,
+                &mut trace,
+                TaskKind::CONSTANT_CONST_FOLD,
+                G1_FOLD_CHIP,
+                Payload::from_refs(vec![RecordRef::Literal(literal)]),
+            )?;
+        }
     }
     for node in nodes_of(&bus, NodeKind::BinaryAdd) {
         step(
@@ -1301,6 +1371,16 @@ fn run(
             &mut trace,
             TaskKind::SEMANTIC_BINARY_EXPR,
             SE_BIN_CHIP,
+            Payload::from_refs(vec![RecordRef::Node(node)]),
+        )?;
+    }
+    for node in nodes_of(&bus, NodeKind::Identifier) {
+        step(
+            &mut bus,
+            &workers,
+            &mut trace,
+            TaskKind::SEMANTIC_IDENTIFIER_EXPR,
+            SE_ID_CHIP,
             Payload::from_refs(vec![RecordRef::Node(node)]),
         )?;
     }

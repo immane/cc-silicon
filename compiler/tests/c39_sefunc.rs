@@ -485,11 +485,11 @@ fn se_func_kind_stage_registry_manifest_frozen() {
     assert!(!is_se_function_slice_kind(
         TaskKind::VERIFICATION_EVIDENCE_CLASSIFY
     ));
-    // The function registry extends the `/38` head linearly (68 → 69);
-    // `SEMANTIC` owners start new codes at local 22.
+    // The function registry extends the `/38` head linearly (68 → 69) and
+    // `/49` adds the identifier kind (69 → 70).
     assert_eq!(TaskKindRegistry::vf_evidence_slice().len(), 68);
     let registry = TaskKindRegistry::se_function_slice();
-    assert_eq!(registry.len(), 69);
+    assert_eq!(registry.len(), 70);
     assert_eq!(
         registry
             .lookup(TaskKind::SEMANTIC_FUNCTION_DEF)
@@ -497,8 +497,9 @@ fn se_func_kind_stage_registry_manifest_frozen() {
             .name,
         "semantic.function_def"
     );
+    assert_eq!(stage_of(TaskKind::SEMANTIC_IDENTIFIER_EXPR), Some(4));
     assert_eq!(
-        stage_of(TaskKind::new(TaskGroup::SEMANTIC, 22).unwrap()),
+        stage_of(TaskKind::new(TaskGroup::SEMANTIC, 23).unwrap()),
         None
     );
     // The chip appends exactly one `sem.records` row for its kind.
@@ -509,7 +510,7 @@ fn se_func_kind_stage_registry_manifest_frozen() {
         "records",
         TaskKind::SEMANTIC_FUNCTION_DEF,
     )));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 33);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 34);
     let manifest = SeFuncChip.manifest();
     assert_eq!(
         manifest.writes,

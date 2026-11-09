@@ -230,12 +230,13 @@ impl Vf05Chip {
                 NodeKind::Return => (1, false, false),
                 NodeKind::BinaryAdd => (2, false, false),
                 NodeKind::IntLiteral => (0, false, true),
+                // `/49` source-locals shape.
+                NodeKind::Declaration => (3, false, false),
+                NodeKind::Identifier => (0, true, false),
                 // `/43` freezes the V1 AST inventory but VF05's V1 shape
                 // table is not part of this schema slice. Fail closed rather
                 // than silently validating an unknown shape.
-                NodeKind::Declaration
-                | NodeKind::Identifier
-                | NodeKind::ExpressionStatement
+                NodeKind::ExpressionStatement
                 | NodeKind::Assignment
                 | NodeKind::BinarySub
                 | NodeKind::BinaryMul
@@ -249,7 +250,13 @@ impl Vf05Chip {
                     )];
                 }
             };
-            if body.children.len() != children {
+            let child_count_ok = if body.kind == NodeKind::Compound {
+                // Canonical `return 2+3;` or one local declaration plus return.
+                matches!(body.children.len(), 1 | 2)
+            } else {
+                body.children.len() == children
+            };
+            if !child_count_ok {
                 return vec![syntax_fail(input.task, "wrong child count for node kind")];
             }
             if body.name.is_some() != needs_name {

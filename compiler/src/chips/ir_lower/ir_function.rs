@@ -22,7 +22,8 @@
 // ============================================================================
 
 use crate::bus::{
-    EffectMask, InstructionRecord, IrOp, Linkage, NodeKind, SemRecord, TypeKind, ValueCategory,
+    ConstValue, EffectMask, InstructionRecord, IrOp, Linkage, NodeKind, SemRecord, StorageDuration,
+    SymbolKind, TypeKind, ValueCategory,
 };
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
@@ -63,6 +64,9 @@ pub struct IrFunctionInput {
     pub constant_record_ty: TypeId,
     /// The single folded constant.
     pub constant: ConstId,
+    /// Automatic local for the `/49` locals shape; `None` for the canonical
+    /// constant-return shape.
+    pub local: Option<SymbolId>,
     /// Arena counts at dispatch (positional prediction bases).
     pub functions_allocated: u32,
     /// Block prediction base.
@@ -153,12 +157,38 @@ pub fn project_ir_function_input(
         .nodes
         .get(compound)
         .map_err(|_| missing("node", compound.index()))?;
-    if compound_body.kind != NodeKind::Compound || compound_body.children.len() != 1 {
+    if compound_body.kind != NodeKind::Compound {
         return Err(DiagnosticDraft::unsupported(
-            "lower of a multi-statement body",
+            "lower of a non-compound function body",
         ));
     }
-    let ret = compound_body.children[0];
+    // `/49`: canonical single-return body or one local declaration followed
+    // by one return. Anything else stays unsupported.
+    let (ret, local_shape) = match compound_body.children.as_slice() {
+        [ret] => (*ret, None),
+        [declaration, ret] => {
+            let declaration_body = bus
+                .arenas
+                .nodes
+                .get(*declaration)
+                .map_err(|_| missing("node", declaration.index()))?;
+            if declaration_body.kind != NodeKind::Declaration
+                || declaration_body.children.len() != 3
+            {
+                return Err(DiagnosticDraft::unsupported(
+                    "lower of a non-covered declaration",
+                ));
+            }
+            let declarator = declaration_body.children[1];
+            let initializer = declaration_body.children[2];
+            (*ret, Some((declarator, initializer)))
+        }
+        _ => {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a body outside the closed M1 shapes",
+            ));
+        }
+    };
     let ret_body = bus
         .arenas
         .nodes
@@ -169,16 +199,20 @@ pub fn project_ir_function_input(
             "lower of a non-return statement",
         ));
     }
-    let binary = ret_body.children[0];
-    let binary_body = bus
+    let operand = ret_body.children[0];
+    let operand_body = bus
         .arenas
         .nodes
-        .get(binary)
-        .map_err(|_| missing("node", binary.index()))?;
-    if binary_body.kind != NodeKind::BinaryAdd {
-        return Err(DiagnosticDraft::unsupported(
-            "lower of a non-additive return operand",
-        ));
+        .get(operand)
+        .map_err(|_| missing("node", operand.index()))?;
+    match (local_shape, operand_body.kind) {
+        (None, NodeKind::BinaryAdd) => {}
+        (Some(_), NodeKind::Identifier) => {}
+        _ => {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a non-covered return operand",
+            ));
+        }
     }
     // (c) Canonical `int`: exactly one committed.
     let mut int = None;
@@ -294,9 +328,9 @@ pub fn project_ir_function_input(
             ));
         }
     }
-    // (g) The checked `Return` + `BinaryAdd` facts: exactly one each; the
-    // operand type check pins `int`. Their committed types seed the
-    // `/40` result-type rule and the `/42` immediate-type rule.
+    // (g) The checked `Return` and operand facts: exactly one each; the
+    // operand type check pins `int`. Their committed types seed the `/40`
+    // result-type rule and the `/42` immediate-type rule.
     let unique_sem = |node: NodeId| -> Result<SemRecord, DiagnosticDraft> {
         let mut found = None;
         for (_, sem) in bus.arenas.sem.iter() {
@@ -322,8 +356,8 @@ pub fn project_ir_function_input(
         })
     };
     let return_sem = unique_sem(ret)?;
-    let binary_sem = unique_sem(binary)?;
-    for sem in [&return_sem, &binary_sem] {
+    let operand_sem = unique_sem(operand)?;
+    for sem in [&return_sem, &operand_sem] {
         if sem.ty != int || sem.category != ValueCategory::NonLvalue {
             return Err(DiagnosticDraft::unsupported(
                 "lower of a non-int checked operand",
@@ -336,34 +370,141 @@ pub fn project_ir_function_input(
             ));
         }
     }
-    // (h) The single folded constant: exactly one committed `ConstRecord`
-    // (M1 flow folds once). Zero is missing input; more than one is an
-    // ambiguous handoff — both fail loudly, never a guessed constant.
-    let mut constant = None;
-    for (id, body) in bus.arenas.consts.iter() {
-        if constant.is_some() {
-            return Err(DiagnosticDraft::error(
-                DiagnosticCode::new(DiagGroup::Task, 4),
-                "ambiguous folded constants for lowering",
+    let mut local_symbol = None;
+    let (constant, constant_record_ty) = if let Some((local_declarator, initializer)) = local_shape
+    {
+        // The declaration's declarator names the automatic object.
+        let declarator_body = bus
+            .arenas
+            .nodes
+            .get(local_declarator)
+            .map_err(|_| missing("node", local_declarator.index()))?;
+        if declarator_body.kind != NodeKind::Declarator {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a non-declarator initializer",
             ));
         }
-        constant = Some((id, body.ty));
-    }
-    let Some((constant, constant_record_ty)) = constant else {
-        return Err(DiagnosticDraft::error(
-            DiagnosticCode::new(DiagGroup::Task, 4),
-            "lower reads missing folded constant",
-        ));
+        let Some(local_name) = declarator_body.name else {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads nameless local declarator",
+            ));
+        };
+        let mut symbols = bus
+            .arenas
+            .symbols
+            .iter()
+            .filter(|(_, symbol)| symbol.decl == local_declarator);
+        let Some((symbol_id, symbol_body)) = symbols.next() else {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads undeclared local",
+            ));
+        };
+        if symbols.next().is_some() {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads duplicate local symbol",
+            ));
+        }
+        if symbol_body.name != local_name
+            || symbol_body.kind != SymbolKind::Object
+            || symbol_body.storage != StorageDuration::Automatic
+            || symbol_body.linkage != Linkage::None
+            || symbol_body.ty != Some(int)
+        {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a non-automatic-int local",
+            ));
+        }
+        if operand_body.name != Some(local_name) {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a return identifier that does not name the local",
+            ));
+        }
+        // The initializer is one committed integer literal. Match its folded
+        // constant by value; the match must be unique.
+        let initializer_body = bus
+            .arenas
+            .nodes
+            .get(initializer)
+            .map_err(|_| missing("node", initializer.index()))?;
+        if initializer_body.kind != NodeKind::IntLiteral {
+            return Err(DiagnosticDraft::unsupported(
+                "lower of a non-literal local initializer",
+            ));
+        }
+        let Some(literal) = initializer_body.literal else {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads literal-less local initializer",
+            ));
+        };
+        let literal_body = bus
+            .arenas
+            .literals
+            .get(literal)
+            .map_err(|_| missing("literal", literal.index()))?;
+        let mut matches = Vec::new();
+        for (id, body) in bus.arenas.consts.iter() {
+            let ConstValue::Integer(integer) = &body.value else {
+                continue;
+            };
+            if integer.magnitude == literal_body.value && integer.negative == literal_body.negative
+            {
+                matches.push((id, body.ty));
+            }
+        }
+        if matches.len() != 1 {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads missing or ambiguous folded initializer",
+            ));
+        }
+        let (constant, constant_record_ty) = matches[0];
+        if bus.arenas.types.get(constant_record_ty).is_err() {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!(
+                    "lower reads constant with dangling type {}",
+                    constant_record_ty.index()
+                ),
+            ));
+        }
+        local_symbol = Some(symbol_id);
+        (constant, constant_record_ty)
+    } else {
+        // The canonical single folded constant: exactly one committed
+        // `ConstRecord` (M1 flow folds once). Zero is missing input; more
+        // than one is an ambiguous handoff — both fail loudly, never a
+        // guessed constant.
+        let mut constant = None;
+        for (id, body) in bus.arenas.consts.iter() {
+            if constant.is_some() {
+                return Err(DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    "ambiguous folded constants for lowering",
+                ));
+            }
+            constant = Some((id, body.ty));
+        }
+        let Some((constant, constant_record_ty)) = constant else {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                "lower reads missing folded constant",
+            ));
+        };
+        if bus.arenas.types.get(constant_record_ty).is_err() {
+            return Err(DiagnosticDraft::error(
+                DiagnosticCode::new(DiagGroup::Task, 4),
+                format!(
+                    "lower reads constant with dangling type {}",
+                    constant_record_ty.index()
+                ),
+            ));
+        }
+        (constant, constant_record_ty)
     };
-    if bus.arenas.types.get(constant_record_ty).is_err() {
-        return Err(DiagnosticDraft::error(
-            DiagnosticCode::new(DiagGroup::Task, 4),
-            format!(
-                "lower reads constant with dangling type {}",
-                constant_record_ty.index()
-            ),
-        ));
-    }
     Ok(IrFunctionInput {
         task,
         state: record.state.clone(),
@@ -372,10 +513,11 @@ pub fn project_ir_function_input(
         signature,
         function_sem,
         int,
-        constant_ty: binary_sem.ty,
+        constant_ty: operand_sem.ty,
         return_ty: return_sem.ty,
         constant_record_ty,
         constant,
+        local: local_symbol,
         functions_allocated: bus.arenas.functions.allocated(),
         blocks_allocated: bus.arenas.blocks.allocated(),
         values_allocated: bus.arenas.values.allocated(),
@@ -478,6 +620,9 @@ impl IrFunctionChip {
                 ),
             )];
         }
+        if input.local.is_some() {
+            return self.compute_local_return(input);
+        }
         let function = FunctionId::from_index(input.functions_allocated);
         let block = BlockId::from_index(input.blocks_allocated);
         let value = ValueId::from_index(input.values_allocated);
@@ -535,6 +680,125 @@ impl IrFunctionChip {
                             op: IrOp::Return,
                             block,
                             operands: vec![value],
+                            immediate: None,
+                            result: None,
+                            local: None,
+                            successors: vec![],
+                        }),
+                    ],
+                },
+            },
+            Proposal::Complete {
+                task: input.task,
+                value: ResultValue::Record(RecordRef::Function(function)),
+            },
+        ]
+    }
+
+    /// `/49` source-locals lowering: `Constant`, `LocalStore`, `LocalLoad`,
+    /// `Return`. The initializer constant is consumed verbatim; no arithmetic
+    /// or folding is performed here.
+    fn compute_local_return(&self, input: &IrFunctionInput) -> Vec<Proposal> {
+        let Some(local) = input.local else {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    "lower reads no local for the locals shape",
+                ),
+            )];
+        };
+        let function = FunctionId::from_index(input.functions_allocated);
+        let block = BlockId::from_index(input.blocks_allocated);
+        let initial = ValueId::from_index(input.values_allocated);
+        let loaded = ValueId::from_index(input.values_allocated + 1);
+        let linkage = input.linkage;
+        vec![
+            Proposal::AppendRecords {
+                task: input.task,
+                batch: AppendBatch {
+                    records: vec![
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Function,
+                            index: DraftRef(0),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Block,
+                            index: DraftRef(1),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Value,
+                            index: DraftRef(2),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Value,
+                            index: DraftRef(3),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Instruction,
+                            index: DraftRef(4),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Instruction,
+                            index: DraftRef(5),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Instruction,
+                            index: DraftRef(6),
+                        },
+                        RecordDraft {
+                            family: crate::ids::RecordFamily::Instruction,
+                            index: DraftRef(7),
+                        },
+                    ],
+                    bodies: vec![
+                        G1DraftBody::Function(crate::bus::FunctionRecord {
+                            symbol: input.symbol,
+                            signature: input.signature,
+                            entry: block,
+                            linkage,
+                        }),
+                        G1DraftBody::Block(crate::bus::BlockRecord {
+                            function,
+                            ordinal: 0,
+                        }),
+                        G1DraftBody::Value(crate::bus::ValueRecord {
+                            ty: input.constant_ty,
+                        }),
+                        G1DraftBody::Value(crate::bus::ValueRecord {
+                            ty: input.constant_ty,
+                        }),
+                        G1DraftBody::Instruction(InstructionRecord {
+                            op: IrOp::Constant,
+                            block,
+                            operands: vec![],
+                            immediate: Some(input.constant),
+                            result: Some(initial),
+                            local: None,
+                            successors: vec![],
+                        }),
+                        G1DraftBody::Instruction(InstructionRecord {
+                            op: IrOp::LocalStore,
+                            block,
+                            operands: vec![initial],
+                            immediate: None,
+                            result: None,
+                            local: Some(local),
+                            successors: vec![],
+                        }),
+                        G1DraftBody::Instruction(InstructionRecord {
+                            op: IrOp::LocalLoad,
+                            block,
+                            operands: vec![],
+                            immediate: None,
+                            result: Some(loaded),
+                            local: Some(local),
+                            successors: vec![],
+                        }),
+                        G1DraftBody::Instruction(InstructionRecord {
+                            op: IrOp::Return,
+                            block,
+                            operands: vec![loaded],
                             immediate: None,
                             result: None,
                             local: None,

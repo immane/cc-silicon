@@ -93,9 +93,12 @@ pub fn project_se_return_input(
             format!("se-return reads missing operand {}", operand.index()),
         )
     })?;
-    if operand_body.kind != NodeKind::BinaryAdd {
+    if !matches!(
+        operand_body.kind,
+        NodeKind::BinaryAdd | NodeKind::Identifier
+    ) {
         return Err(DiagnosticDraft::unsupported(
-            "se-return of a non-additive operand",
+            "se-return of a non-covered operand",
         ));
     }
     // The operand needs its committed `int`-typed `SemRecord`.

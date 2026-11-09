@@ -281,11 +281,15 @@ impl Vf12Chip {
         {
             return vec![shape_fail(input.task, "block is not the single entry")];
         }
-        // Exactly `Constant` then `Return`, in ascending ID order.
+        // `/49` source-locals shape: Constant, LocalStore, LocalLoad, Return.
+        if input.instructions.len() == 4 {
+            return self.compute_local_return(input, block_id);
+        }
+        // Canonical `Constant` then `Return`, in ascending ID order.
         if input.instructions.len() != 2 {
             return vec![shape_fail(
                 input.task,
-                "block has more than two instructions",
+                "block has an unsupported instruction count",
             )];
         }
         let (const_id, constant) = &input.instructions[0];
@@ -334,6 +338,80 @@ impl Vf12Chip {
         }
         if input.modeled.1.value.as_integer().is_none() {
             return vec![shape_fail(input.task, "modeled constant is not integer")];
+        }
+        vec![Proposal::Complete {
+            task: input.task,
+            value: ResultValue::Record(RecordRef::Const(input.modeled.0)),
+        }]
+    }
+
+    /// `/49` exact `Constant`/`LocalStore`/`LocalLoad`/`Return` path. The
+    /// symbolic model only accepts a local that is stored before it is
+    /// loaded and returned; no arithmetic is interpreted yet.
+    fn compute_local_return(&self, input: &Vf12Input, block_id: &BlockId) -> Vec<Proposal> {
+        let [(constant_id, constant), (store_id, store), (load_id, load), (ret_id, ret)] =
+            input.instructions.as_slice()
+        else {
+            return vec![shape_fail(input.task, "locals instruction shape")];
+        };
+        if !(constant_id.index() < store_id.index()
+            && store_id.index() < load_id.index()
+            && load_id.index() < ret_id.index())
+        {
+            return vec![shape_fail(input.task, "locals instructions out of order")];
+        }
+        if constant.op != IrOp::Constant
+            || constant.block != *block_id
+            || !constant.operands.is_empty()
+            || constant.immediate != Some(input.modeled.0)
+            || constant.result.is_none()
+            || constant.local.is_some()
+        {
+            return vec![shape_fail(
+                input.task,
+                "locals initializer is not a constant",
+            )];
+        }
+        let Some(initial) = constant.result else {
+            return vec![shape_fail(input.task, "locals initializer has no value")];
+        };
+        let Some(local) = store.local else {
+            return vec![shape_fail(input.task, "locals store has no local")];
+        };
+        if store.op != IrOp::LocalStore
+            || store.block != *block_id
+            || store.operands != vec![initial]
+            || store.immediate.is_some()
+            || store.result.is_some()
+            || !store.successors.is_empty()
+        {
+            return vec![shape_fail(input.task, "locals store shape")];
+        }
+        if load.op != IrOp::LocalLoad
+            || load.block != *block_id
+            || !load.operands.is_empty()
+            || load.immediate.is_some()
+            || load.local != Some(local)
+            || load.result != Some(input.ret_value.0)
+            || !load.successors.is_empty()
+        {
+            return vec![shape_fail(input.task, "locals load shape")];
+        }
+        if ret.op != IrOp::Return
+            || ret.block != *block_id
+            || ret.operands != vec![input.ret_value.0]
+            || ret.immediate.is_some()
+            || ret.result.is_some()
+            || ret.local.is_some()
+            || !ret.successors.is_empty()
+        {
+            return vec![shape_fail(input.task, "locals return shape")];
+        }
+        if input.ret_value.1.ty != input.int || input.modeled.1.ty != input.int {
+            return vec![shape_fail(input.task, "locals value is not int")];
+        }
+        if input.modeled.1.value.as_integer().is_none() {
+            return vec![shape_fail(input.task, "locals constant is not integer")];
         }
         vec![Proposal::Complete {
             task: input.task,

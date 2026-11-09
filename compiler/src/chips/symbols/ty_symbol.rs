@@ -42,10 +42,16 @@ pub struct TyDeclareInput {
     pub node: NodeId,
     /// Declarator name.
     pub name: NameId,
-    /// Function type.
+    /// Function or object kind to declare.
+    pub symbol_kind: SymbolKind,
+    /// Declared type.
     pub ty: TypeId,
-    /// File scope.
+    /// File scope or function block scope.
     pub scope: ScopeId,
+    /// Linkage for the declared symbol.
+    pub linkage: Linkage,
+    /// Storage duration for the declared symbol.
+    pub storage: StorageDuration,
     /// Whether an identical `(name, scope, kind)` symbol is committed.
     pub conflict: bool,
     /// `symbols` arena count at dispatch (prediction base).
@@ -117,32 +123,58 @@ pub fn project_ty_declare_input(
             format!("declare reads missing type {}", ty.index()),
         )
     })?;
-    if !matches!(ty_body.kind, TypeKind::Function { .. }) {
-        return Err(DiagnosticDraft::unsupported(
-            "declare of a non-function type",
-        ));
-    }
     let scope_body = bus.arenas.scopes.get(scope).map_err(|_| {
         DiagnosticDraft::error(
             DiagnosticCode::new(DiagGroup::Task, 4),
             format!("declare reads missing scope {}", scope.index()),
         )
     })?;
-    if scope_body.kind != crate::bus::ScopeKind::File {
-        return Err(DiagnosticDraft::unsupported(
-            "block-scope declarations are deferred past M1",
-        ));
-    }
+    let (symbol_kind, linkage, storage) = match (&ty_body.kind, scope_body.kind) {
+        (TypeKind::Function { .. }, crate::bus::ScopeKind::File) => (
+            SymbolKind::Function,
+            Linkage::External,
+            StorageDuration::Static,
+        ),
+        (
+            TypeKind::Int {
+                rank: crate::bus::IntRank::Int,
+                signed: true,
+            },
+            crate::bus::ScopeKind::Block,
+        ) => (
+            SymbolKind::Object,
+            Linkage::None,
+            StorageDuration::Automatic,
+        ),
+        (TypeKind::Function { .. }, crate::bus::ScopeKind::Block) => {
+            return Err(DiagnosticDraft::unsupported(
+                "block-scope function declarations are outside the M1 locals slice",
+            ));
+        }
+        (TypeKind::Int { .. }, crate::bus::ScopeKind::File) => {
+            return Err(DiagnosticDraft::unsupported(
+                "file-scope objects are outside the M1 locals slice",
+            ));
+        }
+        _ => {
+            return Err(DiagnosticDraft::unsupported(
+                "declare of a non-M1 declaration shape",
+            ));
+        }
+    };
     let conflict = bus.arenas.symbols.iter().any(|(_, symbol)| {
-        symbol.name == name && symbol.scope == scope && symbol.kind == SymbolKind::Function
+        symbol.name == name && symbol.scope == scope && symbol.kind == symbol_kind
     });
     Ok(TyDeclareInput {
         task,
         state: record.state.clone(),
         node,
         name,
+        symbol_kind,
         ty,
         scope,
+        linkage,
+        storage,
         conflict,
         symbols_allocated: bus.arenas.symbols.allocated(),
     })
@@ -305,7 +337,7 @@ impl TySymbolChip {
                 input.task,
                 DiagnosticDraft::error(
                     DiagnosticCode::new(DiagGroup::Semantic, 1),
-                    "redeclaration conflict: duplicate function declaration in this scope",
+                    "redeclaration conflict: duplicate declaration in this scope",
                 ),
             )];
         }
@@ -321,10 +353,10 @@ impl TySymbolChip {
                     bodies: vec![G1DraftBody::Symbol(crate::bus::SymbolRecord {
                         name: input.name,
                         scope: input.scope,
-                        kind: SymbolKind::Function,
+                        kind: input.symbol_kind,
                         ty: Some(input.ty),
-                        linkage: Linkage::External,
-                        storage: StorageDuration::Static,
+                        linkage: input.linkage,
+                        storage: input.storage,
                         decl: input.node,
                     })],
                 },

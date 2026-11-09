@@ -191,6 +191,47 @@ const M1_PUNCTUATORS: &[(usize, &[u8])] = &[
     (11, b"}"),
 ];
 
+/// `/49` source-locals shape token kinds:
+/// `int main ( void ) { int x = 2 ; return x ; } EOF`.
+const M1_LOCALS_KINDS: &[TokenKind] = &[
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Punctuator,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Integer,
+    TokenKind::Punctuator,
+    TokenKind::Keyword,
+    TokenKind::Identifier,
+    TokenKind::Punctuator,
+    TokenKind::Punctuator,
+    TokenKind::Eof,
+];
+
+/// `/49` keyword/identifier spellings at fixed positions.
+const M1_LOCALS_WORDS: &[(&[u8], usize)] = &[
+    (b"int".as_slice(), 0),
+    (b"main".as_slice(), 1),
+    (b"void".as_slice(), 3),
+    (b"int".as_slice(), 6),
+    (b"return".as_slice(), 11),
+];
+
+/// `/49` punctuator spellings at fixed positions.
+const M1_LOCALS_PUNCTUATORS: &[(usize, &[u8])] = &[
+    (2, b"("),
+    (4, b")"),
+    (5, b"{"),
+    (8, b"="),
+    (10, b";"),
+    (13, b";"),
+    (14, b"}"),
+];
+
 /// One pre-order node row: kind, parent, children, token range, name, literal.
 type NodeSpec = (
     NodeKind,
@@ -213,6 +254,9 @@ impl PaTuChip {
                     format!("parse task {} is not running", input.task.index()),
                 ),
             )];
+        }
+        if input.tokens.len() == M1_LOCALS_KINDS.len() {
+            return self.compute_locals(input);
         }
         if input.tokens.len() != M1_KINDS.len() {
             return vec![fail(
@@ -374,34 +418,230 @@ impl PaTuChip {
                 Some(leaves[1]),
             ),
         ];
-        let mut records = Vec::new();
-        let mut bodies = Vec::new();
-        for (position, (kind, parent, children, first, last, name, literal)) in
-            specs.into_iter().enumerate()
-        {
-            records.push(RecordDraft {
-                family: crate::ids::RecordFamily::Node,
-                index: DraftRef(position as u32),
-            });
-            bodies.push(G1DraftBody::Node(NodeRecord {
-                kind,
-                parent,
-                children,
-                first_token: input.tokens[first],
-                last_token: input.tokens[last],
-                name,
-                literal,
-            }));
-        }
-        vec![
-            Proposal::AppendRecords {
-                task: input.task,
-                batch: AppendBatch { records, bodies },
-            },
-            Proposal::Complete {
-                task: input.task,
-                value: ResultValue::Record(RecordRef::Node(node(0))),
-            },
-        ]
+        append_nodes(input, specs)
     }
+
+    /// `/49` source-locals shape. Validates the closed token sequence and
+    /// appends the 11-node pre-order tree; any deviation fails without an
+    /// append.
+    fn compute_locals(&self, input: &PaTuInput) -> Vec<Proposal> {
+        if input.tokens.len() != M1_LOCALS_KINDS.len() {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("non-locals token sequence length"),
+            )];
+        }
+        for (position, id) in input.tokens.iter().enumerate() {
+            let Some(projected) = input.bodies.get(id) else {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::error(
+                        DiagnosticCode::new(DiagGroup::Task, 4),
+                        format!("parse reads missing token {}", id.index()),
+                    ),
+                )];
+            };
+            if projected.kind != M1_LOCALS_KINDS[position] {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported("non-locals token shape at fixed position"),
+                )];
+            }
+        }
+        for (spelling, position) in M1_LOCALS_WORDS {
+            if input.bodies[&input.tokens[*position]].spelling != *spelling {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported("non-locals keyword/identifier spelling"),
+                )];
+            }
+        }
+        for (position, spelling) in M1_LOCALS_PUNCTUATORS {
+            if input.bodies[&input.tokens[*position]].pp_spelling != *spelling {
+                return vec![fail(
+                    input.task,
+                    DiagnosticDraft::unsupported("non-locals punctuator spelling"),
+                )];
+            }
+        }
+        let eof = &input.bodies[&input.tokens[15]];
+        if !eof.pp_spelling.is_empty() || eof.name.is_some() {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("non-locals EOF token shape"),
+            )];
+        }
+        let Some(decl_name) = input.bodies[&input.tokens[7]].name else {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("locals declaration has no identifier name"),
+            )];
+        };
+        let Some(use_name) = input.bodies[&input.tokens[12]].name else {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported("locals use has no identifier name"),
+            )];
+        };
+        if decl_name != use_name {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::unsupported(
+                    "locals declaration and use name different identifiers",
+                ),
+            )];
+        }
+        let literal_token = input.tokens[9];
+        let Some(literal) = input.literals_by_token.get(&literal_token) else {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!(
+                        "parse reads missing literal for token {}",
+                        literal_token.index()
+                    ),
+                ),
+            )];
+        };
+        let main_name = input.bodies[&input.tokens[1]].name;
+        let base = input.nodes_allocated;
+        let node = |index: u32| crate::ids::NodeId::from_index(base.saturating_add(index));
+        let specs: Vec<NodeSpec> = vec![
+            (
+                NodeKind::TranslationUnit,
+                None,
+                vec![node(1)],
+                0,
+                15,
+                None,
+                None,
+            ),
+            (
+                NodeKind::FunctionDefinition,
+                Some(node(0)),
+                vec![node(2), node(3), node(4)],
+                0,
+                14,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Specifiers,
+                Some(node(1)),
+                vec![],
+                0,
+                0,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Declarator,
+                Some(node(1)),
+                vec![],
+                1,
+                4,
+                main_name,
+                None,
+            ),
+            (
+                NodeKind::Compound,
+                Some(node(1)),
+                vec![node(5), node(9)],
+                5,
+                14,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Declaration,
+                Some(node(4)),
+                vec![node(6), node(7), node(8)],
+                6,
+                10,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Specifiers,
+                Some(node(5)),
+                vec![],
+                6,
+                6,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Declarator,
+                Some(node(5)),
+                vec![],
+                7,
+                7,
+                Some(decl_name),
+                None,
+            ),
+            (
+                NodeKind::IntLiteral,
+                Some(node(5)),
+                vec![],
+                9,
+                9,
+                None,
+                Some(*literal),
+            ),
+            (
+                NodeKind::Return,
+                Some(node(4)),
+                vec![node(10)],
+                11,
+                13,
+                None,
+                None,
+            ),
+            (
+                NodeKind::Identifier,
+                Some(node(9)),
+                vec![],
+                12,
+                12,
+                Some(use_name),
+                None,
+            ),
+        ];
+        append_nodes(input, specs)
+    }
+}
+
+fn append_nodes(input: &PaTuInput, specs: Vec<NodeSpec>) -> Vec<Proposal> {
+    let mut records = Vec::new();
+    let mut bodies = Vec::new();
+    for (position, (kind, parent, children, first, last, name, literal)) in
+        specs.into_iter().enumerate()
+    {
+        records.push(RecordDraft {
+            family: crate::ids::RecordFamily::Node,
+            index: DraftRef(position as u32),
+        });
+        bodies.push(G1DraftBody::Node(NodeRecord {
+            kind,
+            parent,
+            children,
+            first_token: input.tokens[first],
+            last_token: input.tokens[last],
+            name,
+            literal,
+        }));
+    }
+    vec![
+        Proposal::AppendRecords {
+            task: input.task,
+            batch: AppendBatch { records, bodies },
+        },
+        Proposal::Complete {
+            task: input.task,
+            value: ResultValue::Record(RecordRef::Node(crate::ids::NodeId::from_index(
+                input.nodes_allocated,
+            ))),
+        },
+    ]
 }
