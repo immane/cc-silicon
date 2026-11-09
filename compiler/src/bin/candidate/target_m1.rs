@@ -249,8 +249,7 @@ fn emit_stack_machine(
         value_slots.insert(*id, (locals.len() as u32 + index as u32) * 4);
     }
     let slot_count = locals.len() + values.len();
-    let frame = ((slot_count as u32) * 4 + 15) & !15;
-    let frame = frame.max(16);
+    let frame = frame_size(slot_count)?;
 
     let mut assembly = String::new();
     push_header(&mut assembly);
@@ -330,6 +329,25 @@ fn load_value(assembly: &mut String, slot: u32, register: u8) {
 
 fn store_value(assembly: &mut String, slot: u32) {
     assembly.push_str(&format!("    str w0, [sp, #{slot}]\n"));
+}
+
+/// Frame size for `slot_count` 4-byte slots, aligned to the AArch64 stack
+/// requirement and bounded to the `sub sp, sp, #imm` 12-bit immediate.
+fn frame_size(slot_count: usize) -> Result<u32, String> {
+    let bytes = slot_count
+        .checked_mul(4)
+        .ok_or_else(|| "target emit: stack frame size overflow".to_string())?;
+    let frame = bytes
+        .checked_add(15)
+        .ok_or_else(|| "target emit: stack frame size overflow".to_string())?
+        & !15;
+    let frame = frame.max(16);
+    if frame > 4095 {
+        return Err(format!(
+            "target emit: stack frame {frame} exceeds the AArch64 immediate range"
+        ));
+    }
+    Ok(frame as u32)
 }
 
 fn check_local(
@@ -463,7 +481,7 @@ fn emit_i32(assembly: &mut String, value: i32) {
 
 #[cfg(test)]
 mod tests {
-    use super::emit_m1_assembly;
+    use super::{emit_m1_assembly, frame_size};
     use cc_silicon_compiler::bus::{
         BlockRecord, CompilerBus, ConstRecord, ConstValue, FunctionRecord, InstructionRecord,
         IntRank, IntegerConst, IrOp, Linkage, StorageDuration, SymbolKind, SymbolRecord, TypeKind,
@@ -740,6 +758,26 @@ mod tests {
             error.contains("outside the local/arithmetic slice"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn constant_return_preserves_signed_bits() {
+        let mut fixture = Fixture::new();
+        let minus_one = fixture.constant(-1);
+        fixture.ret(minus_one);
+        let asm = fixture.asm();
+        assert!(asm.contains("movz w0, #65535"), "{asm}");
+        assert!(asm.contains("movk w0, #65535, lsl #16"), "{asm}");
+        assert!(!asm.contains("sub sp, sp"), "{asm}");
+        run_native(&asm, 255);
+    }
+
+    #[test]
+    fn frame_sizes_align_and_fail_closed() {
+        assert_eq!(frame_size(0).unwrap(), 16);
+        assert_eq!(frame_size(1).unwrap(), 16);
+        assert_eq!(frame_size(5).unwrap(), 32);
+        assert!(frame_size(1024).is_err());
     }
 
     #[cfg(target_os = "linux")]
