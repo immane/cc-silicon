@@ -1,21 +1,26 @@
 // ============================================================================
 // chips/verify/vf_syntax.rs — T13 VF05 token-AST invariant verifier
-// (Wave 2 slice 9, `/18`)
+// (Wave 2 slice 9, `/18`; `/55` direct-call shapes)
 //
 // Reads one committed TU node plus the committed token and literal arenas
-// and checks the M1 syntax contract: parent/children reciprocity, token
-// ranges contained in the parent range with ordered non-overlapping
-// siblings, per-kind child counts, required fields (`Declarator` name,
-// `IntLiteral` literal with its origin token), referenced tokens
-// committed, and a unique trailing EOF. Completes `Ack`; any gap fails
-// loudly. The per-kind table covers the closed M1 `NodeKind` set only:
-// wider syntax needs a new slice with new hash rules.
+// and checks the syntax contract: parent/children reciprocity, token ranges
+// contained in the parent range with ordered non-overlapping siblings,
+// per-kind child counts, required fields (`Declarator`/`Identifier`/
+// `Parameter` name, `IntLiteral` literal with its origin token), referenced
+// tokens committed, and a unique trailing EOF. The `/55` table adds multiple
+// function definitions, function parameter lists, parameters, and direct
+// calls while retaining the canonical and `/49`–`/53` shapes. Function
+// definition, parameter-list, call-argument, and TU-node budgets are closed
+// implementation bounds. Completes `Ack`; any gap fails loudly.
 // ============================================================================
 
 use crate::bus::{LiteralRecord, NodeKind, NodeRecord, TokenKind, TokenRecord};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{LiteralId, NodeId, RecordRef, TaskId, TokenId};
+use crate::limits::{
+    CALL_MAX_ARGUMENTS, CALL_MAX_AST_NODES, CALL_MAX_FUNCTIONS, CALL_MAX_PARAMETERS,
+};
 use crate::manifest::{BackendClass, Capability, ChipManifest, ChipPhase, FieldPath, VF05_CHIP};
 use crate::task::{Proposal, ResultValue, StoreId, TaskGroup, TaskKind, TaskState};
 
@@ -139,7 +144,205 @@ fn syntax_fail(task: TaskId, detail: &str) -> Proposal {
     )
 }
 
-/// The VF05 token-AST invariant verifier (M1 scope).
+/// Look up one listed node kind.
+fn listed_kind(tree: &[(NodeId, NodeRecord)], id: NodeId) -> Option<NodeKind> {
+    tree.iter()
+        .find(|(nid, _)| *nid == id)
+        .map(|(_, body)| body.kind)
+}
+
+/// Kinds allowed as a standalone expression child in the `/55` subset.
+fn is_expression_kind(kind: NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::IntLiteral
+            | NodeKind::Identifier
+            | NodeKind::Call
+            | NodeKind::BinaryAdd
+            | NodeKind::BinarySub
+            | NodeKind::BinaryMul
+            | NodeKind::BinaryDiv
+            | NodeKind::BinaryRem
+            | NodeKind::UnaryPlus
+            | NodeKind::UnaryMinus
+    )
+}
+
+/// Check the closed `/55` child-shape table for one node.
+fn check_shape(
+    tree: &[(NodeId, NodeRecord)],
+    body: &NodeRecord,
+    expected_parent: Option<NodeId>,
+) -> Result<(), &'static str> {
+    let children = &body.children;
+    let child_kinds = || -> Option<Vec<NodeKind>> {
+        children
+            .iter()
+            .map(|child| listed_kind(tree, *child))
+            .collect()
+    };
+    match body.kind {
+        NodeKind::TranslationUnit => {
+            if !(1..=CALL_MAX_FUNCTIONS).contains(&children.len()) {
+                return Err("translation unit function count is outside the budget");
+            }
+            if child_kinds() != Some(vec![NodeKind::FunctionDefinition; children.len()]) {
+                return Err("translation unit children are not function definitions");
+            }
+        }
+        NodeKind::FunctionDefinition => {
+            if child_kinds()
+                != Some(vec![
+                    NodeKind::Specifiers,
+                    NodeKind::Declarator,
+                    NodeKind::Compound,
+                ])
+            {
+                return Err("function definition shape is not covered");
+            }
+            let declarator = &tree
+                .iter()
+                .find(|(nid, _)| Some(*nid) == children.get(1).copied())
+                .ok_or("function declarator is not listed")?
+                .1;
+            if declarator.children.len() > 1 {
+                return Err("function declarator has extra children");
+            }
+            if let Some(parameter_list) = declarator.children.first() {
+                if listed_kind(tree, *parameter_list) != Some(NodeKind::ParameterList) {
+                    return Err("function declarator child is not a parameter list");
+                }
+            }
+        }
+        NodeKind::Specifiers => {
+            if !children.is_empty() {
+                return Err("specifiers carry children");
+            }
+        }
+        NodeKind::Declarator => {
+            if children.len() > 1 {
+                return Err("declarator has extra children");
+            }
+            if let Some(parameter_list) = children.first() {
+                if listed_kind(tree, *parameter_list) != Some(NodeKind::ParameterList) {
+                    return Err("declarator child is not a parameter list");
+                }
+                let parent_kind = expected_parent.and_then(|parent| listed_kind(tree, parent));
+                if parent_kind != Some(NodeKind::FunctionDefinition) {
+                    return Err("parameter list is not on a function declarator");
+                }
+            }
+        }
+        NodeKind::Compound => {
+            let Some(kinds) = child_kinds() else {
+                return Err("compound child is not listed");
+            };
+            let ok = match kinds.as_slice() {
+                [NodeKind::Return] => true,
+                [NodeKind::Declaration, rest @ ..] => {
+                    !rest.is_empty()
+                        && rest.last() == Some(&NodeKind::Return)
+                        && rest[..rest.len() - 1]
+                            .iter()
+                            .all(|kind| *kind == NodeKind::Assignment)
+                }
+                _ => false,
+            };
+            if !ok {
+                return Err("compound statement shape is not covered");
+            }
+        }
+        NodeKind::Return => {
+            if children.len() != 1
+                || child_kinds().is_none_or(|kinds| !is_expression_kind(kinds[0]))
+            {
+                return Err("return does not carry one expression");
+            }
+        }
+        NodeKind::BinaryAdd
+        | NodeKind::BinarySub
+        | NodeKind::BinaryMul
+        | NodeKind::BinaryDiv
+        | NodeKind::BinaryRem => {
+            let Some(kinds) = child_kinds() else {
+                return Err("binary child is not listed");
+            };
+            if kinds.len() != 2 || !kinds.iter().all(|kind| is_expression_kind(*kind)) {
+                return Err("binary children are not two expressions");
+            }
+        }
+        NodeKind::UnaryPlus | NodeKind::UnaryMinus => {
+            if children.len() != 1
+                || child_kinds().is_none_or(|kinds| !is_expression_kind(kinds[0]))
+            {
+                return Err("unary does not carry one expression");
+            }
+        }
+        NodeKind::Assignment => {
+            let Some(kinds) = child_kinds() else {
+                return Err("assignment child is not listed");
+            };
+            if kinds.first() != Some(&NodeKind::Identifier)
+                || !kinds.get(1).is_some_and(|kind| is_expression_kind(*kind))
+            {
+                return Err("assignment child shape is not covered");
+            }
+        }
+        NodeKind::IntLiteral => {
+            if !children.is_empty() {
+                return Err("literal leaf carries children");
+            }
+        }
+        NodeKind::Declaration => {
+            if child_kinds()
+                != Some(vec![
+                    NodeKind::Specifiers,
+                    NodeKind::Declarator,
+                    NodeKind::IntLiteral,
+                ])
+            {
+                return Err("declaration child shape is not covered");
+            }
+        }
+        NodeKind::Identifier => {
+            if !children.is_empty() {
+                return Err("identifier leaf carries children");
+            }
+        }
+        NodeKind::ParameterList => {
+            if children.is_empty() || children.len() > CALL_MAX_PARAMETERS {
+                return Err("parameter list count is outside the budget");
+            }
+            if child_kinds() != Some(vec![NodeKind::Parameter; children.len()]) {
+                return Err("parameter list children are not parameters");
+            }
+        }
+        NodeKind::Parameter => {
+            if !children.is_empty() {
+                return Err("parameter leaf carries children");
+            }
+        }
+        NodeKind::Call => {
+            if children.len() > CALL_MAX_ARGUMENTS + 1 {
+                return Err("call argument count is outside the budget");
+            }
+            let Some(kinds) = child_kinds() else {
+                return Err("call child is not listed");
+            };
+            if kinds.first() != Some(&NodeKind::Identifier)
+                || !kinds[1..].iter().all(|kind| is_expression_kind(*kind))
+            {
+                return Err("call child shape is not covered");
+            }
+        }
+        NodeKind::ExpressionStatement => {
+            return Err("V1 AST kind is not covered by the VF05 shape table");
+        }
+    }
+    Ok(())
+}
+
+/// The VF05 token-AST invariant verifier (M1 and `/55` call scope).
 pub struct Vf05Chip;
 
 impl Worker for Vf05Chip {
@@ -191,6 +394,14 @@ impl Vf05Chip {
                 ),
             )];
         }
+        // `/55` total-node budget: the boundary is accepted, the next value
+        // fails before any shape walk or write.
+        if input.tree.len() > CALL_MAX_AST_NODES {
+            return vec![syntax_fail(
+                input.task,
+                "translation unit exceeds the node budget",
+            )];
+        }
         // Unique trailing EOF over the committed token arena.
         let mut eof = None;
         for (id, body) in &input.tokens {
@@ -220,137 +431,14 @@ impl Vf05Chip {
             if body.parent != expected_parent {
                 return vec![syntax_fail(input.task, "parent link is not reciprocal")];
             };
-            // Per-kind M1 contract: (children, needs name, needs literal).
-            let (children, needs_name, needs_literal) = match body.kind {
-                NodeKind::TranslationUnit => (1, false, false),
-                NodeKind::FunctionDefinition => (3, false, false),
-                NodeKind::Specifiers => (0, false, false),
-                NodeKind::Declarator => (0, true, false),
-                NodeKind::Compound => (1, false, false),
-                NodeKind::Return => (1, false, false),
-                NodeKind::BinaryAdd
-                | NodeKind::BinarySub
-                | NodeKind::BinaryMul
-                | NodeKind::BinaryDiv
-                | NodeKind::BinaryRem => (2, false, false),
-                NodeKind::UnaryPlus | NodeKind::UnaryMinus => (1, false, false),
-                NodeKind::Assignment => (2, false, false),
-                NodeKind::IntLiteral => (0, false, true),
-                // `/49` source-locals shape.
-                NodeKind::Declaration => (3, false, false),
-                NodeKind::Identifier => (0, true, false),
-                // `/43` freezes the V1 AST inventory but VF05's V1 shape
-                // table is not part of this schema slice. Fail closed rather
-                // than silently validating an unknown shape.
-                NodeKind::ExpressionStatement
-                | NodeKind::ParameterList
-                | NodeKind::Parameter
-                | NodeKind::Call => {
-                    return vec![syntax_fail(
-                        input.task,
-                        "V1 AST kind is not covered by the M1 VF05 shape table",
-                    )];
-                }
-            };
-            let child_count_ok = if body.kind == NodeKind::Compound {
-                // Canonical return, or one declaration, zero or more
-                // assignments, and one return.
-                body.children.len() >= 2 || body.children.len() == 1
-            } else {
-                body.children.len() == children
-            };
-            if !child_count_ok {
-                return vec![syntax_fail(input.task, "wrong child count for node kind")];
+            if let Err(detail) = check_shape(&input.tree, body, expected_parent) {
+                return vec![syntax_fail(input.task, detail)];
             }
-            if body.kind == NodeKind::Declaration {
-                let child_kinds: Vec<NodeKind> = body
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        input
-                            .tree
-                            .iter()
-                            .find(|(nid, _)| nid == child)
-                            .map(|(_, child_body)| child_body.kind)
-                    })
-                    .collect();
-                if child_kinds
-                    != [
-                        NodeKind::Specifiers,
-                        NodeKind::Declarator,
-                        NodeKind::IntLiteral,
-                    ]
-                {
-                    return vec![syntax_fail(
-                        input.task,
-                        "declaration child shape is not covered",
-                    )];
-                }
-            }
-            if body.kind == NodeKind::Assignment {
-                let child_kinds: Vec<NodeKind> = body
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        input
-                            .tree
-                            .iter()
-                            .find(|(nid, _)| nid == child)
-                            .map(|(_, child_body)| child_body.kind)
-                    })
-                    .collect();
-                if child_kinds.first() != Some(&NodeKind::Identifier)
-                    || !matches!(
-                        child_kinds.get(1),
-                        Some(
-                            NodeKind::IntLiteral
-                                | NodeKind::Identifier
-                                | NodeKind::BinaryAdd
-                                | NodeKind::BinarySub
-                                | NodeKind::BinaryMul
-                                | NodeKind::BinaryDiv
-                                | NodeKind::BinaryRem
-                                | NodeKind::UnaryPlus
-                                | NodeKind::UnaryMinus
-                        )
-                    )
-                {
-                    return vec![syntax_fail(
-                        input.task,
-                        "assignment child shape is not covered",
-                    )];
-                }
-            }
-            if body.kind == NodeKind::Compound {
-                let child_kinds: Vec<NodeKind> = body
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        input
-                            .tree
-                            .iter()
-                            .find(|(nid, _)| nid == child)
-                            .map(|(_, child_body)| child_body.kind)
-                    })
-                    .collect();
-                let ok = match child_kinds.as_slice() {
-                    [NodeKind::Return] => true,
-                    [NodeKind::Declaration, rest @ ..] => {
-                        !rest.is_empty()
-                            && rest.last() == Some(&NodeKind::Return)
-                            && rest[..rest.len() - 1]
-                                .iter()
-                                .all(|kind| *kind == NodeKind::Assignment)
-                    }
-                    _ => false,
-                };
-                if !ok {
-                    return vec![syntax_fail(
-                        input.task,
-                        "compound statement shape is not covered",
-                    )];
-                }
-            }
+            let needs_name = matches!(
+                body.kind,
+                NodeKind::Declarator | NodeKind::Identifier | NodeKind::Parameter
+            );
+            let needs_literal = body.kind == NodeKind::IntLiteral;
             if body.name.is_some() != needs_name {
                 return vec![syntax_fail(input.task, "bad declarator name presence")];
             }
