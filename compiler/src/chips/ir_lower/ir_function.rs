@@ -669,6 +669,7 @@ fn lower_local_expression(
                 result: Some(result),
                 local: None,
                 successors: vec![],
+                callee: None,
             });
             result
         }
@@ -683,6 +684,7 @@ fn lower_local_expression(
                 result: Some(result),
                 local: Some(local),
                 successors: vec![],
+                callee: None,
             });
             result
         }
@@ -701,6 +703,7 @@ fn lower_local_expression(
                 result: Some(result),
                 local: None,
                 successors: vec![],
+                callee: None,
             });
             result
         }
@@ -717,6 +720,7 @@ fn lower_local_expression(
                 result: Some(result),
                 local: None,
                 successors: vec![],
+                callee: None,
             });
             result
         }
@@ -1042,6 +1046,7 @@ impl IrFunctionChip {
                             signature: input.signature,
                             entry: block,
                             linkage,
+                            parameters: vec![],
                         }),
                         G1DraftBody::Block(crate::bus::BlockRecord {
                             function,
@@ -1058,6 +1063,7 @@ impl IrFunctionChip {
                             result: Some(value),
                             local: None,
                             successors: vec![],
+                            callee: None,
                         }),
                         G1DraftBody::Instruction(InstructionRecord {
                             op: IrOp::Return,
@@ -1067,6 +1073,7 @@ impl IrFunctionChip {
                             result: None,
                             local: None,
                             successors: vec![],
+                            callee: None,
                         }),
                     ],
                 },
@@ -1106,6 +1113,7 @@ impl IrFunctionChip {
             result: Some(initial),
             local: None,
             successors: vec![],
+            callee: None,
         });
         instructions.push(InstructionRecord {
             op: IrOp::LocalStore,
@@ -1115,6 +1123,7 @@ impl IrFunctionChip {
             result: None,
             local: Some(local),
             successors: vec![],
+            callee: None,
         });
         for assignment in &input.local_assignments {
             let value = lower_local_expression(
@@ -1133,6 +1142,7 @@ impl IrFunctionChip {
                 result: None,
                 local: Some(local),
                 successors: vec![],
+                callee: None,
             });
         }
         let returned = lower_local_expression(
@@ -1151,6 +1161,7 @@ impl IrFunctionChip {
             result: None,
             local: None,
             successors: vec![],
+            callee: None,
         });
         let value_count = next_value as usize;
         let mut records = Vec::with_capacity(2 + value_count + instructions.len());
@@ -1175,6 +1186,7 @@ impl IrFunctionChip {
             signature: input.signature,
             entry: block,
             linkage,
+            parameters: vec![],
         }));
         bodies.push(G1DraftBody::Block(crate::bus::BlockRecord {
             function,

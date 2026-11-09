@@ -155,7 +155,7 @@ fn evidence_kind_stage_registry_manifest_frozen() {
     // The chip is Ack-only: zero writes, no allowlist rows
     // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(VF14_CHIP, ChipId(56));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 36);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     assert!(
         !STORE_OWNER_ALLOWLIST
             .iter()
@@ -438,6 +438,7 @@ fn seed_gate(bus: &mut CompilerBus, raw: u8) -> cc_silicon_compiler::ids::ConstI
                     magnitude: vec![raw],
                     negative: false,
                 }),
+                origins: vec![],
             },
             &limits,
         )

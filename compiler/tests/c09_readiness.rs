@@ -86,6 +86,7 @@ fn const_append(task: TaskId, indices: &[u32]) -> Proposal {
                             magnitude: vec![5],
                             negative: false,
                         }),
+                        origins: vec![],
                     })
                 })
                 .collect(),

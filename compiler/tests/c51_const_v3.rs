@@ -27,6 +27,7 @@ fn float_and_address_payloads_round_trip() {
             format: FloatFormat::IeeeBinary64,
             bits: vec![0x3f, 0xf0, 0, 0, 0, 0, 0, 0],
         }),
+        origins: vec![],
     };
     assert_eq!(decode_const(&encode_const(&float)).unwrap(), float);
 
@@ -39,6 +40,7 @@ fn float_and_address_payloads_round_trip() {
                 negative: false,
             },
         }),
+        origins: vec![],
     };
     assert_eq!(decode_const(&encode_const(&address)).unwrap(), address);
 }
@@ -51,6 +53,7 @@ fn noncanonical_float_bits_are_rejected() {
             format: FloatFormat::IeeeBinary64,
             bits: vec![0, 0],
         }),
+        origins: vec![],
     };
     assert!(matches!(
         decode_const(&encode_const(&bad)),

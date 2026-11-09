@@ -23,8 +23,8 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/53` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e` |
+| Contract version | `t01-c01-c06/54` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
 | M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/47` |
 | Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
@@ -46,8 +46,8 @@ continues on this foundation.
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/53
-hash=b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e
+version=t01-c01-c06/54
+hash=850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39
 target=aarch64-unknown-linux-gnu
 target_verification=probe-attested
 probe_substrate=linux-ci-vm (planned, not provisioned)

@@ -561,6 +561,10 @@ pub enum IrOp {
     /// Conditional branch; operand 0 is the condition, successors are the
     /// true/false targets in order.
     CondBranch,
+    // `/54` direct-call append.
+    /// Direct call named by `InstructionRecord.callee`; operands are
+    /// arguments in source order. The result is the return value.
+    Call,
 }
 
 /// A T09-owned IR function (`/15` slice freeze; one per M1 `main`).
@@ -574,6 +578,8 @@ pub struct FunctionRecord {
     pub entry: crate::ids::BlockId,
     /// Linkage (from the symbol).
     pub linkage: Linkage,
+    /// Parameter objects in declaration order (`/54` append).
+    pub parameters: Vec<crate::ids::SymbolId>,
 }
 
 /// A T09-owned IR basic block (`/15`; instructions derived by ascending
@@ -614,6 +620,8 @@ pub struct InstructionRecord {
     /// CFG successors for `Branch`/`CondBranch`; empty for non-terminators
     /// (`/44` append). The ordered successor list is authoritative.
     pub successors: Vec<crate::ids::BlockId>,
+    /// Direct-call target for `Call`; `None` otherwise (`/54` append).
+    pub callee: Option<crate::ids::SymbolId>,
 }
 
 /// Layout target identity (`/46`): symbolic Part A or an attested report hash.
@@ -910,6 +918,13 @@ pub enum NodeKind {
     UnaryPlus,
     /// Unary minus.
     UnaryMinus,
+    // `/54` direct-call append.
+    /// Parameter list `( ... )`; absent for `(void)`.
+    ParameterList,
+    /// One implicit-`int` function parameter (`name: Some`).
+    Parameter,
+    /// A direct call: callee `Identifier` then argument expressions.
+    Call,
 }
 
 /// A T04-owned decoded literal: raw lexical facts plus the symbolic `LX08`
@@ -952,6 +967,10 @@ pub struct ConstRecord {
     pub ty: crate::ids::TypeId,
     /// Closed tagged payload.
     pub value: ConstValue,
+    /// Literal origins in fold order (`/54` append): one literal for a
+    /// literal fold, `[lhs, rhs]` for a binary fold. Consumers use this to
+    /// select a constant without value guessing.
+    pub origins: Vec<crate::ids::LiteralId>,
 }
 
 /// The `/42` closed constant payload family.

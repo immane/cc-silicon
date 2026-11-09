@@ -287,6 +287,11 @@ impl TaskKind {
     /// appends one effect-carrying `SemRecord`, completes `Record`).
     pub const SEMANTIC_ASSIGNMENT_EXPR: Self =
         Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 24);
+    /// `/54` direct-call kind: call-expression check (payload: exactly one
+    /// `Call` node; checks the file-scope callee and ordered `int` arguments,
+    /// appends one `SemRecord`, completes `Record`).
+    pub const SEMANTIC_CALL_EXPR: Self =
+        Self(((TaskGroup::SEMANTIC.0 as u16) << Self::LOCAL_BITS) | 25);
     /// Wave 2 (`/14`) VF06 verifier kind: typed-AST invariant (payload:
     /// exactly one TU node; checks the M1 checked set; completes `Ack`).
     pub const VERIFICATION_TYPED_INVARIANT: Self =
@@ -736,8 +741,8 @@ impl TaskKindRegistry {
     }
 
     /// The Wave 3 (`/39`) SE-function-slice registry plus the `/49`
-    /// identifier, `/52` unary, and `/53` assignment kinds (all `Frozen`;
-    /// `SEMANTIC` owners start new codes at local 25).
+    /// identifier, `/52` unary, `/53` assignment, and `/54` call kinds (all
+    /// `Frozen`; `SEMANTIC` owners start new codes at local 26).
     pub fn se_function_slice() -> Self {
         let mut registry = Self::vf_evidence_slice();
         let slice: &[(TaskKind, &str)] = &[
@@ -751,6 +756,7 @@ impl TaskKindRegistry {
                 TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
                 "semantic.assignment_expr",
             ),
+            (TaskKind::SEMANTIC_CALL_EXPR, "semantic.call_expr"),
         ];
         for &(kind, name) in slice {
             // The table is constant and valid; a failure here would be a bug.

@@ -183,6 +183,7 @@ pub fn project_vf12_input(
                         magnitude: Vec::new(),
                         negative: false,
                     }),
+                    origins: Vec::new(),
                 },
             ),
             int,
@@ -539,6 +540,12 @@ impl Vf12Chip {
                     if values.insert(result, value).is_some() {
                         return vec![shape_fail(input.task, "local-program duplicate value id")];
                     }
+                }
+                IrOp::Call => {
+                    return vec![shape_fail(
+                        input.task,
+                        "local-program calls are not covered",
+                    )];
                 }
                 IrOp::Return => {
                     if instruction.operands.len() != 1

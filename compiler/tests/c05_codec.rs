@@ -804,6 +804,7 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
                 magnitude: vec![7],
                 negative: false,
             }),
+            origins: vec![],
         }),
         G1DraftBody::Artifact(ArtifactRecord {
             kind: ArtifactKind::Assembly,
@@ -865,6 +866,7 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
             signature: ty,
             entry: BlockId::from_index(0),
             linkage: Linkage::External,
+            parameters: vec![],
         }),
         G1DraftBody::Block(BlockRecord {
             function: FunctionId::from_index(0),
@@ -879,6 +881,7 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
             result: Some(ValueId::from_index(0)),
             local: None,
             successors: vec![],
+            callee: None,
         }),
         G1DraftBody::Span(SpanRecord {
             source: SourceId::from_index(0),

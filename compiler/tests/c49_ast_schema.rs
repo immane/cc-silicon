@@ -56,6 +56,9 @@ fn v1_node_kind_inventory_appends_after_m1() {
             "binary_rem",
             "unary_plus",
             "unary_minus",
+            "parameter_list",
+            "parameter",
+            "call",
         ]
     );
 }
@@ -73,6 +76,9 @@ fn every_v1_node_kind_round_trips_the_canonical_codec() {
         NodeKind::BinaryRem,
         NodeKind::UnaryPlus,
         NodeKind::UnaryMinus,
+        NodeKind::ParameterList,
+        NodeKind::Parameter,
+        NodeKind::Call,
     ] {
         let record = fixture(kind);
         assert_eq!(node_kind_name(kind), NODE_KIND_NAMES[kind as usize]);

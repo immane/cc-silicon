@@ -20,6 +20,7 @@ fn instruction(op: IrOp) -> InstructionRecord {
         result: Some(ValueId::from_index(1)),
         local: Some(SymbolId::from_index(2)),
         successors: vec![BlockId::from_index(3), BlockId::from_index(4)],
+        callee: None,
     }
 }
 
@@ -39,6 +40,7 @@ fn ir_op_inventory_is_append_only() {
             "neg",
             "branch",
             "cond_branch",
+            "call",
         ]
     );
 }
@@ -55,6 +57,7 @@ fn instruction_fields_and_wire_round_trip() {
             "result",
             "local",
             "successors",
+            "callee",
         ]
     );
     for op in [
@@ -68,6 +71,7 @@ fn instruction_fields_and_wire_round_trip() {
         IrOp::Neg,
         IrOp::Branch,
         IrOp::CondBranch,
+        IrOp::Call,
     ] {
         let record = instruction(op);
         assert_eq!(

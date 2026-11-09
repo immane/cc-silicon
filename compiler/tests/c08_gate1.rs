@@ -117,6 +117,7 @@ fn typed_const(magnitude: Vec<u8>, negative: bool) -> ConstRecord {
     ConstRecord {
         ty: TypeId::from_index(0),
         value: ConstValue::Integer(IntegerConst::new(magnitude, negative)),
+        origins: vec![],
     }
 }
 
@@ -718,7 +719,7 @@ fn append_enforces_per_arena_capacity() {
 #[test]
 fn stage_assignment_covers_foundation_and_slice() {
     use cc_silicon_compiler::manifest::check_stage_layer_agreement;
-    assert_eq!(STAGE_ASSIGNMENT.len(), 72);
+    assert_eq!(STAGE_ASSIGNMENT.len(), 73);
     for (kind, stage) in STAGE_ASSIGNMENT {
         assert_eq!(stage_of(*kind), Some(*stage));
         assert!((*stage as usize) < Limits::fixture().stage_queue_bound.len());
@@ -810,7 +811,7 @@ fn allowlist_authorizes_fold_chip_only() {
     // decl (`/34`), PA expr (`/35`), PA recovery (`/36`), T08
     // const-branch (`/37`), and VF14 evidence (`/38`) slices add no rows;
     // the SE29 function row (`/39`) and the `/49` identifier row land here).
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 36);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     assert!(!STORE_OWNER_ALLOWLIST
         .iter()
         .any(|&(_, store, field, _)| store == StoreId::Tasks && field == "queue.ready"));
@@ -949,7 +950,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/53");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/54");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -964,7 +965,7 @@ fn contract_hash_covers_gate1_section() {
             "candidate_type"
         ]
     );
-    assert_eq!(CONST_RECORD_FIELDS, &["ty", "value"]);
+    assert_eq!(CONST_RECORD_FIELDS, &["ty", "value", "origins"]);
     assert_eq!(LITERAL_KIND_NAMES, &["integer", "character", "string"]);
     assert_eq!(LITERAL_SUFFIX_NAMES, &["none", "U", "L", "UL", "LL", "ULL"]);
     assert_eq!(LX08_CANDIDATE_NAMES, &["Int"]);
@@ -1009,7 +1010,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/53",
+        "t01-c01-c06/54",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",

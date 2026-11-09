@@ -1,4 +1,4 @@
-# AI Session Context — cc-silicon compiler (`t01-c01-c06/53`, working tree)
+# AI Session Context — cc-silicon compiler (`t01-c01-c06/54`, working tree)
 
 > Living handoff note for AI agents continuing this work. Updated
 > 2026-11-10 after freezing `/53` local assignments, with the full compiler
@@ -10,9 +10,9 @@
 
 ## 1. Where we are
 
-- Frozen artifact: `t01-c01-c06/53` (source local expression trees and ordered
+- Frozen artifact: `t01-c01-c06/54` (source local expression trees and ordered
   assignments over one `int`, modeled integer result, parser/semantic facts,
-  T09 recursive lowering, VF12 program interpreter), hash `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e`.
+  T09 recursive lowering, VF12 program interpreter), hash `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39`.
 - Implemented and test-green at `/41`: append handles/bodies in snapshots,
   stage-first scheduling with zero-quota fail-closed, macro/store/result
   version accounting, `Task.id`, pin-aware trace decoder/first divergence,
@@ -34,7 +34,7 @@
   (`docs/tasks/B_INT_00_DRAFT_DISPOSITION.md`).
 - Not done: full `Snapshot::from_bytes`/restore, quota>1 order, VF13
   projections, per-stage queues, and `StorePatch` materialization (deferred
-  package now `/54`); B3-03 PP driver orchestration implementation (design complete,
+  package now `/55`); B3-03 PP driver orchestration implementation (design complete,
   gated by H04/T03/T02); official T00 reference-baseline/CI-substrate freeze;
   Part B general target codegen; full M1 acceptance. A host-only M1
   `--emit-asm` prototype now emits/runs the constant-return and `/49`–`/53`

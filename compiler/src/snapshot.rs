@@ -1966,8 +1966,8 @@ pub fn decode_literal_record(bytes: &[u8]) -> Result<LiteralRecord, CodecError> 
 
 /// Canonical encoding of one committed [`ConstRecord`].
 ///
-/// Byte layout (fixed `/42` field order): `ty` index | value tag |
-/// integer magnitude bytes | integer negative bool.
+/// Byte layout (fixed `/42` field order with the `/54` append): `ty` index |
+/// value tag and payload | origin-count `u64` LE + literal `u32` LE each.
 pub fn encode_const(record: &ConstRecord) -> Vec<u8> {
     let mut w = Writer::new();
     w.u32(record.ty.index());
@@ -1994,6 +1994,10 @@ pub fn encode_const(record: &ConstRecord) -> Vec<u8> {
             w.bytes(&value.addend.magnitude);
             w.bool(value.addend.negative);
         }
+    }
+    w.u64(record.origins.len() as u64);
+    for origin in &record.origins {
+        w.u32(origin.index());
     }
     w.finish()
 }
@@ -2054,8 +2058,13 @@ pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
         }
         other => return Err(CodecError::InvalidTag(other)),
     };
+    let origin_count = r.u64()? as usize;
+    let mut origins = Vec::with_capacity(origin_count);
+    for _ in 0..origin_count {
+        origins.push(crate::ids::LiteralId::from_index(r.u32()?));
+    }
     r.finish()?;
-    Ok(ConstRecord { ty, value })
+    Ok(ConstRecord { ty, value, origins })
 }
 
 /// Name of a [`PpTokenKind`], in declaration order.
@@ -2212,6 +2221,9 @@ pub fn node_kind_name(kind: NodeKind) -> &'static str {
         NodeKind::BinaryRem => "binary_rem",
         NodeKind::UnaryPlus => "unary_plus",
         NodeKind::UnaryMinus => "unary_minus",
+        NodeKind::ParameterList => "parameter_list",
+        NodeKind::Parameter => "parameter",
+        NodeKind::Call => "call",
     }
 }
 
@@ -2235,6 +2247,9 @@ fn parse_node_kind(name: &str) -> Option<NodeKind> {
         "binary_rem" => Some(NodeKind::BinaryRem),
         "unary_plus" => Some(NodeKind::UnaryPlus),
         "unary_minus" => Some(NodeKind::UnaryMinus),
+        "parameter_list" => Some(NodeKind::ParameterList),
+        "parameter" => Some(NodeKind::Parameter),
+        "call" => Some(NodeKind::Call),
         _ => None,
     }
 }
@@ -2933,6 +2948,7 @@ pub fn ir_op_name(op: IrOp) -> &'static str {
         IrOp::Neg => "neg",
         IrOp::Branch => "branch",
         IrOp::CondBranch => "cond_branch",
+        IrOp::Call => "call",
     }
 }
 
@@ -2950,6 +2966,7 @@ fn parse_ir_op(name: &str) -> Option<IrOp> {
         "neg" => Some(IrOp::Neg),
         "branch" => Some(IrOp::Branch),
         "cond_branch" => Some(IrOp::CondBranch),
+        "call" => Some(IrOp::Call),
         _ => None,
     }
 }
@@ -2957,13 +2974,17 @@ fn parse_ir_op(name: &str) -> Option<IrOp> {
 /// Canonical encoding of one committed [`FunctionRecord`].
 ///
 /// Byte layout: symbol `u32` LE | signature `u32` LE | entry `u32` LE |
-/// linkage-name str.
+/// linkage-name str | parameter-count `u64` LE + parameter `u32` LE each.
 pub fn encode_function(record: &FunctionRecord) -> Vec<u8> {
     let mut w = Writer::new();
     w.u32(record.symbol.index());
     w.u32(record.signature.index());
     w.u32(record.entry.index());
     w.str(linkage_name(record.linkage));
+    w.u64(record.parameters.len() as u64);
+    for parameter in &record.parameters {
+        w.u32(parameter.index());
+    }
     w.finish()
 }
 
@@ -2976,12 +2997,18 @@ pub fn decode_function(bytes: &[u8]) -> Result<FunctionRecord, CodecError> {
     let entry = BlockId::from_index(r.u32()?);
     let name = r.string()?;
     let linkage = parse_linkage(&name).ok_or(CodecError::Unsupported("unknown linkage"))?;
+    let parameter_count = r.u64()? as usize;
+    let mut parameters = Vec::with_capacity(parameter_count);
+    for _ in 0..parameter_count {
+        parameters.push(SymbolId::from_index(r.u32()?));
+    }
     r.finish()?;
     Ok(FunctionRecord {
         symbol,
         signature,
         entry,
         linkage,
+        parameters,
     })
 }
 
@@ -3027,7 +3054,9 @@ pub fn decode_value(bytes: &[u8]) -> Result<ValueRecord, CodecError> {
 ///
 /// Byte layout: op-name str | block `u32` LE | operand-count `u64` LE +
 /// operand `u32` LE each | immediate-present `u8` + optional immediate
-/// `u32` LE | result-present `u8` + optional result `u32` LE.
+/// `u32` LE | result-present `u8` + optional result `u32` LE | local-present
+/// `u8` + optional local `u32` LE | successor-count + list | callee-present
+/// `u8` + optional callee `u32` LE.
 pub fn encode_instruction(record: &InstructionRecord) -> Vec<u8> {
     let mut w = Writer::new();
     w.str(ir_op_name(record.op));
@@ -3060,6 +3089,13 @@ pub fn encode_instruction(record: &InstructionRecord) -> Vec<u8> {
     w.u64(record.successors.len() as u64);
     for successor in &record.successors {
         w.u32(successor.index());
+    }
+    match record.callee {
+        Some(callee) => {
+            w.u8(1);
+            w.u32(callee.index());
+        }
+        None => w.u8(0),
     }
     w.finish()
 }
@@ -3096,6 +3132,11 @@ pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError>
     for _ in 0..successor_count {
         successors.push(BlockId::from_index(r.u32()?));
     }
+    let callee = match r.u8()? {
+        0 => None,
+        1 => Some(crate::ids::SymbolId::from_index(r.u32()?)),
+        tag => return Err(CodecError::InvalidTag(tag)),
+    };
     r.finish()?;
     Ok(InstructionRecord {
         op,
@@ -3105,6 +3146,7 @@ pub fn decode_instruction(bytes: &[u8]) -> Result<InstructionRecord, CodecError>
         result,
         local,
         successors,
+        callee,
     })
 }
 

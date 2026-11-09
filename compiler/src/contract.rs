@@ -52,13 +52,13 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// result plus local-add source slice, the `/51` local binary-operator
 /// source slice, the `/52` local expression-tree slice, and the `/53` local
 /// assignment/statement slice.
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/53";
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/54";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e";
+pub const CONTRACT_HASH: &str = "850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -318,6 +318,18 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "diag.taxonomy-stable",
     "diag.code-unique",
     "diag.span-task-attribution",
+    // `/54` direct-call common schema.
+    "parse.call-ast-append",
+    "parse.call-budget-bounded",
+    "ty.function-parameter-list",
+    "symbol.parameter-block-object",
+    "se.call-checked-nonlvalue",
+    "ir.direct-call-callee",
+    "ir.function-parameter-order",
+    "vf12.direct-call-frames",
+    "codegen.aapcs64-int-call",
+    "snapshot.call-record-fields",
+    "const.literal-origins",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -433,7 +445,7 @@ pub const LITERAL_RECORD_FIELDS: &[&str] = &[
     "candidate_type",
 ];
 /// The `/42` `ConstRecord` field names, in frozen field order.
-pub const CONST_RECORD_FIELDS: &[&str] = &["ty", "value"];
+pub const CONST_RECORD_FIELDS: &[&str] = &["ty", "value", "origins"];
 /// The `/42` `ConstValue` tag names, in encoding order.
 pub const CONST_VALUE_NAMES: &[&str] = &["integer", "float", "address"];
 /// The `/42` `IntegerConst` field names, in frozen field order.
@@ -493,6 +505,10 @@ pub const NODE_KIND_NAMES: &[&str] = &[
     "binary_rem",
     "unary_plus",
     "unary_minus",
+    // `/54` direct-call append.
+    "parameter_list",
+    "parameter",
+    "call",
 ];
 
 /// Frozen `/13` `TypeKind` names (`Int`/`Function` carry inline payloads).
@@ -572,10 +588,13 @@ pub const IR_OP_NAMES: &[&str] = &[
     "neg",
     "branch",
     "cond_branch",
+    // `/54` direct-call append.
+    "call",
 ];
 
 /// Frozen `/15` `FunctionRecord` fields, in declaration order.
-pub const FUNCTION_RECORD_FIELDS: &[&str] = &["symbol", "signature", "entry", "linkage"];
+pub const FUNCTION_RECORD_FIELDS: &[&str] =
+    &["symbol", "signature", "entry", "linkage", "parameters"];
 /// Frozen `/23` macro-record field inventory (hash-participating).
 pub const MACRO_RECORD_FIELDS: &[&str] = &[
     "spelling",
@@ -604,6 +623,7 @@ pub const INSTRUCTION_RECORD_FIELDS: &[&str] = &[
     "result",
     "local",
     "successors",
+    "callee",
 ];
 
 /// Frozen `/12` `NodeRecord` fields, in declaration order.

@@ -1,13 +1,17 @@
-# Mass-Parallel Compiler Development Dispatch Plan
+# Mass-Parallel Compiler Development Dispatch Runbook
 
 | Field | Value |
 |---|---|
 | Status | **Dispatch planning, not a contract freeze or implementation authorization** |
-| Date | 2026-11-07 |
+| Updated | 2026-11-10 |
 | Scope | Compiler application, Host tooling, verification, and integration; does not extend root-framework responsibilities |
 | Goal | Provide 100–150 parallel task slots when interfaces and file isolation permit, while prioritizing a real execution closed loop |
-| Checked baseline | `t01-c01-c06/53`; re-read the version, hash, and workspace state at dispatch time |
+| Checked baseline | `t01-c01-c06/54`; re-read the version, hash, and workspace state at dispatch time |
 | This document does not provide | Started agents, completed implementations, rerun tests, target probe results, or a GCC pass rate |
+
+**Next dispatch:** use [Section 13](#13-next-dispatch-from-53) for the concrete
+post-`/53` work orders, ownership, release gates, and handoffs. Sections 5–8 are
+long-term capacity pools, not instructions to launch 100 implementations now.
 
 ## 1. Authority and Usage Boundaries
 
@@ -50,23 +54,23 @@ and documentation. They are not a record of test execution in this change.
 | Area | Checked baseline | Remaining focus |
 |---|---|---|
 | Root framework | Bus, chips, Motherboard, CPU backend, ticks, and test utilities exist | Keep it generic; do not push C rules down into the framework |
-| Application contract | [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION) is `/39` | Subsequent small-batch freezes, dependency revalidation, registration, and permission consistency |
+| Application contract | [CONTRACT_VERSION](../../compiler/contracts/CONTRACT_VERSION) is `/53` | Subsequent small-batch freezes, dependency revalidation, registration, and permission consistency |
 | Preprocessing | Several implemented slices with bounded capability | Driver integration, real header loading, recursive include, once state, complete macro-conditional rules |
 | Lexing | Integer M1 subset plus float, character, and string slices | Integer radix/suffix/type, adjacent strings, dialects, recovery, and downstream integration |
 | Parsing | [pa_tu.rs](../../compiler/src/chips/parse/pa_tu.rs) is still limited to the M1 shape; some productions are Ack-only checks | General declarators, expressions, statements, initialization, and real AST production |
 | Types and semantics | M1 subset exists | Scopes, compatibility/conversions, lvalues, pointers, calls, effects, and control-flow legality |
 | Constants/layout/initialization | Folding and some conditional checks exist | Target widths, layout, bitfields, initialization plans, VLA |
-| IR | [ir_function.rs](../../compiler/src/chips/ir_lower/ir_function.rs) mainly produces Constant/Return | Variables, memory access, CFG, calls, dynamic stack, and verification |
-| Target backend | AArch64 identity is fixed; concrete target values are unverified | Probe, ABI classification, machine records, instructions/frames/registers/assembly output |
-| Host | [candidate](../../compiler/src/bin/candidate.rs) has evidence output and `-E/-D/-U` | `-I`, multiple sources, `-S/-c`, isolation, official test driver, statistics, and CI |
+| IR | [ir_function.rs](../../compiler/src/chips/ir_lower/ir_function.rs) produces local loads/stores, integer expression trees, ordered assignments, and return | Multiple functions, parameters/calls, general memory, CFG, dynamic stack, and verification |
+| Target backend | `/48` pins a probe-attested Debian 12 arm64/GCC 12.2.0 baseline; the host-only emitter covers local integer programs | Calls/ABI, general codegen, machine chips, and the official T00 reference substrate remain open |
+| Host | [candidate](../../compiler/src/bin/candidate.rs) has evidence output, bounded leaf includes, `-E/-D/-U`, and prototype `--emit-asm`; H05 process supervision exists in `tools/runner` | `-I`, multiple sources, formal `-S/-c`, official test driver, statistics, and CI; H05 is not a kernel sandbox |
 | Acceptance | Corpus lock/probe scaffolding exists; no final acceptance evidence | Freeze corpus/environment/options/denominator, run, and retain failures |
 
-At inspection time the workspace also contained uncommitted parse and lex candidate
-files and freeze drafts. Some files are not in a module, and some only Ack the old
-M1 shapes or explicitly report Unsupported. They enter audit first; they do not
-count as completed capability, and new tasks must not overwrite them. Older index
-descriptions such as `/5`, `/9`, or "no chips" cannot serve directly as current
-facts.
+The earlier audit found parse drafts and duplicate reservations. B-INT-00 parked
+the unregistered drafts; do not reactivate them or treat Ack-only productions as
+AST producers. Re-read the working tree before each dispatch rather than assuming
+the earlier uncommitted state still exists. Older index descriptions such as
+`/5`, `/9`, or "no chips" cannot serve directly as current facts. Historical test
+counts in the ledger are prior-session evidence, not checks rerun by this update.
 
 ## 3. Dispatch Goals and Critical Paths
 
@@ -436,3 +440,279 @@ denominator, untrusted evidence, runaway resources, or the defect threshold is
 triggered. Only a global shared-safety/contract problem blocks an entire stage; a
 local problem blocks only its dependency closure. Final completion is judged by real
 functionality and the T00 gate, not by all agents exiting.
+
+## 13. Next Dispatch from `/53`
+
+### 13.1 Binding Baseline and Dispatch Status
+
+This section is a dispatch procedure over the accepted `/54` call **schema**;
+the call behavior/ABI implementation remains `/55` work, not an accepted
+behavior contract. All
+roles below are unassigned; no implementation agent is running as a result of this
+document. Work-order IDs are scheduling labels, never ChipIds or TaskKinds.
+
+| Item | Required binding |
+|---|---|
+| Starting artifact | `t01-c01-c06/54` |
+| Starting hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
+| Known committed baseline | `14e779e` documentation / `a33c066` implementation; capture actual HEAD at dispatch |
+| Existing closed loop | One `main(void)`, one automatic `int`, expressions, ordered assignments, return, modeled result, prototype AArch64 assembly |
+| Frozen call schema | `ParameterList`/`Parameter`/`Call`, `FunctionRecord.parameters`, `InstructionRecord.callee`, `IrOp::Call`, and the call semantic reservation (no producer yet) |
+| Missing call producers | Parser, signatures/parameters/call semantics, IR lowering, verification/modeling, multi-function orchestration, emitter |
+| Target boundary | Linux AArch64 pinned probe baseline only; no Darwin ABI, official T00 baseline, or universal ABI claim |
+| Numbering | Allocate the next amendment only after checking T01; `/54` is the direct-call common schema; the deferred restore package moves to `/55` |
+
+Read [T01](T01_COMPILER_CONTRACT.md), [parallel rules](PARALLEL_EXECUTION.md),
+[task template](TASK_TEMPLATE.md), [source slice](M1_SOURCE_LOCALS_SLICE.md),
+[target slice](M1_TARGET_EMIT_SLICE.md), and the applicable T05/T06/T07/T09/T11/T13
+packages before accepting a work order. ADR-0003's single-task atomic parser and
+ADR-0004's ordered successor representation remain binding; changing either needs
+an explicit accepted amendment, not a private worker decision.
+
+### 13.2 First Release: Bounded Direct Calls
+
+The proposed next closed loop is a same-TU, acyclic direct-call subset:
+
+```c
+int add(int a, int b) { return a + b; }
+int main(void) { return add(2, 3); }
+```
+
+Required acceptance is modeled integer 5 and independently emitted assembly that
+assembles, links, and executes as 5. This source is **not supported at `/54`**;
+`/54` only freezes the AST/IR carriers.
+
+The freeze review must accept or narrow the following scope before coding:
+
+- Signed canonical `int` parameters/results; 0–8 named arguments, with `(void)`
+  for zero parameters. No unspecified/old-style parameter lists.
+- Function definitions precede uses; no separate prototype/redeclaration merging
+  in this release. `main(void)` is the entry; other functions are defined in the
+  same TU. Duplicate definitions and out-of-scope names are errors.
+- One straight-line block per function, pure parameter reads/arithmetic, direct
+  calls, and return. Preserve all existing `/53` local/assignment programs.
+  Extending parameter assignment or adding multiple local declarations is not an
+  implicit requirement of the call slice.
+- Calls can occur in covered expression trees; argument and parameter ordering is
+  explicit. Nested calls and values live across calls are tested. A deterministic
+  evaluation order is permitted for this pure subset; it is not a general C
+  sequencing claim or permission to reorder future side effects.
+- Reject recursion/cyclic call graphs, indirect calls, unresolved/external calls,
+  variadics, more than eight arguments, non-int types, pointers, aggregates, and
+  stack-passed arguments explicitly. A diagnostic is not a supported-case pass.
+- Bind the exact AAPCS64 revision and relevant probe fields for integer argument
+  and return registers, stack alignment, preserved registers, and LR handling.
+  Uncovered evidence blocks only its dependent target work; it cannot be invented.
+- Define finite function, argument, nesting, frame, and interpreted-work budgets.
+  Existing tick/task limits do not bound recursion inside one chip computation.
+  Failure must be typed and deterministic, not a stack overflow or panic.
+
+### 13.3 Freeze Gate: One Integrator, Parallel Input Review
+
+`CALL-F0` is the sole shared-contract writer. It begins as `NEEDS_FREEZE` and
+collects read-only reviews from the future parser, semantics, IR/VF, and ABI owners
+in parallel. Reviewers return findings to the dispatcher; they do not each create
+a competing contract document or implementation type.
+
+The release packet must contain all of the following before dependent coding is
+marked `READY`:
+
+| Contract obligation | Decision/output owned by CALL-F0 |
+|---|---|
+| AST | Append-only kinds; exact function/parameter/callee/argument child roles, token spans, parent links, atomic append and depth failure behavior |
+| Symbols/types | Function-specific signatures, parameter ordinal and scope, declaration visibility, duplicate rules, canonical type reuse |
+| Semantic tasks | Exact payload/result, call fact and effects, guard/stage, unique chip IDs, field manifests, diagnostics, reuse and invalid-input behavior |
+| IR | Explicit callee identity, ordered arguments, parameter-to-value binding, result ownership, function/block/value membership and call-graph rules |
+| Interpretation | Entry selection, isolated per-call values/locals, return continuation, depth/work accounting and structured failure; state persisting across ticks lives in the bus |
+| Target | Covered scalar ABI, caller/callee save obligations, all incoming arguments saved before scratch-register use, aligned frames, LR preservation, frame-size rejection |
+| Persistence | Matching snapshots/codecs, schema tables, draft materialization/commit checks, version/hash and dependent freeze tests |
+| Integration | Per-function producer order, symbol-to-function resolution without dangling committed records, routing/registration/allowlist, test discovery |
+
+Do not overload `InstructionRecord.local` with a callee or assume existing
+`FunctionRecord` fields already encode parameters. Avoid introducing a full new
+machine pipeline just for this slice; retain the explicit host-only emitter
+classification unless separately authorized. Temporary pure evaluation scratch is
+allowed; hidden persistent interpreter/call state is not.
+
+Freeze exit: accepted T01 text and implementation schema agree, the artifact hash
+recomputes, affected codec/commit/contract tests pass, synthetic producer/consumer
+fixtures compile, and every work order pins the same commit/version/hash. A
+schema fixture passing does not establish the call feature itself. If a decision
+conflicts with an accepted ADR, pause for that decision rather than silently
+changing the architecture.
+
+### 13.4 Exclusive Coding Lanes After Freeze
+
+`compiler/` paths below are exact ownership boundaries, not permission to edit a
+whole directory. Each lane gets one worktree and one writer. CALL-F0 owns all
+shared changes; other lanes submit change requests when a required field is absent.
+
+| Work order | Exclusive production files | Exclusive test delivery | Depends on / unit exit |
+|---|---|---|---|
+| CALL-P1 Parser | `compiler/src/chips/parse/pa_tu.rs` | Proposed new `compiler/tests/call_parse.rs` | F0; real multi-function AST, parameters, calls, punctuation, atomic failure, bounded nesting |
+| CALL-S1 Binding/types/semantics | `compiler/src/chips/types/ty_types.rs`, `compiler/src/chips/symbols/ty_scope.rs`, `compiler/src/chips/symbols/ty_symbol.rs`, `compiler/src/chips/semantic/se_function.rs`, `se_return.rs`, `se_identifier.rs` in that same semantic directory; proposed new `compiler/src/chips/semantic/se_call.rs` | Proposed new `compiler/tests/call_semantic.rs` | F0; exact scoped parameter/callee binding, signatures, arity/types, effects, fact reuse; no whole-phase helper |
+| CALL-I1 IR lowering | `compiler/src/chips/ir_lower/ir_function.rs` | Proposed new `compiler/tests/call_ir.rs`; existing `compiler/tests/c15_ir.rs` | F0; parameter values and direct calls, stable IDs, function-local ownership, argument order, no dropped operations |
+| CALL-V1 Verification/modeling | `compiler/src/chips/verify/vf_interpret.rs`, `vf_syntax.rs`, `vf_invariant.rs` in that same verify directory | Proposed new `compiler/tests/call_verify.rs`; existing `compiler/tests/c17_vf12.rs` | F0; malformed AST/IR/call rejection, bounded explicit frames, independent values/locals and correct nested return |
+| CALL-A1 AArch64 emitter | `compiler/src/bin/candidate/target_m1.rs` | Existing `compiler/tests/c55_target_m1.rs` and inline emitter tests | F0 plus covered target evidence; multi-function symbols, argument moves, LR and live-value preservation, legal frames |
+| CALL-T1 Independent acceptance | No production changes | Proposed new `compiler/tests/call_source.rs`, `compiler/tests/call_abi.rs` | F0 fixture specification; hand-derived expected values, source replay, native and two-way mixed-link evidence |
+| CALL-R1 Independent review | Read-only | Findings returned to integrator, no shared report writes | Review F0 and deliveries; invariants, source-to-IR meaning, ABI/evidence independence |
+| CALL-F0 Integration | Shared files listed below; `compiler/src/bin/candidate.rs` | Existing `compiler/tests/c56_source_locals.rs`, `h04_candidate.rs`, `c42_wiring.rs`, `freeze.rs`; any schema-dependent fixture migrations | Owns freeze, per-function orchestration, registration, integration and final evidence |
+
+The abbreviated filenames in S1/V1 refer only to the explicitly named directory,
+not similarly named files elsewhere. New paths above are **proposed, not existing
+test entry points**. The integrator must confirm availability and Cargo discovery
+before assigning them. Existing tests not assigned in this table remain read-only
+to lane writers; F0 handles necessary compatibility migrations.
+
+CALL-F0 exclusively owns `compiler/src/{bus,task,manifest,contract,records,commit,
+snapshot,routing,limits}.rs`, all `mod.rs` files, Cargo files/locks, contract
+markers/manifests, shared registry tests, and dispatch/status documentation.
+No worker may allocate a shared ID, change a result tag, add a dependency, or
+reactivate parked drafts on its own. A manifest method inside an assigned worker
+is that worker's delivery; aggregation/allowlist changes belong to F0.
+
+This deliberately keeps binding/type/semantic edits together: splitting them into
+more writers immediately would contend on shared function/signature assumptions.
+Split S1 only after a concrete file-disjoint handoff and independent task contracts
+are frozen. Parser depth fixes stay with P1, lowering depth fixes with I1, and
+host traversal fixes with F0; a parallel “resource fix” writer must not edit them.
+
+### 13.5 Launch Sequence, Capacity, and Integration
+
+| Release gate | Work allowed concurrently | Exit / next release |
+|---|---|---|
+| G0 Baseline captured | F0 inspection; P1/S1/I1/V1/A1 read-only interface reviews; T1 independent case design | Actual HEAD, clean/dirty paths, artifact, resources, toolchain and ownership recorded |
+| G1 Contract frozen | P1, S1, I1, V1, A1 code against frozen synthetic inputs; T1 tests; R1 review; F0 wiring | Independent deliveries pass; no private schemas or overlapping writers |
+| G2 Pairwise integration | F0 integrates P1→S1→I1; V1 and A1 validate real produced IR; T1 runs source cases | Real producers/consumers agree; synthetic-only status remains separate |
+| G3 Closed loop | F0 target queue; T1 native/mixed-link checks; R1 evidence review | Required valid source cases model, emit, assemble/link/run; invalid/unsupported cases fail correctly |
+| G4 Batch accepted | F0 final regression and documentation; next-wave interface review can overlap | Logical commits only when authorized; record exact evidence, blockers and next ready work |
+
+At G0, implementation of the new call feature is blocked, but review/test design
+can start immediately. At G1, five production lanes become eligible together;
+the integrator, independent tester, and reviewer are separate roles, not five
+additional feature implementations. These are logical lanes, **not a promise of
+eight simultaneous model sessions**.
+
+Initial operational caps: at most four active child sessions, two concurrent
+builds, one full regression, and one native target job. The integrator can own a
+lane or queue ready work when tool capacity is lower. Increase to five production
+writers only after available agent capacity, memory, and review throughput are
+confirmed. Worktree builds use separate target/output/temp directories. A review
+backlog of three deliveries pauses new coding launches; review proceeds first.
+
+Workers return a handoff after one bounded iteration (default 45 minutes; one
+targeted retry). Timeout/resource exhaustion returns `BLOCKED_RESOURCE` or
+`DEFECT`, not an unbounded retry. The dispatcher may set different limits in the
+work order before launch. These are execution budgets, not completion-time
+estimates; gates, rather than a calendar date, determine when parallelism expands.
+
+F0 merges schema-compatible deliveries in dependency order, never by completion
+order alone. A test lane can submit failing acceptance cases before the producer
+exists, but they remain integration-pending, not a passing delivery. Any schema
+change pauses its dependency closure, updates the freeze and fixtures, then
+rebases/retests affected lanes. Unrelated Host work can continue. Do not reset
+another writer's files or silently discard a failed package.
+
+### 13.6 Required Acceptance Matrix
+
+| Family | Required cases / independently checked property |
+|---|---|
+| Regressions | Canonical constant return and every `/53` local expression/assignment case retain their modeled/native meaning |
+| Arity/order | `(void)`, 1, 2, and 8 int parameters; 9 rejected; distinct positional values detect reversal, dropped and duplicated arguments |
+| Scope | Same parameter spelling in different functions, repeated identical signatures, duplicate names/definitions, unknown callee and use-before-definition |
+| Evaluation | Nested `add(inc(2),inc(3))` → 7; `inc(2)+inc(3)` → 7; caller values survive two calls; no shared local/value map between invocations |
+| Failure | Arity/type mismatch; missing/dangling IDs; wrong function/block/value owner; missing argument/result; malformed call shape; recursion/cycle rejected |
+| Limits | Argument, AST/traversal depth, function count, call depth, interpreted-work and frame limits at boundary and just above; no partial append or panic |
+| Arithmetic | Defined signed-int examples, negative results and repeated literals; overflow/divide-by-zero diagnosed in the model, not compared as portable C behavior |
+| Determinism/isolation | Identical initial input/config/pins yields identical records/results/trace; nonmatching task and foreign write proposals cannot mutate unrelated stores |
+| Target | Multiple function labels; distinct argument registers; aligned SP; LR restored; live values preserved; frame too large rejected before artifact success |
+| ABI counterpart | Candidate callee + reference caller, and candidate caller + reference callee, for the covered int subset; independent reference compilation never compiles the candidate function under test |
+
+The eight-argument fixture must use a noncommutative expression as well as a sum.
+Use full modeled integers or an independent counterpart assertion to distinguish
+results that share the low eight exit-status bits. Linux process exit 254 is not
+by itself proof of modeled -2. Keep reference source, candidate source, commands,
+assembly, executable status and provenance separate.
+
+External calls remain unsupported in normal source input. If two-way mixed-link
+checks need a test-only IR/artifact fixture, freeze its narrow boundary and have
+A1/F0 generate it through the same emitter; do not secretly broaden the frontend
+or count fixture-only linkage as source support. If that boundary is unavailable,
+record ABI acceptance as blocked, not complete.
+
+The current literal-fold path excludes octal zero. Do not claim source-level
+zero/divide-by-zero coverage from IR fixtures; either close that prerequisite
+under its own work order or retain the explicit source limitation.
+
+### 13.7 Verification Commands and Evidence
+
+Existing entry points, to run from the repository root after relevant changes:
+
+```sh
+cargo test --locked --manifest-path compiler/Cargo.toml --test freeze
+cargo test --locked --manifest-path compiler/Cargo.toml --test c13_ty
+cargo test --locked --manifest-path compiler/Cargo.toml --test c39_sefunc
+cargo test --locked --manifest-path compiler/Cargo.toml --test c15_ir
+cargo test --locked --manifest-path compiler/Cargo.toml --test c17_vf12
+cargo test --locked --manifest-path compiler/Cargo.toml --test c55_target_m1
+cargo test --locked --manifest-path compiler/Cargo.toml --test c56_source_locals
+cargo test --locked --manifest-path compiler/Cargo.toml --bin candidate
+cargo fmt --manifest-path compiler/Cargo.toml --all -- --check
+cargo clippy --locked --manifest-path compiler/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path compiler/Cargo.toml
+git diff --check
+```
+
+After the proposed test files are installed, run the corresponding `--test
+call_parse`, `call_semantic`, `call_ir`, `call_verify`, `call_source`, and `call_abi`
+targets; these commands are not valid entry points until those files exist.
+Run root fmt/clippy/workspace tests at the batch gate and standalone tool checks
+when those tools change. Preserve command exit status: capture the command to a
+log and check success before summarizing; do not pipe to grep/awk and infer that
+an empty failure listing or summed pass count establishes a successful run.
+
+Native runs bind the pinned Linux arm64 image digest/toolchain from the probe
+evidence, record assembler/linker/runtime versions, and use bounded Host process
+supervision. Check architecture before running: existing Linux tests can return
+early on non-AArch64 GCC, so a green host test is not native execution evidence.
+Do not silently pull a new image, download a corpus, or use the Rust host ABI.
+
+Each handoff states baseline and delivery commits (if authorized), exact files,
+task kind/guard/read/write fields, supported rules, actual commands and statuses,
+raw evidence paths, skipped tests, blockers and integration prerequisites. F0
+alone updates [DISPATCH_LEDGER.md](DISPATCH_LEDGER.md) with role/session, state,
+unit/integration/closed-loop levels and evidence; no pending item becomes complete
+merely because another lane's build passed.
+
+### 13.8 Independent Host Work and Subsequent Release Trains
+
+The following are dependency-gated queues, not automatically ready work orders.
+They may overlap CALL development only with disjoint files and a reviewed shared
+contract. Keep one feature writer per parser, lowerer, interpreter and emitter.
+
+| Queue | Scope / initial owner boundary | Gate before implementation / release evidence |
+|---|---|---|
+| HOST-RUN | H05 supervision in `tools/runner/src/{lib,main}.rs`, `tools/runner/tests/runner.rs` | Existing runner contract; audit/fix timeout, output, cancellation and descendants with tests; never advertise filesystem/network sandboxing |
+| HOST-CORPUS | H00 offline lock/provenance in `tools/torture/src/verify.rs`, `tools/torture/tests/verify.rs` | Freeze authorized corpus revision/inventory/hash/licensing before acquisition; offline validation may proceed without candidate calls |
+| HOST-DRIVER | H02/H03 orchestration, H06 aggregation, H04 formal compile/link flag path | First freeze instance/result schemas and single-owner exact paths; these handlers are not assumed implemented; H04 overlaps F0's candidate file and waits for handoff |
+| LANG-LEX | Decimal/octal/hex integer decoding/type rules and the zero-literal gap | Identify actual producer/fold owners and exact files first; frozen integer model; source + const + VF boundary tests, no duplicate folder |
+| CFG | if/else first, then loops/break/continue and short-circuit | Freeze condition types, branch/terminator verification, per-function block order and interpreter step budgets; reuse authoritative `successors`; source→CFG→native closed loops |
+| MEMORY | Multiple locals/globals, address/load/store, pointers/arrays | Freeze object identity/lifetime, target size/alignment, address/effect rules and static-data/relocation boundary; layout/type schemas alone do not implement memory |
+| ABI-EXT | Stack arguments, then wider scalars/floats/aggregates/variadics | Separate probe/spec evidence and call/frame contracts; two-way mixed linking per supported family; do not extend the int-only acceptance claim |
+| RESTORE | Deferred snapshot restore/quota>1/VF13/StorePatch package | Its own accepted contract, unique amendment allocation and differential evidence; not a dependency for source-code development parallelism |
+| COMPLEX | Aggregate layout/init, VLA, old-style/GNU features | Frozen per-family interfaces and corpus-driven demand; independent language/ABI tests and real producers, not stub count |
+| OPT | T10 legal rewrites and analyses | Verified IR semantics/version guards/invalidation; differential semantic validation before performance claims |
+| T00-GATE | Frozen corpus plus H02/H03/H06/H09 complete chain | Compile-only vs execute/IEEE retained separately; frozen denominators/options/environment; reproducible runs and failure owners; apply T00 thresholds only to actual evidence |
+
+CFG and MEMORY preparation may run concurrently with CALL, but their coding may
+not touch the active call parser/lowerer/emitter worktrees. To overlap production,
+the integrator must first freeze a file-disjoint extension boundary or finish and
+hand off the contested files. Do not perform a broad refactor merely to increase
+agent count. HOST tasks can use spare slots once exact ownership/resource and
+security gates are satisfied; they do not consume arbitrary network permissions.
+
+Later releases repeat F0 freeze → file-disjoint production → independent review →
+real producer integration → native/Host acceptance. The whole A–G objective is
+not complete until its remaining Host/corpus/general-codegen obligations pass;
+CALL acceptance only adds one bounded capability. More than 99% remains a T00
+goal, not a result supplied by this dispatch procedure.

@@ -185,7 +185,7 @@ fn float_kinds_stage_registry_manifest_frozen() {
     // identifier writer.
     assert_eq!(LX09_CHIP, ChipId(39));
     assert_eq!(LX10_CHIP, ChipId(40));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 36);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     for manifest in [LxFloatSyntaxChip.manifest(), LxFloatValueChip.manifest()] {
         assert!(manifest.writes.is_empty());
         assert!(manifest.deterministic);

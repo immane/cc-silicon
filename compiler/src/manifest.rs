@@ -892,6 +892,12 @@ pub const STORE_OWNER_ALLOWLIST: &[(ChipId, StoreId, &str, TaskKind)] = &[
         TaskKind::SEMANTIC_ASSIGNMENT_EXPR,
     ),
     (
+        SE_CALL_CHIP,
+        StoreId::Sem,
+        "records",
+        TaskKind::SEMANTIC_CALL_EXPR,
+    ),
+    (
         IR_FUNCTION_CHIP,
         StoreId::Ir,
         "functions",
@@ -1194,6 +1200,9 @@ pub const SE_UNARY_CHIP: ChipId = ChipId(59);
 /// `/53` T07 assignment chip reservation (checks one automatic-int lhs and a
 /// committed-int rhs, recording the local-write effect).
 pub const SE_ASSIGN_CHIP: ChipId = ChipId(60);
+/// `/54` T07 call-expression chip reservation (checks one direct call's
+/// file-scope callee, ordered arguments, and `int` result).
+pub const SE_CALL_CHIP: ChipId = ChipId(61);
 
 /// Whether a task kind belongs to the Gate 1 (`/7`) M1 slice.
 pub const fn is_gate1_slice_kind(kind: TaskKind) -> bool {
@@ -1378,6 +1387,7 @@ pub const fn is_se_slice_kind(kind: TaskKind) -> bool {
         || kind.raw() == TaskKind::SEMANTIC_IDENTIFIER_EXPR.raw()
         || kind.raw() == TaskKind::SEMANTIC_UNARY_EXPR.raw()
         || kind.raw() == TaskKind::SEMANTIC_ASSIGNMENT_EXPR.raw()
+        || kind.raw() == TaskKind::SEMANTIC_CALL_EXPR.raw()
 }
 
 /// Whether a task kind belongs to the Wave 2 (`/13`) TY slice.
@@ -1502,6 +1512,7 @@ pub const STAGE_ASSIGNMENT: &[(TaskKind, u8)] = &[
     (TaskKind::SEMANTIC_IDENTIFIER_EXPR, 4),
     (TaskKind::SEMANTIC_UNARY_EXPR, 4),
     (TaskKind::SEMANTIC_ASSIGNMENT_EXPR, 4),
+    (TaskKind::SEMANTIC_CALL_EXPR, 4),
     (TaskKind::VERIFICATION_TYPED_INVARIANT, 4),
     (TaskKind::IR_FUNCTION, 5),
     (TaskKind::PREPROCESS_SPLICE, 1),

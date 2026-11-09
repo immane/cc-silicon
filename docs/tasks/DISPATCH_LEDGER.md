@@ -6,9 +6,21 @@
 | Updated | 2026-11-10 |
 | Master dispatcher | Integrator role |
 | Plan | [MASS_PARALLEL_DISPATCH.md](MASS_PARALLEL_DISPATCH.md) |
-| Contract baseline | `t01-c01-c06/53` — hash `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e` |
+| Contract baseline | `t01-c01-c06/54` — hash `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
 | Branch / HEAD | `wave4-development` / `a33c066` (code through the `/53` local-assignment slice committed; this status-doc commit follows) |
 | Workspace note | `/42`–`/53`, B-INT-00, B3-03a/B, the target probe, and H05 are committed; no push was performed |
+
+### Next Dispatch Procedure (2026-11-10; Not Started)
+
+The post-`/53` procedure is in
+[MASS_PARALLEL_DISPATCH.md §13](MASS_PARALLEL_DISPATCH.md#13-next-dispatch-from-53).
+`CALL-F0` froze the shape-only `/54` schema and is `READY` for `/55`
+orchestration; `CALL-P1/S1/I1/V1/A1/T1` are `READY` against `/54`. No
+implementation delivery or test result is recorded yet. `CALL-R1` and read-only
+interface/test review are eligible for assignment, but no role/session is assigned
+by this documentation update. No call schema, amendment number, ChipId or test
+result is frozen here. Capture actual HEAD and ownership before dispatch; the
+historical baseline checks below have not been rerun for this documentation edit.
 
 ## 1. Baseline Checks
 
@@ -88,7 +100,7 @@ not duplicate A1 files or edit any shared source.
 | D-12 | **P0** | `AppendRecords` wire proposals encode only the draft count in snapshots; different append batches with equal counts hash identically. This contradicts `snapshot.wire-payloads-encoded`. | A23 A23-F01; `snapshot.rs` | **FIXED / VERIFIED by `/41`** — handles and full bodies encode in stored order; c05 sensitivity covers all 18 body variants |
 | D-13 | **P1** | Scheduler order uses task-group ordinal, not `STAGE_ASSIGNMENT`; T01 three-key order conflicts with M1 D5 four-key stage-first order. | A23 finding 5; `routing.rs` | **FIXED / VERIFIED by `/41`** — stage-first `(stage, group, enqueue, TaskId)`; `STAGE_ASSIGNMENT` authoritative; c06 19/19 |
 | D-14 | **P1** | `allocated_total()` omits macros; `stage_queue_bound` is unused; zero quota is clamped; typed appends do not bump `store_versions`; `ResultRecord.version` is always 0. | A23 findings 14-16; A02 F04 | **FIXED / VERIFIED by `/41`** — macro total, store/Names bumps, typed zero-quota failure, 1-based result version; `stage_queue_bound` explicitly reserved to `/54` |
-| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | **FIXED / VERIFIED minimal by `/41`** — pin digests, trace decoder/first divergence, `Task.id`, `ReplayEvidence`; full restore is `/54` |
+| D-15 | **P1** | `Snapshot`/`Trace` have no restore/decoder/diff; "replay" tests re-run fresh buses and pins are not recorded. | A23 finding 2 | **FIXED / VERIFIED minimal by `/41`** — pin digests, trace decoder/first divergence, `Task.id`, `ReplayEvidence`; full restore is `/55` |
 | D-16 | **P1** | Diagnostic codes are ad hoc: `Task:4` has 339 sites and `Unsupported:1` 106; capacity, invalid, and verification faults lack distinct groups/codes; spans/task attribution are rare. | A18 §1 | Diagnostic CCR B2 |
 | D-17 | **P0** | `#if X` does not macro-expand identifiers; a `-DX=1` probe takes the false branch, silently selecting the wrong conditional branch. | A03 §2.3, probe in §1.2 | **FIXED / VERIFIED** by B3-01 for object-like macros; function-like invocations remain explicit Unsupported |
 | D-18 | **P0** | Integer `010` is classified/decode as decimal 10 instead of octal 8; radix/suffix/type/range handling is absent. | A03 §2.5 | **FIXED / VERIFIED** for decimal/octal/hex by B3-02; suffix/type/range remain future |
@@ -115,7 +127,7 @@ ledger, or other reports.
 
 | Order | Scope | Output | State / session |
 |---|---|---|---|
-| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/54` |
+| B2-00 | Determinism/limits/replay cluster D-12..D-15: append snapshot bodies, scheduler order, limit accounting, store versions, replay evidence. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_DETERMINISM_LIMITS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/41` (hash `500abb52…832966`); c05 29, c06 19, c07 20, c03 48, c08 22, c11 11; full 723/50. Restore/quota>1/VF13 deferred to `/55` |
 | B2-01 | M1 A3 closure D-02: wire SE29, extend VF06 function-signature checking, consume FunctionDefinition fact in IR; state `ConstRecord.ty` dependency. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_M1_A3_SE29.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/40` (hash `c6961ac6…10c14`); `c14_se` 16, `c15_ir` 13, `c43_a3` 5, `h04_candidate` 18; candidate `value=05` |
 | B2-02 | Tagged, typed constants D-09: `ConstRecord.ty`, closed integer payload, fold type resolution, T09/VF12 immediate-type enforcement, snapshot codec, `/42` freeze. | `docs/tasks/CONTRACT_CHANGE_REQUEST_B2_TAGGED_CONSTANTS.md` | **ACCEPTED / IMPLEMENTED / VERIFIED** — frozen as `/42` (hash `a9a1da92…abf1a5`); `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10; candidate `value=05` |
 
@@ -134,7 +146,7 @@ triaged the critical path as follows.
    is **accepted, implemented, and verified as `/42`**; `/43` parser/AST and
    `/44` IR/CFG and `/45` constant v3 are **frozen schemas**; `/46`–`/53`
    followed. The next schema freeze is the deferred
-   restore/quota>1/VF13/`StorePatch` package at `/54`; H05/torture are
+   restore/quota>1/VF13/`StorePatch` package at `/55`; H05/torture are
    host/tooling work without a language-schema bump.
 3. **Fix PP/lex wrong-result defects** before claiming V1 evidence:
    D-17 (`#if` macro expansion), D-18 (octal/radix), D-19 (driver PP orchestration),
@@ -157,7 +169,7 @@ triaged the critical path as follows.
 | ID-IR-01 | Prefer A15's `InstructionRecord.successors` + `Branch`/`CondBranch` over A07's separate `CfgEdgeRecord`; keep the edge family only as a documented fallback. | Recommendation pending IR freeze |
 | ID-TARGET-01 | All concrete ABI/scalar values remain probe-gated. No target codegen or `-S`/`-c` from proposal values. | Existing accepted boundary |
 | ID-CHIP-01 | Do not add new chips until the Worker-vs-RestrictedChip template decision (A02 F01) is resolved; B1/B3 fixes may continue because they touch existing files. | Recommendation pending contract decision |
-| ID-VERSION-01 | **Accepted 2026-11-10:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = type/layout/init common base (frozen), `/47` = diagnostic taxonomy (frozen), `/48` = probe-attested target baseline (frozen), `/49` = M1 source locals (frozen), `/50` = modeled integer result + local add (frozen), `/51` = local binary operators (frozen), `/52` = local expression trees (frozen), `/53` = local assignments (frozen), `/54` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/53` hash `b3e6cd83…f72e`. | Accepted by T01 integrator |
+| ID-VERSION-01 | **Accepted 2026-11-10:** `/40` = M1 A3 SE29 closure (frozen), `/41` = B2-00 determinism/limits/replay mandatory package (frozen), `/42` = B2-02 tagged, typed constants (frozen), `/43` = parser/AST common base (frozen), `/44` = IR/CFG schema (frozen), `/45` = constant v3 float/address (frozen), `/46` = type/layout/init common base (frozen), `/47` = diagnostic taxonomy (frozen), `/48` = probe-attested target baseline (frozen), `/49` = M1 source locals (frozen), `/50` = modeled integer result + local add (frozen), `/51` = local binary operators (frozen), `/52` = local expression trees (frozen), `/53` = local assignments (frozen), `/54` = direct-call common schema (frozen, shape-only), `/55` = deferred restore/quota>1/VF13/`StorePatch` package. `compiler/contracts/CONTRACT_VERSION` records `/54` hash `802c5c94…7318`. | Accepted by T01 integrator |
 
 ### Stage B3 candidate queue (not dispatched)
 
@@ -184,7 +196,7 @@ triaged the critical path as follows.
 B2-01 was **accepted on 2026-11-09** and implemented as `/40`; B2-00 was
 **accepted on 2026-11-09** and implemented as `/41`; B2-02 was **accepted on
 2026-11-09** and implemented as `/42`. The rows below are the accepted
-defaults. The deferred restore package is `/54`.
+defaults. The deferred restore package is `/55`.
 
 | CCR | Decision | Recommendation |
 |---|---|---|
@@ -205,11 +217,11 @@ defaults. The deferred restore package is `/54`.
 | B2-00 OD-3 | `stage_queue_bound` | Reserve in `/41`; enforce with stage queues/projection |
 | B2-00 OD-4 | Zero quota | Remove clamp; typed fail-closed |
 | B2-00 OD-5 | `ResultRecord.version` | 1-based global commit ordinal |
-| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/54` |
+| B2-00 OD-6 | Replay meaning | `/41` fingerprint + recorded-input replay; restore deferred `/55` |
 | B2-00 OD-7 | Pins | Trace digest + Host envelope |
 | B2-00 OD-8 | `Task.id` | Encode and test divergence |
-| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics (frozen), `/48` probe baseline (frozen), `/49` source locals (frozen), `/50` modeled integer/local add (frozen), `/51` local binary operators (frozen), `/52` local expression trees (frozen), `/53` local assignments (frozen), `/54` deferred restore |
-| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/54` |
+| B2-00 OD-9 | Freeze granularity | **Rejected as written**: use `/40` B2-01, `/41` B2-00, `/42` tagged constants, `/43` parser/AST, `/44` IR/CFG (frozen), `/45` constant v3 (frozen), `/46` type/layout/init (frozen), `/47` diagnostics (frozen), `/48` probe baseline (frozen), `/49` source locals (frozen), `/50` modeled integer/local add (frozen), `/51` local binary operators (frozen), `/52` local expression trees (frozen), `/53` local assignments (frozen), `/54` direct-call schema (frozen), `/55` deferred restore |
+| B2-00 OD-10 | Dispatch ordinal | Keep out of D-13; quota>1 in `/55` |
 | B2-02 T-01 | Constant type field | `ConstRecord.ty` is a committed T06 `TypeId` |
 | B2-02 T-02 | Payload family | Closed `/42` tag `Integer` only; float/address append-only future tags |
 | B2-02 T-03 | Integer carrier | Big-endian minimal magnitude + sign; no host width |
@@ -251,7 +263,7 @@ defaults. The deferred restore package is `/54`.
 | Implementation | Append handles/bodies in snapshots; stage-first selection + zero-quota typed error; macro total; typed-append and Names store versions; 1-based result commit ordinal; `Task.id`; pin digest; bounded trace decoder/diff; Host `ReplayEvidence` |
 | Tests | `c05_codec` 29, `c06_routing` 19, `c07_limits` 20, `c03_task` 48, `c08_gate1` 22, `c11_lex` 11, `freeze` 15, `c20_ppscan` 8, `h04_candidate` 18; full compiler suite 723 tests / 50 suites; root 21; torture 73; chip-lint 16; formatting clean |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/41)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/54` (was `/43` before the schema train); D-09 tagged constants → `/42` |
+| Explicit deferrals | Full `Snapshot::from_bytes`/restore, VF13 projections, quota>1 dispatch/commit order, per-stage queues/bounds, `StorePatch` materialization, full pin bytes → `/55` (was `/43` before the schema train; `/54` is the direct-call schema); D-09 tagged constants → `/42` |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution; clippy remains red only in the D-04 parse drafts |
 
 ## 3H. `/42` Freeze Record (2026-11-09)
@@ -267,7 +279,7 @@ defaults. The deferred restore package is `/54`.
 | Implementation | Typed fold resolution from committed `SemRecord.ty` (binary) / unique canonical `int` (literal); canonical integer codec; T09 immediate-type check; VF12 same-type check; VF14 integer gate decode; candidate integer evidence extraction |
 | Tests | `c45_const_ty` 8, `c08_gate1` 22, `c15_ir` 13, `c17_vf12` 6, `c38_vf14` 10, `c05_codec` 29, `freeze` 15; full compiler suite 684 tests / 51 suites after B-INT-00 parking |
 | Determinism evidence | Three direct candidate runs on `int main(void){return 2+3;}` were byte-identical, exited 0, and emitted `candidate evidence (t01-c01-c06/42)` and `interpret: value=05 negative=false` |
-| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/54` (was `/43` before the schema train) |
+| Explicit deferrals | Float/address constant tags; full signed-range formula; `Snapshot::from_bytes`/restore, VF13, quota>1, `StorePatch` materialization → `/55` (was `/43` before the schema train; `/54` is the direct-call schema) |
 | Non-claims | No full M1 acceptance, no target ABI/probe result, no GCC torture rate, no target execution |
 
 ## 3I. `/43` Freeze Record (2026-11-09)
@@ -420,8 +432,8 @@ defaults. The deferred restore package is `/54`.
 
 | Field | Value |
 |---|---|
-| Artifact | `t01-c01-c06/53` |
-| Hash | `b3e6cd836db20dd3180e0f0a639ef2724e796203baed3ebbc743f8afdf66f72e` |
+| Artifact | `t01-c01-c06/54` |
+| Hash | `850adb9a2e4d4409072c9ad12586cd14aed5e5b305cbacc68a675b935f081e39` |
 | Authority | T01 integrator acceptance; R1 auto-bump; `/52` preserved as history |
 | Contract text | [T01 §7.1 `/53` amendment](T01_COMPILER_CONTRACT.md); [slice record](M1_SOURCE_LOCALS_SLICE.md) |
 | Shape impact | assignment statements; `SEMANTIC_ASSIGNMENT_EXPR`; `EFFECT_WRITES_LOCAL`; VF05/VF06 statement/effect coverage; ordered T09 stores |
@@ -451,7 +463,7 @@ defaults. The deferred restore package is `/54`.
   and verified as `/42`.
 - **Next freeze train:** `/49` (source locals), `/50` (modeled integer +
   local add), `/51` (local binary operators), `/52` (local expression trees),
-  and `/53` (local assignments) are frozen; `/54` remains the deferred
+  and `/53` (local assignments) are frozen; `/54` is the direct-call schema and `/55` remains the deferred
   restore/quota>1/VF13/`StorePatch` package. Each future freeze needs
   an explicit integrator decision, implementation, dependent tests, and a
   recomputed hash.

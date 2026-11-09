@@ -287,6 +287,7 @@ impl FoldChip {
                 Ok(ConstRecord {
                     ty: *constant_ty,
                     value: ConstValue::Integer(value),
+                    origins: vec![*literal],
                 })
             }
             ConstantRequest::Binary { node, lhs, rhs, .. } => {
@@ -319,6 +320,7 @@ impl FoldChip {
                         magnitude,
                         negative: false,
                     }),
+                    origins: vec![*lhs, *rhs],
                 })
             }
         }

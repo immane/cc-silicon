@@ -568,6 +568,7 @@ mod tests {
                         signature: function_type,
                         entry: BlockId::from_index(0),
                         linkage: Linkage::External,
+                        parameters: vec![],
                     },
                     &bus.limits(),
                 )
@@ -620,6 +621,7 @@ mod tests {
                         result,
                         local,
                         successors,
+                        callee: None,
                     },
                     &self.bus.limits(),
                 )
@@ -639,6 +641,7 @@ mod tests {
                             magnitude,
                             negative: value < 0,
                         }),
+                        origins: vec![],
                     },
                     &self.bus.limits(),
                 )

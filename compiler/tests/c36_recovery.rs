@@ -240,7 +240,7 @@ fn recovery_kinds_stage_registry_manifest_frozen() {
     // (`/39` adds the SE29 `sem.records` row elsewhere).
     assert_eq!(PA14_CHIP, ChipId(50));
     assert_eq!(PA38_CHIP, ChipId(51));
-    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 36);
+    assert_eq!(STORE_OWNER_ALLOWLIST.len(), 37);
     for chip in [PA14_CHIP, PA38_CHIP] {
         assert!(
             !STORE_OWNER_ALLOWLIST

@@ -1,7 +1,8 @@
 // ============================================================================
 // c45_const_ty.rs — B2-02 `/42` tagged, typed constant acceptance.
 //
-// Pins the new `ConstRecord { ty, value }` shape, the closed integer tag,
+// Pins the new `ConstRecord { ty, value, origins }` shape, the closed integer
+// tag,
 // canonical body codec, fold type resolution from committed facts, T09's
 // `ir.op-immediate-type` failure, and the `/42` contract fields. Negative
 // cases cover missing/ambiguous facts and non-integer types; no test fakes a
@@ -257,6 +258,7 @@ fn const_codec_round_trips_and_rejects_noncanonical_payloads() {
             magnitude: vec![0x01, 0x00],
             negative: false,
         }),
+        origins: vec![],
     };
     assert_eq!(decode_const(&encode_const(&record)).unwrap(), record);
 
@@ -270,6 +272,7 @@ fn const_codec_round_trips_and_rejects_noncanonical_payloads() {
             magnitude: vec![0],
             negative: true,
         }),
+        origins: vec![],
     };
     assert!(matches!(
         decode_const(&encode_const(&negative_zero)),
@@ -279,7 +282,7 @@ fn const_codec_round_trips_and_rejects_noncanonical_payloads() {
 
 #[test]
 fn contract_fields_name_the_tagged_shape() {
-    assert_eq!(CONST_RECORD_FIELDS, &["ty", "value"]);
+    assert_eq!(CONST_RECORD_FIELDS, &["ty", "value", "origins"]);
     assert_eq!(CONST_VALUE_NAMES, &["integer", "float", "address"]);
     assert_eq!(INTEGER_CONST_FIELDS, &["magnitude", "negative"]);
 }
