@@ -581,3 +581,15 @@ after checking T01.
 - A09/A10: both two-way reference ABI directions remain `BLOCKED_CONTRACT`; no function-only/external-callee fixture boundary is frozen.
 - D/C slots delivered design packets only; Host H00–H03/H06 and CFG production are not implemented.
 - Many of the 100 slots returned findings/checkpoints rather than mergeable code; unmerged branches/worktrees are retained. No push or force-push occurred.
+
+## 6. P0 Correctness Closure (2026-11-10)
+
+| Field | Value |
+|---|---|
+| Scope | Post-sprint T27/R01/R02/R13/R14 correctness closure |
+| Commits | `9ebee63`, `df96c02`, `7f62a73`, `5770a4b` |
+| Compiler tests | **1001 / 114 suites macOS** after the closure |
+| Fixed | VF12 uncommitted-const/stale-local rejection; legacy local-expression 32-level budget; emitter foreign-parameter and uninitialized-local rejection; parameter-name/constant-range/x31 guards from the sprint batch |
+| Tests | T27 5 checks; R02 32/33 grouping and spaced-unary source regression; emitter uninitialized-local inline test; existing c55/call_source green |
+| Still open | H05 setsid/prlimit post-probe failure classification; A09/A10 two-way ABI boundary; remaining synthetic IR ownership checks; CFG/memory production |
+| Non-claims | No full ABI, H05 sandbox, corpus, or torture result |
