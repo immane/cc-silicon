@@ -743,11 +743,11 @@ fn draft_handle(family: RecordFamily, index: u32) -> RecordDraft {
 
 fn all_draft_bodies() -> Vec<G1DraftBody> {
     use cc_silicon_compiler::bus::{
-        ArtifactKind, ArtifactRecord, BlockRecord, ConstRecord, EffectMask, FunctionRecord,
-        InstructionRecord, IntRank, IrOp, Linkage, MacroRecord, NodeKind, NodeRecord, PpTokenKind,
-        PpTokenRecord, ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord,
-        SpanRecord, StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind,
-        TypeRecord, ValueCategory, ValueRecord,
+        ArtifactKind, ArtifactRecord, BlockRecord, ConstRecord, ConstValue, EffectMask,
+        FunctionRecord, InstructionRecord, IntRank, IntegerConst, IrOp, Linkage, MacroRecord,
+        NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind, ScopeEventRecord,
+        ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind, SymbolRecord,
+        TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
     };
     let span = SpanId::from_index(0);
     let name = NameId::from_index(0);
@@ -757,8 +757,11 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
     vec![
         G1DraftBody::Literal(fixture_literal(7, b"7")),
         G1DraftBody::Const(ConstRecord {
-            value: vec![7],
-            negative: false,
+            ty: TypeId::from_index(0),
+            value: ConstValue::Integer(IntegerConst {
+                magnitude: vec![7],
+                negative: false,
+            }),
         }),
         G1DraftBody::Artifact(ArtifactRecord {
             kind: ArtifactKind::Assembly,
@@ -859,7 +862,9 @@ fn all_draft_bodies() -> Vec<G1DraftBody> {
 /// sensitivity check proves the body bytes (not only the variant name) are
 /// encoded.
 fn distinct_body(body: &G1DraftBody) -> G1DraftBody {
-    use cc_silicon_compiler::bus::{IntRank, IrOp, Linkage, ScopeEventKind, ScopeKind, TypeKind};
+    use cc_silicon_compiler::bus::{
+        ConstValue, IntRank, IntegerConst, IrOp, Linkage, ScopeEventKind, ScopeKind, TypeKind,
+    };
     match body.clone() {
         G1DraftBody::Literal(mut record) => {
             record.value = vec![9];
@@ -867,7 +872,10 @@ fn distinct_body(body: &G1DraftBody) -> G1DraftBody {
             G1DraftBody::Literal(record)
         }
         G1DraftBody::Const(mut record) => {
-            record.negative = true;
+            record.value = ConstValue::Integer(IntegerConst {
+                magnitude: vec![8],
+                negative: true,
+            });
             G1DraftBody::Const(record)
         }
         G1DraftBody::Artifact(mut record) => {

@@ -15,11 +15,10 @@
 // The `Constant` carries the fold's `ConstId` verbatim and never recomputes
 // the value (no refold: this file contains no arithmetic). Its result
 // `ValueRecord.ty` comes from the committed `BinaryAdd` `SemRecord`, and the
-// `Return` `SemRecord.ty` must agree (interim
-// `ir.constant-result-type-from-sem`; `ConstRecord.ty` and
-// `ir.op-immediate-type` remain deferred to B2-02). The terminator
-// (`Return`) is the greatest `InstructionId`. FunctionEnd/IR28 stays
-// deferred.
+// `Return` `SemRecord.ty` must agree (`ir.constant-result-type-from-sem`).
+// `/42` additionally requires the committed `ConstRecord.ty` to equal the
+// `Constant` result type (`ir.op-immediate-type`). The terminator (`Return`)
+// is the greatest `InstructionId`. FunctionEnd/IR28 stays deferred.
 // ============================================================================
 
 use crate::bus::{
@@ -60,6 +59,8 @@ pub struct IrFunctionInput {
     pub constant_ty: TypeId,
     /// Committed `Return` operand type (`Return` `SemRecord`).
     pub return_ty: TypeId,
+    /// Committed type carried by the folded `ConstRecord` (`/42`).
+    pub constant_record_ty: TypeId,
     /// The single folded constant.
     pub constant: ConstId,
     /// Arena counts at dispatch (positional prediction bases).
@@ -294,8 +295,8 @@ pub fn project_ir_function_input(
         }
     }
     // (g) The checked `Return` + `BinaryAdd` facts: exactly one each; the
-    // operand type check pins `int`. Their committed types seed the interim
-    // constant/return type rule.
+    // operand type check pins `int`. Their committed types seed the
+    // `/40` result-type rule and the `/42` immediate-type rule.
     let unique_sem = |node: NodeId| -> Result<SemRecord, DiagnosticDraft> {
         let mut found = None;
         for (_, sem) in bus.arenas.sem.iter() {
@@ -339,21 +340,30 @@ pub fn project_ir_function_input(
     // (M1 flow folds once). Zero is missing input; more than one is an
     // ambiguous handoff — both fail loudly, never a guessed constant.
     let mut constant = None;
-    for (id, _) in bus.arenas.consts.iter() {
+    for (id, body) in bus.arenas.consts.iter() {
         if constant.is_some() {
             return Err(DiagnosticDraft::error(
                 DiagnosticCode::new(DiagGroup::Task, 4),
                 "ambiguous folded constants for lowering",
             ));
         }
-        constant = Some(id);
+        constant = Some((id, body.ty));
     }
-    let Some(constant) = constant else {
+    let Some((constant, constant_record_ty)) = constant else {
         return Err(DiagnosticDraft::error(
             DiagnosticCode::new(DiagGroup::Task, 4),
             "lower reads missing folded constant",
         ));
     };
+    if bus.arenas.types.get(constant_record_ty).is_err() {
+        return Err(DiagnosticDraft::error(
+            DiagnosticCode::new(DiagGroup::Task, 4),
+            format!(
+                "lower reads constant with dangling type {}",
+                constant_record_ty.index()
+            ),
+        ));
+    }
     Ok(IrFunctionInput {
         task,
         state: record.state.clone(),
@@ -364,6 +374,7 @@ pub fn project_ir_function_input(
         int,
         constant_ty: binary_sem.ty,
         return_ty: return_sem.ty,
+        constant_record_ty,
         constant,
         functions_allocated: bus.arenas.functions.allocated(),
         blocks_allocated: bus.arenas.blocks.allocated(),
@@ -436,10 +447,9 @@ impl IrFunctionChip {
                 ),
             )];
         }
-        // Interim `ir.constant-result-type-from-sem`: the `Constant` result
-        // type is the committed `BinaryAdd` fact type, and the `Return`
-        // operand fact must carry the same type. `ConstRecord.ty` is not
-        // consulted; the immediate-type rule arrives with B2-02.
+        // `ir.constant-result-type-from-sem`: the `Constant` result type is
+        // the committed `BinaryAdd` fact type, and the `Return` operand fact
+        // must carry the same type.
         if input.return_ty != input.constant_ty {
             return vec![fail(
                 input.task,
@@ -449,6 +459,21 @@ impl IrFunctionChip {
                         "lower reads constant type {} with return type {}",
                         input.constant_ty.index(),
                         input.return_ty.index()
+                    ),
+                ),
+            )];
+        }
+        // `/42` `ir.op-immediate-type`: the folded constant's committed type
+        // must equal the `Constant` result value's type.
+        if input.constant_record_ty != input.constant_ty {
+            return vec![fail(
+                input.task,
+                DiagnosticDraft::error(
+                    DiagnosticCode::new(DiagGroup::Task, 4),
+                    format!(
+                        "lower reads immediate type {} with result type {}",
+                        input.constant_record_ty.index(),
+                        input.constant_ty.index()
                     ),
                 ),
             )];

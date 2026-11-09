@@ -54,7 +54,7 @@ The following are **integration candidate defaults selected under explicit user 
 
 - **Rule aliases (candidate default).** Where the rejection→rule-id inventory had two unresolved aliases, choose the **shorter** ids: `ir.op-immediate-type` (not `ir.op-immediate-type-result-ty`) and `ir.terminator-missing` (not `ir.terminator-missing-explicit-commit-marker`). Every IR rejection still carries **one** stable rule id.
 - **`Constant` validation precedence (candidate default).** When a `Constant` instruction is missing **both** its `immediate` and its `result`, validate the **immediate first** (`ir.op-immediate`). Checked pre-mutation in phase 2b.
-- **`Constant` expected immediate type (candidate default).** The instruction's expected type equals its **result `ValueRecord.ty`**; the check is `ConstRecord.ty == ValueRecord.ty` (and the `ConstId` exists), with no host width and no lowering-context inference.
+- **`Constant` expected immediate type (candidate default).** The instruction's expected type equals its **result `ValueRecord.ty`**; the check is `ConstRecord.ty == ValueRecord.ty` (and the `ConstId` exists), with no host width and no lowering-context inference. **Implemented at `/42`** as `ir.op-immediate-type`; the `/40` `ir.constant-result-type-from-sem` check remains as an additional consistency check.
 
 ## `TerminatorMissing` completion fact (user decision, 2026-10-05; selected direction, not frozen)
 

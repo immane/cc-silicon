@@ -18,10 +18,11 @@
 
 use crate::bus::{
     ArtifactKind, ArtifactRecord, BlockRecord, CharKind, CompilerBus, CompilerPins, ConstRecord,
-    EffectMask, FunctionRecord, InstructionRecord, IntRank, IrOp, Linkage, LiteralRecord,
-    MacroRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord, ScopeEventKind,
-    ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord, StorageDuration, SymbolKind,
-    SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord, ValueCategory, ValueRecord,
+    ConstValue, EffectMask, FunctionRecord, InstructionRecord, IntRank, IntegerConst, IrOp,
+    Linkage, LiteralRecord, MacroRecord, NodeKind, NodeRecord, PpTokenKind, PpTokenRecord,
+    ScopeEventKind, ScopeEventRecord, ScopeKind, ScopeRecord, SemRecord, SpanRecord,
+    StorageDuration, SymbolKind, SymbolRecord, TokenKind, TokenRecord, TypeKind, TypeRecord,
+    ValueCategory, ValueRecord,
 };
 use crate::codec::{hex32, sha256, CodecError, Reader, Writer};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticRecord, Severity};
@@ -1944,21 +1945,47 @@ pub fn decode_literal_record(bytes: &[u8]) -> Result<LiteralRecord, CodecError> 
 
 /// Canonical encoding of one committed [`ConstRecord`].
 ///
-/// Byte layout (fixed field order): value bytes | negative bool.
+/// Byte layout (fixed `/42` field order): `ty` index | value tag |
+/// integer magnitude bytes | integer negative bool.
 pub fn encode_const(record: &ConstRecord) -> Vec<u8> {
     let mut w = Writer::new();
-    w.bytes(&record.value);
-    w.bool(record.negative);
+    w.u32(record.ty.index());
+    match &record.value {
+        ConstValue::Integer(value) => {
+            w.u8(ConstValue::INTEGER_TAG);
+            w.bytes(&value.magnitude);
+            w.bool(value.negative);
+        }
+    }
     w.finish()
 }
 
 /// Decode one committed [`ConstRecord`]; consumes the whole input.
+///
+/// Rejects an unknown value tag, a non-canonical integer, and trailing bytes.
 pub fn decode_const(bytes: &[u8]) -> Result<ConstRecord, CodecError> {
     let mut r = Reader::new(bytes);
-    let value = r.bytes()?;
-    let negative = r.bool()?;
+    let ty = TypeId::from_index(r.u32()?);
+    let tag = r.u8()?;
+    let value = match tag {
+        ConstValue::INTEGER_TAG => {
+            let magnitude = r.bytes()?;
+            let negative = r.bool()?;
+            let value = IntegerConst {
+                magnitude,
+                negative,
+            };
+            if !value.is_canonical() {
+                return Err(CodecError::Unsupported(
+                    "non-canonical constant integer payload",
+                ));
+            }
+            ConstValue::Integer(value)
+        }
+        other => return Err(CodecError::InvalidTag(other)),
+    };
     r.finish()?;
-    Ok(ConstRecord { value, negative })
+    Ok(ConstRecord { ty, value })
 }
 
 /// Name of a [`PpTokenKind`], in declaration order.

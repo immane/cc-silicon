@@ -588,18 +588,82 @@ pub struct LiteralRecord {
     pub candidate_type: Lx08CandidateType,
 }
 
-/// A T08-owned folded constant: big-endian magnitude plus sign (Gate 1 `/7`
-/// freeze; user-selected magnitude-bytes carrier, 2026-10-06).
+/// A T08-owned folded constant: committed type plus tagged payload (`/42`
+/// B2-02 tagged-constant freeze).
 ///
-/// T08 decodes committed operands, folds with checked addition, and commits
-/// exactly one `ConstRecord` per evaluation; T09 consumes it without
-/// re-folding.
+/// T08 decodes committed operands, folds with checked addition, resolves the
+/// type from committed T07/T06 facts, and commits exactly one `ConstRecord`
+/// per evaluation; T09 consumes it without re-folding and enforces
+/// `ConstRecord.ty == ValueRecord.ty` for the IR immediate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstRecord {
-    /// Big-endian magnitude bytes (no width prefix).
-    pub value: Vec<u8>,
-    /// Sign of the folded value.
+    /// Committed canonical type of the value (T06-owned `TypeId`).
+    pub ty: crate::ids::TypeId,
+    /// Closed tagged payload.
+    pub value: ConstValue,
+}
+
+/// The `/42` closed constant payload family.
+///
+/// Only `Integer` is frozen. Float and symbolic-address constants are
+/// append-only future tags: they require a committed canonical type and a
+/// producer before they may be added, so `/42` does not create empty variants.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstValue {
+    /// An integer constant.
+    Integer(IntegerConst),
+}
+
+impl ConstValue {
+    /// Wire tag for `Integer` (`/42` freeze).
+    pub const INTEGER_TAG: u8 = 0;
+
+    /// The integer payload, if this is an integer constant.
+    pub fn as_integer(&self) -> Option<&IntegerConst> {
+        match self {
+            Self::Integer(value) => Some(value),
+        }
+    }
+}
+
+/// A sign-magnitude integer constant.
+///
+/// The magnitude is big-endian, non-empty, and minimal: zero is exactly
+/// `[0]` with `negative = false`; any other value has no leading zero byte.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntegerConst {
+    /// Big-endian unsigned magnitude (no width prefix).
+    pub magnitude: Vec<u8>,
+    /// Sign of the value; zero is canonical only with `negative = false`.
     pub negative: bool,
+}
+
+impl IntegerConst {
+    /// Build a canonical integer constant: negative zero is normalized to
+    /// positive zero.
+    pub fn new(mut magnitude: Vec<u8>, negative: bool) -> Self {
+        let zero = magnitude.iter().all(|&byte| byte == 0);
+        let first = magnitude
+            .iter()
+            .position(|&byte| byte != 0)
+            .unwrap_or(magnitude.len().saturating_sub(1));
+        magnitude.drain(..first);
+        if magnitude.is_empty() {
+            magnitude.push(0);
+        }
+        Self {
+            magnitude,
+            negative: negative && !zero,
+        }
+    }
+
+    /// Whether the magnitude and sign satisfy the `/42` canonical rule.
+    pub fn is_canonical(&self) -> bool {
+        let non_empty = !self.magnitude.is_empty();
+        let minimal = self.magnitude.len() == 1 || self.magnitude.first() != Some(&0);
+        let zero_positive = !self.negative || self.magnitude.iter().any(|&byte| byte != 0);
+        non_empty && minimal && zero_positive
+    }
 }
 
 /// Every typed arena owned by the compiler bus.

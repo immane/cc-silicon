@@ -10,7 +10,7 @@
 // exit 1, evidence-flag clash exit 2). H04 `-D`/`-U` seeds the frozen macro
 // table in flag order (bare `-D` defaults to `1`, values expand, `-U`
 // undefines, last-wins; bad names/values fail closed with exit 2). The
-// evidence header carries the frozen contract version (`/40`); this file is
+// evidence header carries the frozen contract version (`/42`); this file is
 // host tooling and asserts that header rather than pinning snapshot hashes.
 // ============================================================================
 
@@ -154,10 +154,10 @@ fn candidate_models_m1_return_5() {
         .expect("candidate runs");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8 evidence");
-    assert!(stdout.contains("candidate evidence (t01-c01-c06/41)"));
+    assert!(stdout.contains("candidate evidence (t01-c01-c06/42)"));
     assert!(
-        stdout.starts_with("candidate evidence (t01-c01-c06/41)\n"),
-        "evidence header names /40: {stdout}"
+        stdout.starts_with("candidate evidence (t01-c01-c06/42)\n"),
+        "evidence header names /42: {stdout}"
     );
     assert!(stdout.contains("interpret: value=05 negative=false"));
     assert!(stdout.contains("snapshot: "));

@@ -36,17 +36,19 @@ use crate::task::{KindStatus, StoreId, TaskGroup, TaskKindRegistry, RECORD_KINDS
 /// the Wave 3 VF14 evidence slice (`/38`), and the Wave 3 SE29
 /// function-definition slice (`/39`), the M1 Part A A3 closure
 /// amendment (`/40`: SE29 candidate wiring, VF06 four-kind typed-fact
-/// set, T09 consumed committed function fact; D-09 stays deferred), and
+/// set, T09 consumed committed function fact; D-09 deferred at `/40`), and
 /// the B2-00 determinism/limits/replay closure (`/41`: append wire
 /// bodies, stage-first scheduling, macro/limit accounting, store and
-/// result versions, pin-aware trace evidence).
-pub const CONTRACT_VERSION: &str = "t01-c01-c06/41";
+/// result versions, pin-aware trace evidence), and the B2-02 tagged,
+/// typed constant closure (`/42`: `ConstRecord.ty`, closed integer payload,
+/// immediate-type enforcement).
+pub const CONTRACT_VERSION: &str = "t01-c01-c06/42";
 
 /// SHA-256 of the frozen schema. Recomputed by the freeze test.
 ///
 /// This is a content fingerprint, not a cryptographic signature. It is updated
 /// only by the T01 integrator when the frozen shape changes.
-pub const CONTRACT_HASH: &str = "500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966";
+pub const CONTRACT_HASH: &str = "a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5";
 
 /// Normative rule identifiers covered by the contract hash.
 ///
@@ -262,6 +264,13 @@ pub const NORMATIVE_RULES: &[&str] = &[
     "vf06.function-signature-fact",
     "ir.function-consumes-committed-sem",
     "ir.constant-result-type-from-sem",
+    // `/42` B2-02 tagged, typed constants.
+    "const.record-type-committed",
+    "const.record-type-from-sem",
+    "const.integer-payload-type-int",
+    "const.zero-canonical",
+    "ir.op-immediate-type",
+    "snapshot.const-record-typed-body",
 ];
 
 /// The `TaskState` variant names, in encoding order.
@@ -368,8 +377,12 @@ pub const LITERAL_RECORD_FIELDS: &[&str] = &[
     "spelling",
     "candidate_type",
 ];
-/// The Gate 1 (`/7`) `ConstRecord` field names, in frozen field order.
-pub const CONST_RECORD_FIELDS: &[&str] = &["value", "negative"];
+/// The `/42` `ConstRecord` field names, in frozen field order.
+pub const CONST_RECORD_FIELDS: &[&str] = &["ty", "value"];
+/// The `/42` `ConstValue` tag names, in encoding order.
+pub const CONST_VALUE_NAMES: &[&str] = &["integer"];
+/// The `/42` `IntegerConst` field names, in frozen field order.
+pub const INTEGER_CONST_FIELDS: &[&str] = &["magnitude", "negative"];
 /// The `LiteralKind` member names (only `integer` produced in M1).
 pub const LITERAL_KIND_NAMES: &[&str] = &["integer", "character", "string"];
 /// The `LiteralSuffix` member names (only `none` produced in M1).
@@ -841,6 +854,8 @@ impl FrozenSchema {
         // seed allowlist rows.
         push_str_list(&mut w, LITERAL_RECORD_FIELDS);
         push_str_list(&mut w, CONST_RECORD_FIELDS);
+        push_str_list(&mut w, CONST_VALUE_NAMES);
+        push_str_list(&mut w, INTEGER_CONST_FIELDS);
         push_str_list(&mut w, LITERAL_KIND_NAMES);
         push_str_list(&mut w, LITERAL_SUFFIX_NAMES);
         push_str_list(&mut w, LX08_CANDIDATE_NAMES);

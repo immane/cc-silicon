@@ -642,7 +642,9 @@ fn ir_lowerrs_m1_cl05_without_refolding() {
         .consts
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
-    assert_eq!(folded.value, vec![5]);
+    let folded_integer = folded.value.as_integer().unwrap();
+    assert_eq!(folded_integer.magnitude, vec![5]);
+    assert!(!folded_integer.negative);
     let task = bootstrap(
         &mut chain.bus,
         TaskKind::IR_FUNCTION,
@@ -1001,6 +1003,7 @@ fn ir_constant_result_type_must_match_return_fact() {
         int: TypeId::from_index(0),
         constant_ty: TypeId::from_index(1),
         return_ty: TypeId::from_index(2),
+        constant_record_ty: TypeId::from_index(1),
         constant: ConstId::from_index(0),
         functions_allocated: 0,
         blocks_allocated: 0,

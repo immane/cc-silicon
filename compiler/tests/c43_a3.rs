@@ -630,7 +630,7 @@ fn a3_i01_full_chain_commits_and_consumes_the_function_fact() {
     assert_eq!(chain.bus.arenas.consts.allocated(), 1);
     let folded = ConstId::from_index(0);
     let folded_body = chain.bus.arenas.consts.get(folded).unwrap();
-    assert_eq!(folded_body.value, vec![5]);
+    assert_eq!(folded_body.value.as_integer().unwrap().magnitude, vec![5]);
     let constant = chain
         .bus
         .arenas

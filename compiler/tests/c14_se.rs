@@ -708,7 +708,9 @@ fn se_binary_two_phase_handoff_folds_through_a_real_child() {
         .consts
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
-    assert_eq!(folded.value, vec![5]);
+    let folded_integer = folded.value.as_integer().unwrap();
+    assert_eq!(folded_integer.magnitude, vec![5]);
+    assert!(!folded_integer.negative);
     // Phase 3: the readied parent resumes and completes with its SemRecord.
     let report = tick(&mut chain.bus, &workers);
     match completed_ref(&report, &chain.bus) {

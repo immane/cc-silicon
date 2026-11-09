@@ -23,18 +23,19 @@ continues on this foundation.
 | Corpus | On-demand, hash-locked; **not fetched here** |
 | Reference DejaGnu baseline | Authorized as oracle; **not available**, never candidate evidence |
 | Resource limits | Every configured bound preflighted before mutation on the checked bus/commit paths; direct public-store mutation is a trusted integration boundary (arena-local checks only) |
-| Contract version | `t01-c01-c06/41` (`contracts/CONTRACT_VERSION`) |
-| Contract hash | `500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966` |
-| M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact. `ConstRecord.ty`/`ir.op-immediate-type` remain deferred (B2-02) |
+| Contract version | `t01-c01-c06/42` (`contracts/CONTRACT_VERSION`) |
+| Contract hash | `a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5` |
+| M1 Part A A3 closure (`/40`) | Implemented and tested: candidate dispatches SE29; VF06 checks `IntLiteral`/`BinaryAdd`/`Return`/`FunctionDefinition`; T09 consumes the committed function fact |
 | Determinism/limits/replay (`/41`) | Implemented and tested: append wire bodies, stage-first scheduling, macro/store/result version accounting, zero-quota fail-closed, pin-aware trace decoder/first divergence, `Task.id`, `ReplayEvidence`. Restore/quota>1/VF13 remain `/43` |
+| Tagged, typed constants (`/42`) | Implemented and tested: `ConstRecord { ty, value: ConstValue::Integer(..) }`, committed fold type resolution, `ir.op-immediate-type` in T09/VF12, canonical typed snapshot body. Float/address tags, restore/quota>1/VF13 remain future |
 
 ## Frozen contract artifact
 
 `contracts/CONTRACT_VERSION` is the obvious, cross-linked artifact:
 
 ```text
-version=t01-c01-c06/41
-hash=500abb528a1e62622f6d327456d2e27f6bf1abdc1992e6b991e9dd3e0e832966
+version=t01-c01-c06/42
+hash=a9a1da92b5e7559cd6b3cfc025553dcd5148b96632cd769381e084bda9abf1a5
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 probe_substrate=linux-ci-vm (planned, not provisioned)
@@ -124,7 +125,7 @@ compiler/
     contract.rs    frozen schema, normative rules, content hash
   contracts/       frozen artifact, manifest schema doc, target probe fixture
   examples/        freeze_hash
-  tests/           c01..c39 + freeze + h04_candidate + Stage B regression tests
+  tests/           c01..c45 + freeze + h04_candidate + Stage B regression tests
 ```
 
 The test breakdown below is a dated 2026-10-04 record, not the current test

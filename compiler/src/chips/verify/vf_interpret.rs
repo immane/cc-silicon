@@ -13,7 +13,10 @@
 // deferred (the frozen `IrOp` set has only the two M1 variants today).
 // ============================================================================
 
-use crate::bus::{BlockRecord, ConstRecord, FunctionRecord, InstructionRecord, IrOp, ValueRecord};
+use crate::bus::{
+    BlockRecord, ConstRecord, ConstValue, FunctionRecord, InstructionRecord, IntegerConst, IrOp,
+    ValueRecord,
+};
 use crate::chips::{fail, protocol_fault, Worker};
 use crate::diagnostic::{DiagGroup, DiagnosticCode, DiagnosticDraft};
 use crate::ids::{BlockId, ConstId, FunctionId, InstructionId, RecordRef, TaskId, TypeId, ValueId};
@@ -172,8 +175,11 @@ pub fn project_vf12_input(
             modeled: (
                 ConstId::from_index(u32::MAX),
                 ConstRecord {
-                    value: Vec::new(),
-                    negative: false,
+                    ty: TypeId::from_index(u32::MAX),
+                    value: ConstValue::Integer(IntegerConst {
+                        magnitude: Vec::new(),
+                        negative: false,
+                    }),
                 },
             ),
             int,
@@ -317,6 +323,17 @@ impl Vf12Chip {
         }
         if input.modeled.0.index() == u32::MAX || input.ret_value.0.index() == u32::MAX {
             return vec![shape_fail(input.task, "dangling shape marker")];
+        }
+        // `/42` `ir.op-immediate-type`: the committed constant and the
+        // returned value must carry the same type.
+        if input.modeled.1.ty != input.ret_value.1.ty {
+            return vec![shape_fail(
+                input.task,
+                "constant immediate type differs from value type",
+            )];
+        }
+        if input.modeled.1.value.as_integer().is_none() {
+            return vec![shape_fail(input.task, "modeled constant is not integer")];
         }
         vec![Proposal::Complete {
             task: input.task,

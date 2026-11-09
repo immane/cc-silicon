@@ -6,7 +6,7 @@
 | Date | 2026-11-07 |
 | Scope | Compiler application, Host tooling, verification, and integration; does not extend root-framework responsibilities |
 | Goal | Provide 100–150 parallel task slots when interfaces and file isolation permit, while prioritizing a real execution closed loop |
-| Checked baseline | `t01-c01-c06/41`; re-read the version, hash, and workspace state at dispatch time |
+| Checked baseline | `t01-c01-c06/42`; re-read the version, hash, and workspace state at dispatch time |
 | This document does not provide | Started agents, completed implementations, rerun tests, target probe results, or a GCC pass rate |
 
 ## 1. Authority and Usage Boundaries

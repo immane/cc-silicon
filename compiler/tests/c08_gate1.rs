@@ -18,9 +18,12 @@
 // artifacts (T04/T05/T07 production) and stays the Wave-2 acceptance.
 // ============================================================================
 
-use cc_silicon_compiler::bus::{CompilerBus, ConstRecord, LiteralRecord, TaggedProposal};
+use cc_silicon_compiler::bus::{
+    CompilerBus, ConstRecord, ConstValue, EffectMask, IntRank, IntegerConst, LiteralRecord,
+    SemRecord, TaggedProposal, TypeKind, TypeRecord, ValueCategory,
+};
 use cc_silicon_compiler::commit::{commit_proposals, CommitError};
-use cc_silicon_compiler::ids::{ChipId, ConstId, LiteralId, NodeId, RecordRef, TaskId};
+use cc_silicon_compiler::ids::{ChipId, ConstId, LiteralId, NodeId, RecordRef, TaskId, TypeId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{
     is_gate1_slice_kind, stage_of, BackendClass, Capability, ChipManifest, ChipPhase, FieldPath,
@@ -88,14 +91,16 @@ fn fold_chip() -> ChipId {
 fn install_fold(bus: &mut CompilerBus) {
     use cc_silicon_compiler::chips::{FoldChip, Worker};
     bus.kinds = TaskKindRegistry::m1_slice();
-    bus.schema = StoreSchema::m1_slice();
+    // `/42` fold reads committed `SemRecord.ty` and the canonical type body;
+    // those fields are declared by the cumulative PP-macro schema.
+    bus.schema = StoreSchema::pp_macro_slice();
     let manifest = FoldChip.manifest();
     // Fresh test buses only; installing twice is a test bug.
     if bus.registrations.get(fold_chip()).is_none() {
         bus.registrations
             .register(
                 manifest,
-                &StoreSchema::m1_slice(),
+                &StoreSchema::pp_macro_slice(),
                 &TaskKindRegistry::m1_slice(),
             )
             .unwrap();
@@ -107,10 +112,34 @@ fn install_fold(bus: &mut CompilerBus) {
     }
 }
 
-/// Seed the `G1-CL-01` fixtures: committed literals `2` and `3` plus a
-/// committed expression node. Returns `(two, three, node)`.
+/// A `/42` typed integer constant fixture.
+fn typed_const(magnitude: Vec<u8>, negative: bool) -> ConstRecord {
+    ConstRecord {
+        ty: TypeId::from_index(0),
+        value: ConstValue::Integer(IntegerConst::new(magnitude, negative)),
+    }
+}
+
+/// The committed canonical `int` type used by Gate 1 fixtures.
+fn canonical_int_type() -> TypeRecord {
+    TypeRecord {
+        kind: TypeKind::Int {
+            rank: IntRank::Int,
+            signed: true,
+        },
+    }
+}
+
+/// Seed the `G1-CL-01` fixtures: committed literals `2` and `3`, a
+/// committed expression node, the canonical `int` type, and the node's
+/// committed `SemRecord` (`/42`). Returns `(two, three, node)`.
 fn seed_g1_fixtures(bus: &mut CompilerBus) -> (LiteralId, LiteralId, NodeId) {
     let limits = bus.limits();
+    let int = bus
+        .arenas
+        .types
+        .alloc(canonical_int_type(), &limits)
+        .unwrap();
     let two = bus
         .arenas
         .literals
@@ -135,6 +164,18 @@ fn seed_g1_fixtures(bus: &mut CompilerBus) -> (LiteralId, LiteralId, NodeId) {
                 last_token: cc_silicon_compiler::ids::TokenId::from_index(0),
                 name: None,
                 literal: None,
+            },
+            &limits,
+        )
+        .unwrap();
+    bus.arenas
+        .sem
+        .alloc(
+            SemRecord {
+                node,
+                ty: int,
+                category: ValueCategory::NonLvalue,
+                effects: EffectMask(0),
             },
             &limits,
         )
@@ -376,10 +417,7 @@ fn append_materializes_const_record_end_to_end() {
     // Fixture-side fold (stands in for the future T08 chip).
     let left = bus.arenas.literals.get(lhs).unwrap().clone();
     let right = bus.arenas.literals.get(rhs).unwrap().clone();
-    let folded = ConstRecord {
-        value: fold_bytes(&left.value, &right.value),
-        negative: false,
-    };
+    let folded = typed_const(fold_bytes(&left.value, &right.value), false);
     let body = G1DraftBody::Const(folded.clone());
     let report = commit_proposals(
         &mut bus,
@@ -422,7 +460,9 @@ fn append_materializes_const_record_end_to_end() {
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
     assert_eq!(*committed, folded);
-    assert_eq!(committed.value, vec![5]);
+    let committed_integer = committed.value.as_integer().unwrap();
+    assert_eq!(committed_integer.magnitude, vec![5]);
+    assert!(!committed_integer.negative);
     assert!(matches!(
         bus.arenas.tasks.get(task).unwrap().state,
         TaskState::Completed(_)
@@ -454,10 +494,7 @@ fn store_version_after_append() {
             RecordRef::Literal(three),
         ]),
     );
-    let body = G1DraftBody::Const(ConstRecord {
-        value: vec![5],
-        negative: false,
-    });
+    let body = G1DraftBody::Const(typed_const(vec![5], false));
     let report = commit_proposals(
         &mut bus,
         vec![
@@ -643,13 +680,7 @@ fn append_enforces_per_arena_capacity() {
     for _ in 0..limits.max_records_per_arena {
         bus.arenas
             .consts
-            .alloc(
-                ConstRecord {
-                    value: vec![0],
-                    negative: false,
-                },
-                &limits,
-            )
+            .alloc(typed_const(vec![0], false), &limits)
             .unwrap();
     }
     let task = running_task(
@@ -663,10 +694,7 @@ fn append_enforces_per_arena_capacity() {
             family: cc_silicon_compiler::ids::RecordFamily::Const,
             index: DraftRef(0),
         }],
-        bodies: vec![G1DraftBody::Const(ConstRecord {
-            value: vec![5],
-            negative: false,
-        })],
+        bodies: vec![G1DraftBody::Const(typed_const(vec![5], false))],
     };
     assert!(matches!(
         commit_proposals(
@@ -839,10 +867,7 @@ fn snapshot_carries_literal_and_const_bodies_run_to_run_deterministic() {
         decode_literal_record(&encode_literal_record(&literal)).unwrap(),
         literal
     );
-    let folded = ConstRecord {
-        value: vec![5],
-        negative: false,
-    };
+    let folded = typed_const(vec![5], false);
     assert_eq!(decode_const(&encode_const(&folded)).unwrap(), folded);
 
     // Run-to-run determinism (not bus restoration): two identical G1-CL-01
@@ -876,10 +901,10 @@ fn snapshot_carries_literal_and_const_bodies_run_to_run_deterministic() {
                                 family: cc_silicon_compiler::ids::RecordFamily::Const,
                                 index: DraftRef(0),
                             }],
-                            bodies: vec![G1DraftBody::Const(ConstRecord {
-                                value: fold_bytes(&left.value, &right.value),
-                                negative: false,
-                            })],
+                            bodies: vec![G1DraftBody::Const(typed_const(
+                                fold_bytes(&left.value, &right.value),
+                                false,
+                            ))],
                         },
                     },
                 ),
@@ -924,7 +949,7 @@ fn contract_hash_covers_gate1_section() {
         LITERAL_RECORD_FIELDS, LITERAL_SUFFIX_NAMES, LX08_CANDIDATE_NAMES, NORMATIVE_RULES,
         REQUIRED_KIND_NAMES,
     };
-    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/41");
+    assert_eq!(CONTRACT_VERSION, "t01-c01-c06/42");
     assert_eq!(compute_contract_hash(), CONTRACT_HASH);
     assert_eq!(
         LITERAL_RECORD_FIELDS,
@@ -939,7 +964,7 @@ fn contract_hash_covers_gate1_section() {
             "candidate_type"
         ]
     );
-    assert_eq!(CONST_RECORD_FIELDS, &["value", "negative"]);
+    assert_eq!(CONST_RECORD_FIELDS, &["ty", "value"]);
     assert_eq!(LITERAL_KIND_NAMES, &["integer", "character", "string"]);
     assert_eq!(LITERAL_SUFFIX_NAMES, &["none", "U", "L", "UL", "LL", "ULL"]);
     assert_eq!(LX08_CANDIDATE_NAMES, &["Int"]);
@@ -970,6 +995,12 @@ fn contract_hash_covers_gate1_section() {
         "vf06.function-signature-fact",
         "ir.function-consumes-committed-sem",
         "ir.constant-result-type-from-sem",
+        "const.record-type-committed",
+        "const.record-type-from-sem",
+        "const.integer-payload-type-int",
+        "const.zero-canonical",
+        "ir.op-immediate-type",
+        "snapshot.const-record-typed-body",
     ] {
         assert!(NORMATIVE_RULES.contains(&rule), "missing rule `{rule}`");
     }
@@ -978,7 +1009,7 @@ fn contract_hash_covers_gate1_section() {
     // pins the value).
     let bytes = FrozenSchema::current().encode();
     for marker in [
-        "t01-c01-c06/41",
+        "t01-c01-c06/42",
         "semantic.const_eval_literal",
         "semantic.const_eval_binary",
         "constant_layout_init.const_fold",
@@ -1018,7 +1049,7 @@ fn fold_chip_manifest_registers_and_routes() {
     assert_eq!(manifest.group, TaskGroup::CONSTANT_LAYOUT_INIT);
     assert_eq!(manifest.task_kinds, vec![TaskKind::CONSTANT_CONST_FOLD]);
     let kinds = TaskKindRegistry::m1_slice();
-    let schema = StoreSchema::m1_slice();
+    let schema = StoreSchema::pp_macro_slice();
     let mut registry = ManifestRegistry::new();
     registry.register(manifest, &schema, &kinds).unwrap();
 
@@ -1061,8 +1092,9 @@ fn fold_chip_drives_g1_chain_through_driver() {
         .consts
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
-    assert_eq!(committed.value, vec![5]);
-    assert!(!committed.negative);
+    let committed_integer = committed.value.as_integer().unwrap();
+    assert_eq!(committed_integer.magnitude, vec![5]);
+    assert!(!committed_integer.negative);
     assert!(matches!(
         bus.arenas.tasks.get(task).unwrap().state,
         TaskState::Completed(_)
@@ -1204,10 +1236,7 @@ fn append_requires_registered_manifest_and_declared_write() {
             family: cc_silicon_compiler::ids::RecordFamily::Const,
             index: DraftRef(0),
         }],
-        bodies: vec![G1DraftBody::Const(ConstRecord {
-            value: vec![5],
-            negative: false,
-        })],
+        bodies: vec![G1DraftBody::Const(typed_const(vec![5], false))],
     };
     assert!(matches!(
         commit_proposals(
@@ -1265,10 +1294,7 @@ fn append_requires_registered_manifest_and_declared_write() {
             family: cc_silicon_compiler::ids::RecordFamily::Const,
             index: DraftRef(0),
         }],
-        bodies: vec![G1DraftBody::Const(ConstRecord {
-            value: vec![5],
-            negative: false,
-        })],
+        bodies: vec![G1DraftBody::Const(typed_const(vec![5], false))],
     };
     assert!(matches!(
         commit_proposals(
@@ -1448,10 +1474,7 @@ fn unpredicted_record_checks_records_carrier() {
                             family: cc_silicon_compiler::ids::RecordFamily::Const,
                             index: DraftRef(0),
                         }],
-                        bodies: vec![G1DraftBody::Const(ConstRecord {
-                            value: vec![5],
-                            negative: false,
-                        })],
+                        bodies: vec![G1DraftBody::Const(typed_const(vec![5], false))],
                     },
                 },
             ),
@@ -1521,7 +1544,9 @@ fn fold_runs_through_real_tick_lifecycle() {
         .consts
         .get(cc_silicon_compiler::ids::ConstId::from_index(0))
         .unwrap();
-    assert_eq!(committed.value, vec![5]);
+    let committed_integer = committed.value.as_integer().unwrap();
+    assert_eq!(committed_integer.magnitude, vec![5]);
+    assert!(!committed_integer.negative);
     assert!(matches!(
         bus.arenas.tasks.get(task).unwrap().state,
         TaskState::Completed(_)
@@ -1559,6 +1584,7 @@ fn fold_compute_needs_no_bus_beyond_its_projection() {
         literals,
         nodes_present,
         consts_allocated: 0,
+        constant_type: Some((TypeId::from_index(0), canonical_int_type())),
         max_const_bits: 128,
     };
     let proposals = chip.compute(&input);

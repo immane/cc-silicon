@@ -904,11 +904,15 @@ fn run(input: &str, seeds: &[macro_flags::MacroFlagSeed]) -> Result<Evidence, St
         .consts
         .get(modeled)
         .map_err(|_| "modeled const vanished".to_string())?;
+    let integer = modeled_body
+        .value
+        .as_integer()
+        .ok_or_else(|| "modeled const is not an integer".to_string())?;
     Ok(Evidence {
         snapshot,
         trace,
-        value: modeled_body.value.clone(),
-        negative: modeled_body.negative,
+        value: integer.magnitude.clone(),
+        negative: integer.negative,
         input: input.to_string(),
     })
 }

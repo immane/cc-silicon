@@ -8,11 +8,11 @@
 // ============================================================================
 
 use cc_silicon_compiler::bus::{
-    CompilerBus, CompilerPins, ConstRecord, LiteralRecord, TaggedProposal,
+    CompilerBus, CompilerPins, ConstRecord, ConstValue, IntegerConst, LiteralRecord, TaggedProposal,
 };
 use cc_silicon_compiler::chips::{drive_task, handler_for, FoldChip, Worker, WorkerRegistry};
 use cc_silicon_compiler::commit::{commit_proposals, poll_await_joins, CommitError};
-use cc_silicon_compiler::ids::{ChipId, NodeId, RecordFamily, RecordRef, TaskId};
+use cc_silicon_compiler::ids::{ChipId, NodeId, RecordFamily, RecordRef, TaskId, TypeId};
 use cc_silicon_compiler::limits::Limits;
 use cc_silicon_compiler::manifest::{ChipManifest, StoreSchema, G1_FOLD_CHIP};
 use cc_silicon_compiler::records::{G1DraftBody, RecordDraft};
@@ -38,7 +38,7 @@ fn bus_with(limits: Limits) -> CompilerBus {
 
 fn install_fold(bus: &mut CompilerBus, layer: u16) {
     bus.kinds = TaskKindRegistry::m1_slice();
-    bus.schema = StoreSchema::m1_slice();
+    bus.schema = StoreSchema::pp_macro_slice();
     bus.registrations
         .register(FoldChip.manifest(), &bus.schema, &bus.kinds)
         .unwrap();
@@ -81,8 +81,11 @@ fn const_append(task: TaskId, indices: &[u32]) -> Proposal {
                 .iter()
                 .map(|_| {
                     G1DraftBody::Const(ConstRecord {
-                        value: vec![5],
-                        negative: false,
+                        ty: TypeId::from_index(0),
+                        value: ConstValue::Integer(IntegerConst {
+                            magnitude: vec![5],
+                            negative: false,
+                        }),
                     })
                 })
                 .collect(),

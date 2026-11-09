@@ -535,8 +535,9 @@ fn vf12_models_return_5() {
     assert_eq!(chain.bus.arenas.values.allocated(), 1);
     assert_eq!(chain.bus.arenas.instructions.allocated(), 2);
     let modeled_body = chain.bus.arenas.consts.get(modeled).unwrap();
-    assert_eq!(modeled_body.value, vec![5]);
-    assert!(!modeled_body.negative);
+    let modeled_integer = modeled_body.value.as_integer().unwrap();
+    assert_eq!(modeled_integer.magnitude, vec![5]);
+    assert!(!modeled_integer.negative);
     let _ = chain.funcdef;
 }
 
