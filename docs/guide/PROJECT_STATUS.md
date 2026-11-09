@@ -9,13 +9,14 @@ re-verify. This page records observed state, not a new acceptance run.
 | Area | State | Evidence |
 |---|---|---|
 | Execution framework (`src/`) | **Implemented** | 15 integration tests + 6 doctests; runnable `examples/counter.rs` |
-| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/44`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
+| Compiler contract foundation (`compiler/`) | **Implemented and frozen as `t01-c01-c06/45`** | Arenas/IDs, task/result protocol, commit, routing shell, snapshots, manifests, target gate; identity/hash in [`CONTRACT_VERSION`](../../compiler/contracts/CONTRACT_VERSION) |
 | Language workers (PP/LX/PA/TY/SE/IR/VF) | **Partial slices only** | Multiple implemented and tested slices; no complete parser, type system, semantic pipeline, or code generator |
 | M1 Part A A3 closure (`/40`) | **Implemented and tested** | Candidate dispatches SE29; VF06 checks the four-kind typed-fact set; T09 consumes the committed function fact. Evidence: c14 16, c15 13, c43 5, h04 18, candidate `value=05`. Full M1 acceptance is not claimed |
 | Determinism/limits/replay (`/41`) | **Implemented and tested** | Append wire bodies, stage-first scheduling, macro/store/result versions, zero-quota fail-closed, pin-aware trace decoder/first divergence, Task.id, ReplayEvidence. Full restore/quota>1/VF13 are deferred to `/47` |
 | Tagged, typed constants (`/42`) | **Implemented and tested** | `ConstRecord.ty` + closed integer payload; fold type resolution from committed facts; T09/VF12 immediate-type checks; canonical typed snapshot body. Evidence: c45 8, candidate `value=05`. Float/address tags and full M1 remain future |
 | Parser architecture + V1 AST (`/43`) | **Schema frozen; producer not implemented** | ADR-0003 single-task V1 parser decision; append-only `NodeKind` inventory; snapshot names/round-trip. V1 parser and VF05 V1 shape table remain future |
 | IR/CFG common base (`/44`) | **Schema frozen; producer/verifier not implemented** | ADR-0004 `InstructionRecord.local`/`successors`; local/arithmetic/branch op append; snapshot round-trip. V1/V2 lowering and VF07/VF08 remain future |
+| Constant v3 (`/45`) | **Schema frozen; producers not implemented** | ADR-0005 float/address tags, format-checked raw bits, symbolic addend; VF14 integer-only gate. T06 float/pointer compatibility remains future |
 | C source → executable | **Not implemented** | Candidate Part A evidence driver exists; no target codegen, assembler/linker integration, or execution |
 | AArch64 target values | **One attested probe report; official baseline open** | Identity frozen; Debian-GCC-12.2.0 containerized report classified/attested; global `target_verification=unverified` and candidate codegen gate remain |
 | ABI probe harness (`tools/torture/probe/`) | Run once in pinned container | Harness/normalizer/classifier tests; report fixture + `c48_target_probe`; no official CI/bare-metal baseline |
@@ -28,11 +29,11 @@ claimed by this repository or this page.
 
 ## What "frozen `/43`" means
 
-The frozen artifact is `t01-c01-c06/44`:
+The frozen artifact is `t01-c01-c06/45`:
 
 ```text
-version=t01-c01-c06/44
-hash=73131cdfd251802c33756a7434d1b89aa2ae71f8a62c0fe8098ecdd57acae0f7
+version=t01-c01-c06/45
+hash=c4e84ccbd756b15faa9415192636ed93105d339e005e3b9e9d18a3f8cf30bac8
 target=aarch64-unknown-linux-gnu
 target_verification=unverified
 ```
@@ -67,7 +68,7 @@ are discovery/run observations, not a permanent promise; the source tree and
 | Package | Observed |
 |---|---|
 | Root framework | 21 tests (15 integration + 6 doctests) |
-| Compiler | **712 tests across 56 suites passed** after `/44` (adds AST and IR/CFG schema tests on top of tagged constants, PP driver/include, and target attestation) |
+| Compiler | **715 tests across 57 suites passed** after `/45` (adds AST, IR/CFG, and constant-v3 schema tests on top of tagged constants, PP driver/include, and target attestation) |
 | Chip-lint | 12 tests at audit; 16 after B1-05 |
 | Torture verifier | 73 tests |
 | Probe self-tests | 57 tests; real probe not run |
